@@ -334,6 +334,14 @@ where
             }
         }
         let updated = self.rt.pump()?;
+        // the view may have re-staged a theme this turn — peers + layout +
+        // paint all resolve colors through this cell
+        {
+            let mut c = self.peer_ctx.colors.borrow_mut();
+            if c.1 != self.rt.theme {
+                *c = (self.rt.appearance(), self.rt.theme.clone());
+            }
+        }
         // scheduler due work: frames -> events, chrome -> render side
         let chrome = self.rt.pump_sched(std::time::Instant::now())?;
         for ev in &chrome {
@@ -1489,7 +1497,7 @@ where
         sink: sink.clone(),
         registry: Arc::new(Mutex::new(HashMap::new())),
         next_id: AtomicU64::new(1),
-        colors: std::cell::RefCell::new((appearance, Theme::light())),
+        colors: std::cell::RefCell::new((appearance, Theme::dark())),
     });
     let factory_ctx = peer_ctx.clone();
     let factory = factory_ctx.make_factory();

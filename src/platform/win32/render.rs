@@ -476,11 +476,7 @@ impl Renderer {
                         && clip.bottom > clip.top
                         && let Some(peer) = be.peer_for(id)
                     {
-                        peer.borrow()
-                            .draw(
-                                target,
-                                (r.x + 6.0, r.y + 5.0, r.x + r.w - 6.0, r.y + r.h - 5.0),
-                            )?;
+                        peer.borrow().draw(target, (r.x, r.y, r.x + r.w, r.y + r.h))?;
                     }
                 }
                 NodeData::Custom { render, .. } => {

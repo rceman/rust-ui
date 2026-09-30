@@ -81,6 +81,9 @@ struct Spike {
     show_details: bool,
     theme_mode: ThemeMode,
     reduced: ReducedMotion,
+    /// toggles the draft editor's surgical patch on/off live — exercises
+    /// apply_text_style on a mounted peer without remount
+    draft_bold: bool,
     tile: Rc<dyn CustomRender>,
     turn_counter: u64,
 }
@@ -99,6 +102,7 @@ enum Msg {
     ProgrammaticReplace,
     SetTheme(ThemeMode),
     SetReduced(ReducedMotion),
+    ToggleDraftBold,
     RemoveB,
     RecreateB,
 }
@@ -132,6 +136,7 @@ impl Spike {
             show_details: false,
             theme_mode: ThemeMode::System,
             reduced: ReducedMotion::System,
+            draft_bold: false,
             tile: Rc::new(Tile),
             turn_counter: 0,
         }
@@ -216,6 +221,7 @@ impl Spike {
             }
             Msg::SetTheme(m) => self.theme_mode = m,
             Msg::SetReduced(r) => self.reduced = r,
+            Msg::ToggleDraftBold => self.draft_bold = !self.draft_bold,
             Msg::RemoveB => self.rows.retain(|e| e.id != 2),
             Msg::RecreateB => {
                 if !self.rows.iter().any(|e| e.id == 2) {
@@ -236,9 +242,18 @@ impl Spike {
         ui.column(Column::new().gap(Space::Sm).padding(Space::Md), |ui| {
             ui.label("composer spike");
             ui.group("draft", |ui| {
+                // SURGICAL on an editor — the authored patch reaches the
+                // windowless RichEdit char format (bold + a real size)
                 ui.text_input(&self.draft)
                     .placeholder("draft")
                     .label("draft")
+                    .style(if self.draft_bold {
+                        TextStylePatch::new()
+                            .weight(TextWeight::Bold)
+                            .size(dp(16.0))
+                    } else {
+                        TextStylePatch::new()
+                    })
                     .on_edit(Msg::DraftEdited)
                     .on_conflict(Msg::DraftConflict)
                     .on_submit(|| Msg::Send);
@@ -308,6 +323,8 @@ impl Spike {
                 ui.button("motion")
                     .variant(ButtonVariant::Secondary)
                     .on_press(|| Msg::SetReduced(ReducedMotion::NoPreference));
+                ui.button(if self.draft_bold { "unbold" } else { "bold" })
+                    .on_press(|| Msg::ToggleDraftBold);
                 ui.button("rm B").on_press(|| Msg::RemoveB);
                 ui.button("mk B").on_press(|| Msg::RecreateB);
             });

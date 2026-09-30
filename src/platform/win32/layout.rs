@@ -465,8 +465,13 @@ impl LayoutCache {
             NodeData::Container { props, .. } => *props,
             _ => Default::default(),
         };
-        // peer bounds update (no recreate) — editors keep native state
-        if let Some(peer) = peer_of(ctx, id) {
+        // peer bounds update (no recreate) — editors keep native state.
+        // The format-space origin IS where msftedit draws (lprcBounds in
+        // TxDrawD2D does not translate the formatted content), so hand the
+        // CONTENT rect — inset inside the chrome — not the chrome rect.
+        if let Some(peer) = peer_of(ctx, id)
+            && matches!(n.data, NodeData::Editor { .. })
+        {
             peer.borrow().apply_bounds(rect.win(), self.scale);
         }
         rects.insert(id, rect);

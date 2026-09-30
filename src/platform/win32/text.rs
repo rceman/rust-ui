@@ -416,7 +416,15 @@ impl ITextHost_Impl for HostBox {
     }
     fn TxGetViewInset(&self, prc: *mut RECT) -> Result<()> {
         unsafe {
-            *prc = RECT::default();
+            // editor chrome padding in local DIP — msftedit insets the
+            // text view inside the format space; the pill border sits
+            // outside it (drawn by our renderer)
+            *prc = RECT {
+                left: 6,
+                top: 5,
+                right: 6,
+                bottom: 5,
+            };
         }
         Ok(())
     }
@@ -911,12 +919,25 @@ impl WindowlessPeer {
     /// Global bounds (window DIP) + DPI scale — updates without recreate.
     /// The first non-empty bounds activate the text service (the format
     /// space latches at activation, so activating at mount — before layout —
-    /// would latch a 0×0 space and draw nothing).
+    /// would latch a 0×0 space and draw nothing). A SIZE change after
+    /// activation re-latches the format space via deactivate+activate.
     pub(crate) fn apply_bounds(&self, bounds: RECT, scale: f32) {
-        {
+        let relatch = {
             let mut s = self.shared_mut();
+            let w_changed = (bounds.right - bounds.left) != (s.host.bounds.right - s.host.bounds.left)
+                || (bounds.bottom - bounds.top) != (s.host.bounds.bottom - s.host.bounds.top);
             s.host.bounds = bounds;
             s.host.scale = scale;
+            w_changed && self.activated.get()
+        };
+        if relatch && self.tx.is_some() {
+            unsafe {
+                let _ = self.tx().OnTxInPlaceDeactivate();
+                let w = bounds.right - bounds.left;
+                let h = bounds.bottom - bounds.top;
+                let mut local = RECT { left: 0, top: 0, right: w, bottom: h };
+                let _ = self.tx().OnTxInPlaceActivate(&mut local);
+            }
         }
         self.ensure_activated();
     }
