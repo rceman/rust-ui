@@ -10,6 +10,8 @@
 - `composer-light.png` — after `light` UIA-invoked `SetTheme(Light)` — editor text follows the resolved palette live (peers re-read `Theme.dark`); same layout, no remount
 - `uia-tree.txt` — the raw-tree enumeration of the live window: label, three `RichEdit Control` Edit peers, every button, the custom action, the image semantics node
 - `perf.txt` — idle process after 2.5s settle: `0.00% CPU` over a 3s window, `35.6 MB` working set, 20 threads (executor + timer + text-service workers)
+- `send-mid.png` / `send-done.png` — UIA `Invoke` on `send` streams 16 fake chunks; mid-flight shows partial text with `send` disabled + `stop` enabled; completion re-enables `send`
+- `send-mid.png` / `send-done.png` — UIA `Invoke` on `send` streams 16 fake chunks; mid-flight shows partial text with `send` disabled + `stop` enabled; completion re-enables `send`
 
 ## Verification status (this candidate)
 
@@ -24,7 +26,7 @@
 - Windowless RichEdit through `ITextHost`/`ITextServices`/`TxDrawD2D` — real typing (`WM_CHAR`), focus, selection, IME message plumbing
 - FAST/CUSTOM/SURGICAL styling: recipe default buttons, fully-styled action tile with `Shadow`, surgical `border_bottom` patch on `send`, live `TextStylePatch` restyle on a mounted editor
 - Disabled = inert chrome: no hit-test target, no hover/press/focus, UIA `IsEnabled=false` + `IsKeyboardFocusable=false`
-- Task/mailbox: `send -> stream chunks -> stop -> resend` — late chunks fenced by generation
+- Task/mailbox: `send -> stream chunks -> stop -> resend` — UIA Invoke on `send` streams chunk-00..15 visibly, `send` disabled while busy, `stop` enabled; late chunks fenced by generation (unit test + live screenshots)
 - Theme: `Theme::resolve(mode, appearance)` — runtime flip is honored by paint and by every mounted peer
 - Event-driven idle: 0% CPU at rest (no frame loop)
 - DPI: PerMonitorV2 + `WM_DPICHANGED` — 125% rendering verified; DIP geometry stays correct
