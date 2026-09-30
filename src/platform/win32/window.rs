@@ -251,7 +251,8 @@ where
     V: Fn(&S, &mut crate::Ui<'_, '_, M>),
 {
     unsafe {
-        let _ = SetProcessDPIAware();
+        // DPI awareness is set once in run() (PerMonitorV2) — calling the
+        // V1 API here would downgrade the context
         let inst = GetModuleHandleW(None)
             .map_err(|e| crate::UiError::Platform(format!("GetModuleHandleW: {e}")))?;
         let wc = WNDCLASSW {

@@ -184,7 +184,9 @@ where
                 ControlSize::Md => 36.0,
                 ControlSize::Lg => 44.0,
             };
-            let w = tw + bs.padding.left.0 + bs.padding.right.0 + bw;
+            // +4 DIP slack: GetMetrics width is the ink advance; the draw
+            // layout needs a hair more or the last glyph wraps
+            let w = tw + bs.padding.left.0 + bs.padding.right.0 + bw + 4.0;
             let _ = disabled;
             let _ = bh;
             (w, h)

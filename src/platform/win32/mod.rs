@@ -1479,6 +1479,13 @@ where
     V: Fn(&S, &mut crate::Ui<'_, '_, M>) + 'static,
 {
     let _ole = OleGuard::init()?;
+    // PerMonitorV2 before any window exists — GetDpiForWindow reports the
+    // real monitor DPI so DIP layout/render scale at 100/125/150/200
+    unsafe {
+        let _ = windows::Win32::UI::HiDpi::SetProcessDpiAwarenessContext(
+            windows::Win32::UI::HiDpi::DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
+        );
+    }
     let msft = Msftedit::load()?;
     let title = app.title.clone();
 
