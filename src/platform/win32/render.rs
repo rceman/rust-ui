@@ -138,16 +138,17 @@ fn fmt_for(ts: &crate::style::TextStyle, _slot_hint: usize) -> UiResult<IDWriteT
         crate::style::TextWeight::Bold => DWRITE_FONT_WEIGHT_BOLD,
     };
     let fmt = unsafe {
-        d.factory.CreateTextFormat(
-            w!("Segoe UI"),
-            None,
-            weight,
-            DWRITE_FONT_STYLE_NORMAL,
-            DWRITE_FONT_STRETCH_NORMAL,
-            size,
-            w!("en-us"),
-        )
-        .map_err(|e| UiError::Platform(format!("CreateTextFormat: {e}")))?
+        d.factory
+            .CreateTextFormat(
+                w!("Segoe UI"),
+                None,
+                weight,
+                DWRITE_FONT_STYLE_NORMAL,
+                DWRITE_FONT_STRETCH_NORMAL,
+                size,
+                w!("en-us"),
+            )
+            .map_err(|e| UiError::Platform(format!("CreateTextFormat: {e}")))?
     };
     d.cache.lock().unwrap().insert(key, fmt.clone());
     Ok(fmt)
@@ -476,7 +477,8 @@ impl Renderer {
                         && clip.bottom > clip.top
                         && let Some(peer) = be.peer_for(id)
                     {
-                        peer.borrow().draw(target, (r.x, r.y, r.x + r.w, r.y + r.h))?;
+                        peer.borrow()
+                            .draw(target, (r.x, r.y, r.x + r.w, r.y + r.h))?;
                     }
                 }
                 NodeData::Custom { render, .. } => {
@@ -507,9 +509,7 @@ impl Renderer {
                     }
                 }
                 NodeData::Action {
-                    style,
-                    disabled,
-                    ..
+                    style, disabled, ..
                 } => {
                     let bs = style.resolve(
                         *disabled,
@@ -795,114 +795,116 @@ unsafe fn box_geometry(
     target: &ID2D1RenderTarget,
     r: &D2D_RECT_F,
     radii: &CornerRadii,
-) -> Result<ID2D1Geometry> { unsafe {
-    let f = target.GetFactory()?;
-    if let Some(crate::geom::Dp(u)) = radii.uniform() {
-        let g = f.CreateRoundedRectangleGeometry(&D2D1_ROUNDED_RECT {
-            rect: *r,
-            radiusX: u,
-            radiusY: u,
-        })?;
-        return Ok(g.cast()?);
-    }
-    let g = f.CreatePathGeometry()?;
-    let sink = g.Open()?;
-    sink.SetFillMode(D2D1_FILL_MODE_WINDING);
-    let hw = (r.right - r.left) / 2.0;
-    let hh = (r.bottom - r.top) / 2.0;
-    let (tl, tr, br, bl) = (
-        radii.top_left.0.min(hw).min(hh),
-        radii.top_right.0.min(hw).min(hh),
-        radii.bottom_right.0.min(hw).min(hh),
-        radii.bottom_left.0.min(hw).min(hh),
-    );
-    sink.BeginFigure(
-        Vector2 {
-            X: r.left + tl,
-            Y: r.top,
-        },
-        D2D1_FIGURE_BEGIN_FILLED,
-    );
-    sink.AddLine(Vector2 {
-        X: r.right - tr,
-        Y: r.top,
-    });
-    if tr > 0.0 {
-        sink.AddArc(&D2D1_ARC_SEGMENT {
-            point: Vector2 {
-                X: r.right,
-                Y: r.top + tr,
-            },
-            size: D2D_SIZE_F {
-                width: tr,
-                height: tr,
-            },
-            rotationAngle: 0.0,
-            sweepDirection: D2D1_SWEEP_DIRECTION_CLOCKWISE,
-            arcSize: D2D1_ARC_SIZE_SMALL,
-        });
-    }
-    sink.AddLine(Vector2 {
-        X: r.right,
-        Y: r.bottom - br,
-    });
-    if br > 0.0 {
-        sink.AddArc(&D2D1_ARC_SEGMENT {
-            point: Vector2 {
-                X: r.right - br,
-                Y: r.bottom,
-            },
-            size: D2D_SIZE_F {
-                width: br,
-                height: br,
-            },
-            rotationAngle: 0.0,
-            sweepDirection: D2D1_SWEEP_DIRECTION_CLOCKWISE,
-            arcSize: D2D1_ARC_SIZE_SMALL,
-        });
-    }
-    sink.AddLine(Vector2 {
-        X: r.left + bl,
-        Y: r.bottom,
-    });
-    if bl > 0.0 {
-        sink.AddArc(&D2D1_ARC_SEGMENT {
-            point: Vector2 {
-                X: r.left,
-                Y: r.bottom - bl,
-            },
-            size: D2D_SIZE_F {
-                width: bl,
-                height: bl,
-            },
-            rotationAngle: 0.0,
-            sweepDirection: D2D1_SWEEP_DIRECTION_CLOCKWISE,
-            arcSize: D2D1_ARC_SIZE_SMALL,
-        });
-    }
-    sink.AddLine(Vector2 {
-        X: r.left,
-        Y: r.top + tl,
-    });
-    if tl > 0.0 {
-        sink.AddArc(&D2D1_ARC_SEGMENT {
-            point: Vector2 {
+) -> Result<ID2D1Geometry> {
+    unsafe {
+        let f = target.GetFactory()?;
+        if let Some(crate::geom::Dp(u)) = radii.uniform() {
+            let g = f.CreateRoundedRectangleGeometry(&D2D1_ROUNDED_RECT {
+                rect: *r,
+                radiusX: u,
+                radiusY: u,
+            })?;
+            return Ok(g.cast()?);
+        }
+        let g = f.CreatePathGeometry()?;
+        let sink = g.Open()?;
+        sink.SetFillMode(D2D1_FILL_MODE_WINDING);
+        let hw = (r.right - r.left) / 2.0;
+        let hh = (r.bottom - r.top) / 2.0;
+        let (tl, tr, br, bl) = (
+            radii.top_left.0.min(hw).min(hh),
+            radii.top_right.0.min(hw).min(hh),
+            radii.bottom_right.0.min(hw).min(hh),
+            radii.bottom_left.0.min(hw).min(hh),
+        );
+        sink.BeginFigure(
+            Vector2 {
                 X: r.left + tl,
                 Y: r.top,
             },
-            size: D2D_SIZE_F {
-                width: tl,
-                height: tl,
-            },
-            rotationAngle: 0.0,
-            sweepDirection: D2D1_SWEEP_DIRECTION_CLOCKWISE,
-            arcSize: D2D1_ARC_SIZE_SMALL,
+            D2D1_FIGURE_BEGIN_FILLED,
+        );
+        sink.AddLine(Vector2 {
+            X: r.right - tr,
+            Y: r.top,
         });
+        if tr > 0.0 {
+            sink.AddArc(&D2D1_ARC_SEGMENT {
+                point: Vector2 {
+                    X: r.right,
+                    Y: r.top + tr,
+                },
+                size: D2D_SIZE_F {
+                    width: tr,
+                    height: tr,
+                },
+                rotationAngle: 0.0,
+                sweepDirection: D2D1_SWEEP_DIRECTION_CLOCKWISE,
+                arcSize: D2D1_ARC_SIZE_SMALL,
+            });
+        }
+        sink.AddLine(Vector2 {
+            X: r.right,
+            Y: r.bottom - br,
+        });
+        if br > 0.0 {
+            sink.AddArc(&D2D1_ARC_SEGMENT {
+                point: Vector2 {
+                    X: r.right - br,
+                    Y: r.bottom,
+                },
+                size: D2D_SIZE_F {
+                    width: br,
+                    height: br,
+                },
+                rotationAngle: 0.0,
+                sweepDirection: D2D1_SWEEP_DIRECTION_CLOCKWISE,
+                arcSize: D2D1_ARC_SIZE_SMALL,
+            });
+        }
+        sink.AddLine(Vector2 {
+            X: r.left + bl,
+            Y: r.bottom,
+        });
+        if bl > 0.0 {
+            sink.AddArc(&D2D1_ARC_SEGMENT {
+                point: Vector2 {
+                    X: r.left,
+                    Y: r.bottom - bl,
+                },
+                size: D2D_SIZE_F {
+                    width: bl,
+                    height: bl,
+                },
+                rotationAngle: 0.0,
+                sweepDirection: D2D1_SWEEP_DIRECTION_CLOCKWISE,
+                arcSize: D2D1_ARC_SIZE_SMALL,
+            });
+        }
+        sink.AddLine(Vector2 {
+            X: r.left,
+            Y: r.top + tl,
+        });
+        if tl > 0.0 {
+            sink.AddArc(&D2D1_ARC_SEGMENT {
+                point: Vector2 {
+                    X: r.left + tl,
+                    Y: r.top,
+                },
+                size: D2D_SIZE_F {
+                    width: tl,
+                    height: tl,
+                },
+                rotationAngle: 0.0,
+                sweepDirection: D2D1_SWEEP_DIRECTION_CLOCKWISE,
+                arcSize: D2D1_ARC_SIZE_SMALL,
+            });
+        }
+        sink.EndFigure(D2D1_FIGURE_END_CLOSED);
+        sink.Close()?;
+        Ok(g.cast()?)
     }
-    sink.EndFigure(D2D1_FIGURE_END_CLOSED);
-    sink.Close()?;
-    Ok(g.cast()?)
-}}
+}
 
 /// Outer shadow: rasterize the rounded-rect silhouette into a CPU alpha
 /// mask, box-blur it (3 passes ~= Gaussian at `blur_sigma`), premultiply
@@ -1040,7 +1042,13 @@ fn draw_shadow(
             right: r.left + shadow.offset_x.0 - pad + w as f32,
             bottom: r.top + shadow.offset_y.0 - pad + h as f32,
         };
-        target.DrawBitmap(&bmp, Some(&dest), 1.0, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR, None);
+        target.DrawBitmap(
+            &bmp,
+            Some(&dest),
+            1.0,
+            D2D1_BITMAP_INTERPOLATION_MODE_LINEAR,
+            None,
+        );
     }
     Ok(())
 }
@@ -1106,19 +1114,39 @@ fn paint_box(
                 let strips = [
                     (
                         style.border.top,
-                        D2D_RECT_F { left: r.left, top: r.top, right: r.right, bottom: r.top + style.border.top.width.0 },
+                        D2D_RECT_F {
+                            left: r.left,
+                            top: r.top,
+                            right: r.right,
+                            bottom: r.top + style.border.top.width.0,
+                        },
                     ),
                     (
                         style.border.right,
-                        D2D_RECT_F { left: r.right - style.border.right.width.0, top: r.top, right: r.right, bottom: r.bottom },
+                        D2D_RECT_F {
+                            left: r.right - style.border.right.width.0,
+                            top: r.top,
+                            right: r.right,
+                            bottom: r.bottom,
+                        },
                     ),
                     (
                         style.border.bottom,
-                        D2D_RECT_F { left: r.left, top: r.bottom - style.border.bottom.width.0, right: r.right, bottom: r.bottom },
+                        D2D_RECT_F {
+                            left: r.left,
+                            top: r.bottom - style.border.bottom.width.0,
+                            right: r.right,
+                            bottom: r.bottom,
+                        },
                     ),
                     (
                         style.border.left,
-                        D2D_RECT_F { left: r.left, top: r.top, right: r.left + style.border.left.width.0, bottom: r.bottom },
+                        D2D_RECT_F {
+                            left: r.left,
+                            top: r.top,
+                            right: r.left + style.border.left.width.0,
+                            bottom: r.bottom,
+                        },
                     ),
                 ];
                 for (side, sr) in strips {

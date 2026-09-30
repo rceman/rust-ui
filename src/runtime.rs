@@ -135,7 +135,8 @@ where
     pub(crate) suppressed_selections: u64,
     /// an enqueue overflowed during commit — surfaced as QueueOverflow
     last_queue_error: bool,
-    peer_factory: Option<Box<dyn Fn(bool, crate::style::TextStyle) -> crate::UiResult<Box<dyn TextPeer>>>>,
+    peer_factory:
+        Option<Box<dyn Fn(bool, crate::style::TextStyle) -> crate::UiResult<Box<dyn TextPeer>>>>,
     /// chrome scheduler events produced between polls (policy flips)
     chrome_backlog: Vec<SchedEvent>,
     _m: std::marker::PhantomData<fn() -> M>,
@@ -152,7 +153,9 @@ where
         update: U,
         view: V,
         executor: Option<Arc<dyn Executor>>,
-        peer_factory: Box<dyn Fn(bool, crate::style::TextStyle) -> crate::UiResult<Box<dyn TextPeer>>>,
+        peer_factory: Box<
+            dyn Fn(bool, crate::style::TextStyle) -> crate::UiResult<Box<dyn TextPeer>>,
+        >,
         theme: Theme,
         appearance: Appearance,
         mailbox: Arc<Mailbox>,
@@ -631,9 +634,7 @@ where
             let mut commit_err = None;
             match (&mut n.data, old_data) {
                 (
-                    NodeData::Editor {
-                        sync, patch, ..
-                    },
+                    NodeData::Editor { sync, patch, .. },
                     NodeData::Editor {
                         sync: retained_sync,
                         patch: old_patch,

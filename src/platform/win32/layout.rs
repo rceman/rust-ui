@@ -12,11 +12,11 @@ use windows::Win32::Foundation::RECT;
 
 use crate::geom::{Align, Length, Point, Visibility};
 use crate::node::{
-    KIND_ACTION, KIND_BOX, KIND_COLUMN, KIND_GROUP, KIND_ROW, KIND_SCOPE, KIND_STACK,
-    KIND_SURFACE, NodeData,
+    KIND_ACTION, KIND_BOX, KIND_COLUMN, KIND_GROUP, KIND_ROW, KIND_SCOPE, KIND_STACK, KIND_SURFACE,
+    NodeData,
 };
-use crate::style::Insets;
 use crate::runtime::UpdateCtx;
+use crate::style::Insets;
 use crate::theme::{ControlSize, Space};
 use crate::{NodeId, UiResult};
 
@@ -57,9 +57,7 @@ fn space_px(s: Space) -> f32 {
 fn node_insets(ctx: &PeerCtx, id: NodeId, n: &crate::node::Node) -> Insets {
     match &n.data {
         NodeData::Container { kind, props } => {
-            let b = props
-                .resolved_box(*kind)
-                .unwrap_or_default();
+            let b = props.resolved_box(*kind).unwrap_or_default();
             let mut i = b.padding;
             // uniform border consumes insets inside its stroke
             if let Some(side) = b.border.uniform() {
@@ -530,7 +528,15 @@ impl LayoutCache {
                         inner,
                         nw,
                     );
-                    self.walk(rt, ctx, it.id, DipRect { x, y, w, h: *sz }, rects, order, kind);
+                    self.walk(
+                        rt,
+                        ctx,
+                        it.id,
+                        DipRect { x, y, w, h: *sz },
+                        rects,
+                        order,
+                        kind,
+                    );
                     y += *sz + gap;
                 }
             }

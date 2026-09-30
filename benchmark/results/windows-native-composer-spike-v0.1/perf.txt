@@ -1,0 +1,3 @@
+idle cpu: 0,00%
+working set: 35,3 MB
+threads: 21

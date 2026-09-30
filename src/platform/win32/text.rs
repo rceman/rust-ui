@@ -714,9 +714,7 @@ impl WindowlessPeer {
                     dwMask: CFM_ALL,
                     // CFE_AUTOCOLOR: draw-time theme recoloring without
                     // rewriting character formats on every view
-                    dwEffects: CFE_EFFECTS(
-                        CFE_AUTOCOLOR.0 | if cfg.bold { CFE_BOLD.0 } else { 0 },
-                    ),
+                    dwEffects: CFE_EFFECTS(CFE_AUTOCOLOR.0 | if cfg.bold { CFE_BOLD.0 } else { 0 }),
                     yHeight: cfg.size_twips,
                     yOffset: 0,
                     crTextColor: colorref(cfg.fg),
@@ -924,7 +922,8 @@ impl WindowlessPeer {
     pub(crate) fn apply_bounds(&self, bounds: RECT, scale: f32) {
         let relatch = {
             let mut s = self.shared_mut();
-            let w_changed = (bounds.right - bounds.left) != (s.host.bounds.right - s.host.bounds.left)
+            let w_changed = (bounds.right - bounds.left)
+                != (s.host.bounds.right - s.host.bounds.left)
                 || (bounds.bottom - bounds.top) != (s.host.bounds.bottom - s.host.bounds.top);
             s.host.bounds = bounds;
             s.host.scale = scale;
@@ -935,7 +934,12 @@ impl WindowlessPeer {
                 let _ = self.tx().OnTxInPlaceDeactivate();
                 let w = bounds.right - bounds.left;
                 let h = bounds.bottom - bounds.top;
-                let mut local = RECT { left: 0, top: 0, right: w, bottom: h };
+                let mut local = RECT {
+                    left: 0,
+                    top: 0,
+                    right: w,
+                    bottom: h,
+                };
                 let _ = self.tx().OnTxInPlaceActivate(&mut local);
             }
         }

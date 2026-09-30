@@ -54,7 +54,7 @@ pub(crate) struct Snapshot {
     /// active-order children — providers only; painted entries are weak
     /// (cycle break), native msftedit entries are strong (classic COM has
     /// no IWeakReferenceSource, so Weak is unavailable there)
-    order: Mutex<Vec<(NodeId, OrderEntry)>>,
+    order: Mutex<Vec<(NodeId, UiaRect, OrderEntry)>>,
     hwnd: HWND,
     /// posted-action sink — press/focus ride PostMessage, never direct calls
     post_hwnd: HWND,
@@ -102,13 +102,13 @@ impl IRawElementProviderWindowlessSite_Impl for WindowlessSite_Impl {
             }
             NavigateDirection_NextSibling | NavigateDirection_PreviousSibling => {
                 let order = self.snap.order.lock().unwrap();
-                if let Some(i) = order.iter().position(|(id, _)| *id == self.node) {
+                if let Some(i) = order.iter().position(|(id, _, _)| *id == self.node) {
                     let j = if direction == NavigateDirection_NextSibling {
                         i + 1
                     } else {
                         i.checked_sub(1).unwrap_or(usize::MAX)
                     };
-                    if let Some((_, e)) = order.get(j)
+                    if let Some((_, _, e)) = order.get(j)
                         && let Some(f) = e.upgrade()
                     {
                         return Ok(f);
@@ -201,7 +201,7 @@ impl IRawElementProviderFragment_Impl for PaintFragment_Impl {
             )));
         }
         let order = self.snap.order.lock().unwrap();
-        let idx = order.iter().position(|(id, _)| *id == self.node);
+        let idx = order.iter().position(|(id, _, _)| *id == self.node);
         match direction {
             NavigateDirection_Parent => self
                 .root
@@ -211,12 +211,12 @@ impl IRawElementProviderFragment_Impl for PaintFragment_Impl {
                 .ok_or_else(|| E_NOTIMPL.into()),
             NavigateDirection_NextSibling => idx
                 .and_then(|i| order.get(i + 1))
-                .and_then(|(_, e)| e.upgrade())
+                .and_then(|(_, _, e)| e.upgrade())
                 .ok_or_else(|| E_NOTIMPL.into()),
             NavigateDirection_PreviousSibling => idx
                 .and_then(|i| i.checked_sub(1))
                 .and_then(|i| order.get(i))
-                .and_then(|(_, e)| e.upgrade())
+                .and_then(|(_, _, e)| e.upgrade())
                 .ok_or_else(|| E_NOTIMPL.into()),
             _ => Err(E_NOTIMPL.into()),
         }
@@ -342,11 +342,11 @@ impl IRawElementProviderFragment_Impl for RootFragment_Impl {
         match direction {
             NavigateDirection_FirstChild => order
                 .first()
-                .and_then(|(_, e)| e.upgrade())
+                .and_then(|(_, _, e)| e.upgrade())
                 .ok_or_else(|| E_NOTIMPL.into()),
             NavigateDirection_LastChild => order
                 .last()
-                .and_then(|(_, e)| e.upgrade())
+                .and_then(|(_, _, e)| e.upgrade())
                 .ok_or_else(|| E_NOTIMPL.into()),
             _ => Err(E_NOTIMPL.into()),
         }
@@ -384,15 +384,15 @@ impl IRawElementProviderFragment_Impl for RootFragment_Impl {
 impl IRawElementProviderFragmentRoot_Impl for RootFragment_Impl {
     fn ElementProviderFromPoint(&self, x: f64, y: f64) -> Result<IRawElementProviderFragment> {
         // topmost (last-in-active-order) fragment whose bounds contain the
-        // screen point — matches the pointer hit-test's later-wins ordering
+        // screen point — the order carries the authoritative rect because
+        // native editor providers report Infinity on windowless sites
         let order = self.snap.order.lock().unwrap();
-        for (_, e) in order.iter().rev() {
-            let Some(f) = e.upgrade() else { continue };
-            if let Ok(r) = unsafe { f.BoundingRectangle() }
-                && x >= r.left
+        for (_, r, e) in order.iter().rev() {
+            if x >= r.left
                 && x < r.left + r.width
                 && y >= r.top
                 && y < r.top + r.height
+                && let Some(f) = e.upgrade()
             {
                 return Ok(f);
             }
@@ -406,8 +406,8 @@ impl IRawElementProviderFragmentRoot_Impl for RootFragment_Impl {
             .lock()
             .unwrap()
             .iter()
-            .find(|(id, _)| Some(*id) == focus)
-            .and_then(|(_, e)| e.upgrade())
+            .find(|(id, _, _)| Some(*id) == focus)
+            .and_then(|(_, _, e)| e.upgrade())
             .ok_or_else(|| E_NOTIMPL.into())
     }
 }
@@ -494,7 +494,10 @@ impl UiaRoot {
 
     /// The site a native editor provider calls back through — built lazily
     /// (kept inside UiaRoot to share one site across editors).
-    pub(crate) fn site(&self, node: NodeId) -> windows::core::Result<IRawElementProviderWindowlessSite> {
+    pub(crate) fn site(
+        &self,
+        node: NodeId,
+    ) -> windows::core::Result<IRawElementProviderWindowlessSite> {
         let site_co = windows_core::ComObject::new(WindowlessSite {
             snap: self.snap.clone(),
             root: Mutex::new(Weak::new()),
@@ -524,7 +527,7 @@ impl UiaRoot {
                 None => None,
             };
             if let Some(native) = native {
-                order.push((k.id, OrderEntry::Native(native)));
+                order.push((k.id, k.rect, OrderEntry::Native(native)));
                 continue;
             }
             let co = windows_core::ComObject::new(PaintFragment {
@@ -546,7 +549,7 @@ impl UiaRoot {
             // `order` keeps weaks for navigation; `children` holds the
             // strong refs so painted fragments outlive the rebuild
             keep.push(frag.clone());
-            order.push((k.id, OrderEntry::Painted(frag.downgrade()?)));
+            order.push((k.id, k.rect, OrderEntry::Painted(frag.downgrade()?)));
         }
         *self.snap.live.lock().unwrap() = live;
         *self.snap.order.lock().unwrap() = order;

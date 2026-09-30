@@ -44,8 +44,8 @@ pub use theme::{
     SubmitPolicy, Theme, ThemeMode,
 };
 pub use ui::{
-    ActionBuilder, ButtonBuilder, Canvas, Column, CustomBuilder, CustomRender, LabelBuilder,
-    Paint, Path2d, PathOp, Role, Row, Semantics, SemanticsAction, Stack, Surface, TextBuilder,
+    ActionBuilder, ButtonBuilder, Canvas, Column, CustomBuilder, CustomRender, LabelBuilder, Paint,
+    Path2d, PathOp, Role, Row, Semantics, SemanticsAction, Stack, Surface, TextBuilder,
     TextInputBuilder, TextRun, Ui,
 };
 
@@ -57,15 +57,15 @@ pub mod prelude {
         Align, Constraints, Dp, Justify, LayoutSpec, Length, Point, Rect, Size, Visibility, dp,
     };
     pub use crate::runtime::UpdateCtx;
-    pub use crate::text::{
-        AcceptOutcome, BindingToken, EditOrigin, TextConflict, TextEdit, TextRevision,
-        TextSelection, TextValue,
-    };
     pub use crate::style::{
         Action, ActionStyle, Border, BorderPatch, BorderSide, BorderSidePatch, BoxProps, BoxStyle,
         BoxStylePatch, ButtonStylePatch, Color, CornerRadii, CornerRadiiPatch, Insets, InsetsPatch,
         Shadow, ShadowPatch, StateStyles, TextSize, TextStyle, TextStylePatch, TextWeight,
         VisualStyle, VisualStylePatch,
+    };
+    pub use crate::text::{
+        AcceptOutcome, BindingToken, EditOrigin, TextConflict, TextEdit, TextRevision,
+        TextSelection, TextValue,
     };
     pub use crate::theme::{
         Appearance, ButtonVariant, ColorRole, ControlSize, MotionToken, Radius, ReducedMotion,
@@ -112,7 +112,9 @@ impl std::fmt::Display for UiDiagnostic {
             UiDiagnostic::DuplicateTextBinding => "TextValue bound to two mounted peers",
             UiDiagnostic::InvalidLayout => "invalid layout",
             UiDiagnostic::UnhandledTextConflict => "text conflict without on_conflict handler",
-            UiDiagnostic::InvalidComposition => "invalid composition (actionable/peer inside action)",
+            UiDiagnostic::InvalidComposition => {
+                "invalid composition (actionable/peer inside action)"
+            }
         };
         f.write_str(s)
     }

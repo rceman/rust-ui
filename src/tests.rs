@@ -3065,7 +3065,6 @@ fn hidden_editor_still_receives_committed_edits() {
     rig.pump().unwrap();
 }
 
-
 // ======================== native probes (Windows-only) =====================
 
 #[cfg(windows)]
@@ -3090,13 +3089,13 @@ unsafe extern "system" fn probe_wndproc(
 #[cfg(windows)]
 #[test]
 fn native_probe_richedit_paints_text() {
+    use windows::Win32::Foundation::*;
     use windows::Win32::Graphics::Direct2D::Common::*;
     use windows::Win32::Graphics::Direct2D::*;
     use windows::Win32::Graphics::Dxgi::Common::*;
     use windows::Win32::Graphics::Gdi::*;
     use windows::Win32::System::Com::*;
     use windows::Win32::System::Ole::OleInitialize;
-    use windows::Win32::Foundation::*;
     use windows::core::*;
 
     unsafe {
@@ -3112,15 +3111,30 @@ fn native_probe_richedit_paints_text() {
         let wc = WNDCLASSEXW {
             cbSize: std::mem::size_of::<WNDCLASSEXW>() as u32,
             lpszClassName: cls,
-            hInstance: windows::Win32::System::LibraryLoader::GetModuleHandleW(None).unwrap().into(),
+            hInstance: windows::Win32::System::LibraryLoader::GetModuleHandleW(None)
+                .unwrap()
+                .into(),
             lpfnWndProc: Some(probe_wndproc),
             ..Default::default()
         };
         RegisterClassExW(&wc);
-        PROBE_HWND.with(|h| *h.borrow_mut() = CreateWindowExW(
-            WINDOW_EX_STYLE(0), cls, w!("probe"), WS_OVERLAPPEDWINDOW | WS_VISIBLE,
-            0, 0, 800, 500, None, None, None, None,
-        ).expect("hwnd"));
+        PROBE_HWND.with(|h| {
+            *h.borrow_mut() = CreateWindowExW(
+                WINDOW_EX_STYLE(0),
+                cls,
+                w!("probe"),
+                WS_OVERLAPPEDWINDOW | WS_VISIBLE,
+                0,
+                0,
+                800,
+                500,
+                None,
+                None,
+                None,
+                None,
+            )
+            .expect("hwnd")
+        });
     }
     let cfg = crate::platform::win32::PeerConfig {
         multiline: false,
@@ -3177,15 +3191,8 @@ fn native_probe_richedit_paints_text() {
         bmi.bmiHeader.biPlanes = 1;
         bmi.bmiHeader.biBitCount = 32;
         bmi.bmiHeader.biCompression = BI_RGB.0;
-        let hbmp = CreateDIBSection(
-            Some(memdc),
-            &bmi,
-            DIB_RGB_COLORS,
-            &mut bits,
-            None,
-            0,
-        )
-        .expect("dib");
+        let hbmp =
+            CreateDIBSection(Some(memdc), &bmi, DIB_RGB_COLORS, &mut bits, None, 0).expect("dib");
         let old = SelectObject(memdc, HGDIOBJ(hbmp.0));
 
         let d2d: ID2D1Factory =
@@ -3226,7 +3233,8 @@ fn native_probe_richedit_paints_text() {
         // NOTE: no PushAxisAlignedClip — msftedit's TxDrawD2D output is
         // suppressed while an axis clip is pushed (observed on an
         // ID2D1HwndRenderTarget); the peer's lprcBounds confines the view.
-        peer.draw(&rt, (34.0, 167.0, 735.0, 189.0)).expect("TxDrawD2D");
+        peer.draw(&rt, (34.0, 167.0, 735.0, 189.0))
+            .expect("TxDrawD2D");
         rt.EndDraw(None, None).expect("EndDraw");
 
         // BitBlt the window's framebuffer into our DIB to inspect pixels
@@ -3264,7 +3272,6 @@ fn native_probe_richedit_paints_text() {
     }
 }
 
-
 #[cfg(windows)]
 fn uia_variant_string(v: &windows::Win32::System::Variant::VARIANT) -> String {
     // VARIANT(vt=VT_BSTR) -> String
@@ -3272,7 +3279,8 @@ fn uia_variant_string(v: &windows::Win32::System::Variant::VARIANT) -> String {
         let inner = &*(v as *const _ as *const windows::Win32::System::Variant::VARIANT);
         let _ = inner;
         // bstrVal lives in the nested anonymous union
-        let bstr: &windows::core::BSTR = std::mem::transmute(&v.Anonymous.Anonymous.Anonymous.bstrVal);
+        let bstr: &windows::core::BSTR =
+            std::mem::transmute(&v.Anonymous.Anonymous.Anonymous.bstrVal);
         bstr.to_string()
     }
 }
@@ -3289,18 +3297,24 @@ fn uia_children_survive_rebuild() {
     use windows::core::Interface;
 
     let root = UiaRoot::new(HWND::default(), "t").expect("root");
-    let mk = |slot: u32, name: &str, ct: UIA_CONTROLTYPE_ID, loc: &'static str, act| {
-        ChildBuild {
-            id: crate::NodeId { slot, generation: 0 },
-            name: name.into(),
-            ct,
-            localized: loc,
-            rect: UiaRect { left: 0.0, top: 0.0, width: 10.0, height: 10.0 },
-            actionable: act,
-            enabled: true,
-            peer_node: false,
-            native: None,
-        }
+    let mk = |slot: u32, name: &str, ct: UIA_CONTROLTYPE_ID, loc: &'static str, act| ChildBuild {
+        id: crate::NodeId {
+            slot,
+            generation: 0,
+        },
+        name: name.into(),
+        ct,
+        localized: loc,
+        rect: UiaRect {
+            left: 0.0,
+            top: 0.0,
+            width: 10.0,
+            height: 10.0,
+        },
+        actionable: act,
+        enabled: true,
+        peer_node: false,
+        native: None,
     };
     root.rebuild(vec![
         mk(0, "lbl", UIA_TextControlTypeId, "Text", false),
@@ -3310,7 +3324,10 @@ fn uia_children_survive_rebuild() {
 
     let rf: IRawElementProviderFragment = root.provider().cast().expect("root frag");
     // first child = the label — upgrade through the weak must succeed
-    let first = unsafe { rf.Navigate(NavigateDirection_FirstChild).expect("first child") };
+    let first = unsafe {
+        rf.Navigate(NavigateDirection_FirstChild)
+            .expect("first child")
+    };
     // sibling navigation label -> button
     let second = unsafe {
         first
@@ -3338,7 +3355,10 @@ fn uia_children_survive_rebuild() {
         );
     }
     // focus tracking: set_focus marks the owner; GetFocus resolves it
-    root.set_focus(Some(crate::NodeId { slot: 1, generation: 0 }));
+    root.set_focus(Some(crate::NodeId {
+        slot: 1,
+        generation: 0,
+    }));
     let rroot: IRawElementProviderFragmentRoot = root.provider().cast().expect("rroot");
     unsafe {
         let f = rroot.GetFocus().expect("focus must resolve");
@@ -3346,6 +3366,95 @@ fn uia_children_survive_rebuild() {
         assert_eq!(
             uia_variant_string(&fs.GetPropertyValue(UIA_NamePropertyId).unwrap()),
             "btn"
+        );
+    }
+}
+
+/// `ElementProviderFromPoint` must hit-test against the SNAPSHOT rect —
+/// native editor providers report an unusable BoundingRectangle
+/// (msftedit returns Infinity on windowless sites), so the root carries
+/// the authoritative rect per child.
+#[test]
+fn uia_element_from_point_uses_snapshot_rect() {
+    use crate::platform::win32::uia::{ChildBuild, UiaRoot};
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::Accessibility::*;
+    use windows::core::Interface;
+
+    let root = UiaRoot::new(HWND::default(), "t").expect("root");
+    let mk = |slot: u32, name: &str, rect: UiaRect, native: Option<IRawElementProviderFragment>| {
+        ChildBuild {
+            id: crate::NodeId {
+                slot,
+                generation: 0,
+            },
+            name: name.into(),
+            ct: if native.is_some() {
+                UIA_EditControlTypeId
+            } else {
+                UIA_ButtonControlTypeId
+            },
+            localized: "t",
+            rect,
+            actionable: native.is_none(),
+            enabled: true,
+            peer_node: native.is_some(),
+            native,
+        }
+    };
+    // a real msftedit provider cannot be built in-process without the
+    // peer machinery — emulate "broken native rect" with a painted frag
+    // whose own rect disagrees: a native slot's rect is what's used
+    let native_like = None;
+    root.rebuild(vec![
+        mk(
+            0,
+            "btn",
+            UiaRect {
+                left: 10.0,
+                top: 10.0,
+                width: 50.0,
+                height: 20.0,
+            },
+            native_like.clone(),
+        ),
+        mk(
+            1,
+            "ed",
+            UiaRect {
+                left: 10.0,
+                top: 40.0,
+                width: 200.0,
+                height: 30.0,
+            },
+            None,
+        ),
+    ])
+    .expect("rebuild");
+    let rroot: IRawElementProviderFragmentRoot = root.provider().cast().expect("rroot");
+    unsafe {
+        // inside the button's rect
+        let hit = rroot
+            .ElementProviderFromPoint(20.0, 15.0)
+            .expect("hit in btn");
+        let s: IRawElementProviderSimple = hit.cast().expect("simple");
+        assert_eq!(
+            uia_variant_string(&s.GetPropertyValue(UIA_NamePropertyId).unwrap()),
+            "btn"
+        );
+        // inside the editor's rect — second child wins (topmost order)
+        let hit2 = rroot
+            .ElementProviderFromPoint(50.0, 55.0)
+            .expect("hit in ed");
+        let s2: IRawElementProviderSimple = hit2.cast().expect("simple");
+        assert_eq!(
+            uia_variant_string(&s2.GetPropertyValue(UIA_NamePropertyId).unwrap()),
+            "ed"
+        );
+        // outside everything
+        assert!(
+            rroot.ElementProviderFromPoint(500.0, 500.0).is_err(),
+            "a point outside all children must not fabricate a hit"
         );
     }
 }
@@ -3361,7 +3470,10 @@ fn uia_disabled_node_reports_not_enabled() {
 
     let root = UiaRoot::new(HWND::default(), "t").expect("root");
     let mk = |generation: u64, enabled: bool| ChildBuild {
-        id: crate::NodeId { slot: 0, generation },
+        id: crate::NodeId {
+            slot: 0,
+            generation,
+        },
         name: "off".into(),
         ct: UIA_ButtonControlTypeId,
         localized: "Button",
@@ -3417,30 +3529,31 @@ fn send_stop_resend_late_chunks_fenced() {
     let late: Arc<Mutex<Option<crate::TaskSender<Msg>>>> = Arc::new(Mutex::new(None));
     let late2 = late.clone();
     let mut rig = Rig::new(
-        S { got: vec![], busy: false },
-        move |s: &mut S, m: Msg, cx: &mut UpdateCtx<Msg>| {
-            match m {
-                Msg::Kick => {
-                    if s.busy {
-                        return;
+        S {
+            got: vec![],
+            busy: false,
+        },
+        move |s: &mut S, m: Msg, cx: &mut UpdateCtx<Msg>| match m {
+            Msg::Kick => {
+                if s.busy {
+                    return;
+                }
+                s.busy = true;
+                let l = late2.clone();
+                let _ = cx.spawn("stream", move |job| {
+                    *l.lock().unwrap() = Some(job.sender().clone());
+                    async move {
+                        let _ = job.send(Msg::Chunk(1)).await;
+                        std::future::pending::<()>().await;
                     }
-                    s.busy = true;
-                    let l = late2.clone();
-                    let _ = cx.spawn("stream", move |job| {
-                        *l.lock().unwrap() = Some(job.sender().clone());
-                        async move {
-                            let _ = job.send(Msg::Chunk(1)).await;
-                            std::future::pending::<()>().await;
-                        }
-                    });
-                }
-                Msg::Press => {
-                    cx.cancel("stream");
-                    s.busy = false;
-                }
-                Msg::Chunk(c) => s.got.push(c),
-                _ => {}
+                });
             }
+            Msg::Press => {
+                cx.cancel("stream");
+                s.busy = false;
+            }
+            Msg::Chunk(c) => s.got.push(c),
+            _ => {}
         },
         |_: &S, _: &mut Ui<Msg>| {},
     );
@@ -3555,11 +3668,7 @@ fn patch_merge_and_resolution_order() {
     use crate::theme::{ButtonVariant, ControlSize};
     // consumer base applies across ALL states (it sits over recipe state)
     let patch = ButtonStylePatch::new().background(Color::rgb(1, 2, 3));
-    for state in [
-        StyleState::Normal,
-        StyleState::Hover,
-        StyleState::Pressed,
-    ] {
+    for state in [StyleState::Normal, StyleState::Hover, StyleState::Pressed] {
         let v = resolve_button(
             ButtonVariant::Primary,
             ControlSize::Md,
@@ -3575,19 +3684,43 @@ fn patch_merge_and_resolution_order() {
     let mut hover = VisualStylePatch::new();
     hover.box_style.background = Some(Color::rgb(9, 9, 9));
     p = p.hover(hover);
-    let v = resolve_button(ButtonVariant::Primary, ControlSize::Md, &p, StyleState::Hover, false, false);
+    let v = resolve_button(
+        ButtonVariant::Primary,
+        ControlSize::Md,
+        &p,
+        StyleState::Hover,
+        false,
+        false,
+    );
     assert_eq!(v.box_style.background, Color::rgb(9, 9, 9));
     // normal keeps the consumer base
-    let v = resolve_button(ButtonVariant::Primary, ControlSize::Md, &p, StyleState::Normal, false, false);
+    let v = resolve_button(
+        ButtonVariant::Primary,
+        ControlSize::Md,
+        &p,
+        StyleState::Normal,
+        false,
+        false,
+    );
     assert_eq!(v.box_style.background, Color::rgb(1, 2, 3));
     // focus overlay: recipe focus border + consumer focus patch on top
     let mut p2 = ButtonStylePatch::new();
     let mut fv = VisualStylePatch::new();
     fv.box_style.background = Some(Color::rgb(7, 7, 7));
     p2 = p2.focus_visible(fv);
-    let v = resolve_button(ButtonVariant::Primary, ControlSize::Md, &p2, StyleState::Normal, true, false);
+    let v = resolve_button(
+        ButtonVariant::Primary,
+        ControlSize::Md,
+        &p2,
+        StyleState::Normal,
+        true,
+        false,
+    );
     assert_eq!(v.box_style.background, Color::rgb(7, 7, 7));
-    assert!(v.box_style.border.top.width.0 > 0.0, "recipe focus ring present");
+    assert!(
+        v.box_style.border.top.width.0 > 0.0,
+        "recipe focus ring present"
+    );
 }
 
 #[test]
@@ -3604,7 +3737,7 @@ fn shadow_patch_is_atomic_set_remove() {
     b.patch(&BoxStylePatch {
         shadow: ShadowPatch::Set(sh),
         ..Default::default()
-      });
+    });
     assert_eq!(b.shadow, Some(sh));
     // Unchanged never erases
     b.patch(&BoxStylePatch::default());
@@ -3642,7 +3775,14 @@ fn action_stages_and_rejects_nested_actionable() {
             .iter()
             .map(|&s| {
                 let g = rig.rt.arena.generation_of(s);
-                rig.rt.arena.get(crate::NodeId { slot: s, generation: g }).unwrap().kind_tag()
+                rig.rt
+                    .arena
+                    .get(crate::NodeId {
+                        slot: s,
+                        generation: g,
+                    })
+                    .unwrap()
+                    .kind_tag()
             })
             .collect()
     };
@@ -3660,7 +3800,15 @@ fn action_stages_and_rejects_nested_actionable() {
         },
     );
     let r = rig2.view();
-    assert!(matches!(r, Err(crate::UiError::InvalidUi(crate::UiDiagnostic::InvalidComposition))), "{r:?}");
+    assert!(
+        matches!(
+            r,
+            Err(crate::UiError::InvalidUi(
+                crate::UiDiagnostic::InvalidComposition
+            ))
+        ),
+        "{r:?}"
+    );
 }
 
 /// Patch removal on a later view pass restores recipe values — the node is
@@ -3676,7 +3824,9 @@ fn patch_removal_restores_recipe_without_remount() {
         S { patched: true },
         |_: &mut S, _: Msg, _: &mut UpdateCtx<Msg>| {},
         |s: &S, ui: &mut Ui<Msg>| {
-            let b = ui.button("send").variant(crate::theme::ButtonVariant::Primary);
+            let b = ui
+                .button("send")
+                .variant(crate::theme::ButtonVariant::Primary);
             if s.patched {
                 b.style(
                     ButtonStylePatch::new()

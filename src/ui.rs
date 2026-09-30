@@ -8,13 +8,10 @@ use crate::event::{EventFactorySet, FrameTime, KeyEvent, PointerEvent, ScrollOff
 use crate::geom::{Align, Justify, LayoutSpec, Point, Visibility};
 use crate::key::{ChildKey, ErasedKey, KeyId};
 use crate::node::{ContainerProps, MsgAdapters, NodeData, NodeId};
-use crate::style::{
-    Action, BoxProps, ButtonStylePatch,
-};
+use crate::style::{Action, BoxProps, ButtonStylePatch};
 use crate::text::{TextConflict, TextEdit, TextSelection, TextValue};
 use crate::theme::{
-    Appearance, ButtonVariant, ColorRole, ControlSize, MotionToken, Space,
-    SubmitPolicy, Theme,
+    Appearance, ButtonVariant, ColorRole, ControlSize, MotionToken, Space, SubmitPolicy, Theme,
 };
 
 /// What a custom view contributes to the tree — an immutable `Rc` snapshot;
@@ -429,8 +426,13 @@ impl Tx<'_> {
         // action content is decorative — no actionable/focusable/native
         // peer children inside a semantic action
         if self.action_depth > 0
-            && matches!(kind, crate::node::KIND_BUTTON | crate::node::KIND_ACTION
-                        | crate::node::KIND_TEXT_INPUT | crate::node::KIND_TEXT_AREA)
+            && matches!(
+                kind,
+                crate::node::KIND_BUTTON
+                    | crate::node::KIND_ACTION
+                    | crate::node::KIND_TEXT_INPUT
+                    | crate::node::KIND_TEXT_AREA
+            )
         {
             self.diagnostics.push(UiDiagnostic::InvalidComposition);
             return;
@@ -482,8 +484,13 @@ impl Tx<'_> {
         // nested actionable inside an action's decorative content is a
         // structural diagnostic, not event bubbling
         if self.action_depth > 0
-            && matches!(kind, crate::node::KIND_BUTTON | crate::node::KIND_ACTION
-                        | crate::node::KIND_TEXT_INPUT | crate::node::KIND_TEXT_AREA)
+            && matches!(
+                kind,
+                crate::node::KIND_BUTTON
+                    | crate::node::KIND_ACTION
+                    | crate::node::KIND_TEXT_INPUT
+                    | crate::node::KIND_TEXT_AREA
+            )
         {
             self.diagnostics.push(UiDiagnostic::InvalidComposition);
             return;
@@ -559,7 +566,10 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
             Visibility::Visible,
             draw,
             false,
-            |props| NodeData::Container { kind: crate::node::KIND_GROUP, props },
+            |props| NodeData::Container {
+                kind: crate::node::KIND_GROUP,
+                props,
+            },
         );
     }
 
@@ -574,7 +584,10 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
             Visibility::Visible,
             draw,
             false,
-            |props| NodeData::Container { kind: crate::node::KIND_COLUMN, props },
+            |props| NodeData::Container {
+                kind: crate::node::KIND_COLUMN,
+                props,
+            },
         );
     }
     pub fn row(&mut self, props: Row, draw: impl FnOnce(&mut Ui<'_, '_, M>)) {
@@ -587,7 +600,10 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
             Visibility::Visible,
             draw,
             false,
-            |props| NodeData::Container { kind: crate::node::KIND_ROW, props },
+            |props| NodeData::Container {
+                kind: crate::node::KIND_ROW,
+                props,
+            },
         );
     }
     pub fn stack(&mut self, props: Stack, draw: impl FnOnce(&mut Ui<'_, '_, M>)) {
@@ -600,10 +616,13 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
             Visibility::Visible,
             draw,
             false,
-            |props| NodeData::Container { kind: crate::node::KIND_STACK, props },
+            |props| NodeData::Container {
+                kind: crate::node::KIND_STACK,
+                props,
+            },
         );
     }
-        pub fn surface(&mut self, props: Surface, draw: impl FnOnce(&mut Ui<'_, '_, M>)) {
+    pub fn surface(&mut self, props: Surface, draw: impl FnOnce(&mut Ui<'_, '_, M>)) {
         self.tx.stage_container(
             crate::node::KIND_SURFACE,
             None,
@@ -613,7 +632,10 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
             Visibility::Visible,
             draw,
             false,
-            |props| NodeData::Container { kind: crate::node::KIND_SURFACE, props },
+            |props| NodeData::Container {
+                kind: crate::node::KIND_SURFACE,
+                props,
+            },
         );
     }
 
@@ -809,12 +831,18 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
                         Visibility::Visible,
                         |u| draw(u, item),
                         false,
-                        |props| NodeData::Container { kind: crate::node::KIND_GROUP, props },
+                        |props| NodeData::Container {
+                            kind: crate::node::KIND_GROUP,
+                            props,
+                        },
                     );
                 }
             },
             false,
-            |props| NodeData::Container { kind: crate::node::KIND_GROUP, props },
+            |props| NodeData::Container {
+                kind: crate::node::KIND_GROUP,
+                props,
+            },
         );
     }
 
@@ -834,7 +862,10 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
             props.visibility,
             draw,
             false,
-            |props| NodeData::Container { kind: crate::node::KIND_BOX, props },
+            |props| NodeData::Container {
+                kind: crate::node::KIND_BOX,
+                props,
+            },
         );
     }
 
@@ -863,8 +894,7 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
             },
         );
         // the staged node is the last pushed (containers append last)
-        let staged = (self.tx.nodes.len() > before)
-            .then_some(self.tx.nodes.len() as u32 - 1);
+        let staged = (self.tx.nodes.len() > before).then_some(self.tx.nodes.len() as u32 - 1);
         ActionBuilder {
             tx: self.tx,
             staged,
@@ -1228,7 +1258,16 @@ impl<'a, 'ui, 'b, M: 'static> Drop for TextInputBuilder<'a, 'ui, 'b, M> {
         // staged snapshot: Rc clones of the value's committed/pending — the
         // peer sync itself is carried by the retained node at commit
         let snapshot = self.value.snapshot();
-        let (placeholder, accessible_label, read_only, submit, max_lines, disabled, multiline, patch) = (
+        let (
+            placeholder,
+            accessible_label,
+            read_only,
+            submit,
+            max_lines,
+            disabled,
+            multiline,
+            patch,
+        ) = (
             self.placeholder.clone(),
             self.accessible_label.clone(),
             self.read_only,

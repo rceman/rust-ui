@@ -188,7 +188,9 @@ impl crate::node::TextPeer for PeerHandle {
         let (_, theme) = self.ctx.colors.borrow().clone();
         let c = crate::style::resolve_color(style.foreground, theme.dark);
         let fg = windows::Win32::Foundation::COLORREF(
-            ((c[0] * 255.0) as u32) | (((c[1] * 255.0) as u32) << 8) | (((c[2] * 255.0) as u32) << 16),
+            ((c[0] * 255.0) as u32)
+                | (((c[1] * 255.0) as u32) << 8)
+                | (((c[2] * 255.0) as u32) << 16),
         );
         let pt = match style.size {
             crate::style::TextSize::Body => 14.0,
@@ -340,6 +342,15 @@ where
             let mut c = self.peer_ctx.colors.borrow_mut();
             if c.1 != self.rt.theme {
                 *c = (self.rt.appearance(), self.rt.theme.clone());
+                // live theme flip — mounted peers snapshot colors at
+                // create time; push the resolved palette so editor
+                // text/selection follows without a remount
+                let (fg, sel_bg, sel_fg) = palette(&c.1, &c.0);
+                for (_, w) in self.peer_ctx.registry.lock().unwrap().iter() {
+                    if let Some(p) = w.upgrade() {
+                        p.borrow().set_colors(fg, sel_bg, sel_fg);
+                    }
+                }
             }
         }
         // scheduler due work: frames -> events, chrome -> render side
@@ -400,13 +411,7 @@ where
     /// which re-enters `WM_SETFOCUS` synchronously — a second `borrow()`
     /// would panic). Deferred messages deliver at the top of the next
     /// `service_peer_events`, still generation-checked.
-    pub(crate) fn send_native(
-        &mut self,
-        id: NodeId,
-        msg: u32,
-        wparam: usize,
-        lparam: isize,
-    ) {
+    pub(crate) fn send_native(&mut self, id: NodeId, msg: u32, wparam: usize, lparam: isize) {
         // NOTE: no peer_for() — its generation filter borrows the cell and
         // would panic during a live borrow; the deferred delivery runs the
         // slot lookup then instead
@@ -451,8 +456,7 @@ where
     pub(crate) fn service_peer_events(&mut self) -> UiResult {
         // deferred focus/native sends first — the borrow that blocked them
         // is unwound by the time a turn calls this
-        let pending: Vec<(NodeId, u32, usize, isize)> =
-            std::mem::take(&mut self.deferred_native);
+        let pending: Vec<(NodeId, u32, usize, isize)> = std::mem::take(&mut self.deferred_native);
         for (id, msg, wp, lp) in pending {
             if let Some(peer) = self
                 .peer_ctx
@@ -819,8 +823,12 @@ where
                 match &n.data {
                     // disabled/non-interactive nodes are inert chrome — no
                     // hover, pressed, focus, or activation state attaches
-                    NodeData::Button { .. } | NodeData::Editor { .. } | NodeData::Custom { .. }
-                    | NodeData::Action { .. } if n.interactive() => {
+                    NodeData::Button { .. }
+                    | NodeData::Editor { .. }
+                    | NodeData::Custom { .. }
+                    | NodeData::Action { .. }
+                        if n.interactive() =>
+                    {
                         return Some(id);
                     }
                     _ => {}
@@ -1077,8 +1085,10 @@ where
                 };
                 n.visibility == Visibility::Visible
                     && n.interactive()
-                    && matches!(n.data, NodeData::Button { .. } | NodeData::Editor { .. }
-                                | NodeData::Action { .. })
+                    && matches!(
+                        n.data,
+                        NodeData::Button { .. } | NodeData::Editor { .. } | NodeData::Action { .. }
+                    )
             })
             .collect();
         if eligible.is_empty() {

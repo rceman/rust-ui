@@ -332,23 +332,21 @@ impl Spike {
             // CUSTOM — a semantic action built only from public primitives:
             // Action props + box_/text children; activates like a button
             ui.action(
-                Action::new()
-                    .label("custom tile action")
-                    .style(
-                        ActionStyle::new(
-                            BoxStyle::new()
-                                .background(Color::role(ColorRole::Muted))
-                                .radii(CornerRadii::all(dp(8.0)))
-                                .padding(Insets::all(dp(10.0)))
-                                .shadow(Some(Shadow {
-                                    color: Color::role(ColorRole::Shadow),
-                                    offset_x: dp(0.0),
-                                    offset_y: dp(3.0),
-                                    blur_sigma: dp(6.0),
-                                })),
-                        )
-                        .hover(BoxStylePatch::new().background(Color::role(ColorRole::Border))),
-                    ),
+                Action::new().label("custom tile action").style(
+                    ActionStyle::new(
+                        BoxStyle::new()
+                            .background(Color::role(ColorRole::Muted))
+                            .radii(CornerRadii::all(dp(8.0)))
+                            .padding(Insets::all(dp(10.0)))
+                            .shadow(Some(Shadow {
+                                color: Color::role(ColorRole::Shadow),
+                                offset_x: dp(0.0),
+                                offset_y: dp(3.0),
+                                blur_sigma: dp(6.0),
+                            })),
+                    )
+                    .hover(BoxStylePatch::new().background(Color::role(ColorRole::Border))),
+                ),
                 |ui| {
                     ui.row(Row::new().gap(Space::Sm), |ui| {
                         ui.label("custom action").color_role(ColorRole::Foreground);

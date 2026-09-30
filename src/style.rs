@@ -650,7 +650,10 @@ impl ActionStyle {
                 b.patch(p);
             }
         }
-        if focus_visible && !disabled && let Some(p) = &self.focus_visible {
+        if focus_visible
+            && !disabled
+            && let Some(p) = &self.focus_visible
+        {
             b.patch(p);
         }
         b
@@ -912,10 +915,8 @@ pub fn button_recipe(
         // focus ring is the recipe's focus overlay — a 1.5dp Focus border
         focus_visible: Some({
             let mut b = base;
-            b.box_style.border = Border::all(BorderSide::new(
-                Dp(1.5),
-                Color::Role(ColorRole::Focus),
-            ));
+            b.box_style.border =
+                Border::all(BorderSide::new(Dp(1.5), Color::Role(ColorRole::Focus)));
             b
         }),
     }

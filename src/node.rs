@@ -6,11 +6,11 @@ use crate::event::{EventFactorySet, FrameTime};
 use crate::geom::{Align, Justify};
 use crate::geom::{LayoutSpec, Visibility};
 use crate::key::ChildKey;
+use crate::style::ButtonStylePatch;
 use crate::text::{
     BindingToken, EditOrigin, LeaseCell, TextConflict, TextEdit, TextRevision, TextSelection,
     TextSnapshot,
 };
-use crate::style::ButtonStylePatch;
 use crate::theme::{ButtonVariant, MotionToken, Space, SubmitPolicy};
 
 /// Widget kind discriminant — feeds static-sibling ordinal identity.
@@ -377,14 +377,8 @@ pub(crate) fn dirty_diff(old: &NodeData, new: &NodeData) -> u8 {
     const SEMANTICS: u8 = 0b0000_1000;
     match (old, new) {
         (
-            NodeData::Container {
-                kind: ak,
-                props: a,
-            },
-            NodeData::Container {
-                kind: bk,
-                props: b,
-            },
+            NodeData::Container { kind: ak, props: a },
+            NodeData::Container { kind: bk, props: b },
         ) => {
             if ak != bk {
                 return LAYOUT | PAINT | SEMANTICS;
@@ -431,10 +425,7 @@ pub(crate) fn dirty_diff(old: &NodeData, new: &NodeData) -> u8 {
                     d |= PAINT;
                 }
                 match (old, new) {
-                    (
-                        NodeData::Label { patch: ap, .. },
-                        NodeData::Label { patch: bp, .. },
-                    ) => {
+                    (NodeData::Label { patch: ap, .. }, NodeData::Label { patch: bp, .. }) => {
                         if ap != bp {
                             d |= PAINT;
                             if ap.size != bp.size || ap.weight != bp.weight {
@@ -509,10 +500,7 @@ pub(crate) fn dirty_diff(old: &NodeData, new: &NodeData) -> u8 {
                 d |= PAINT;
             }
             match (old, new) {
-                (
-                    NodeData::Editor { patch: ap, .. },
-                    NodeData::Editor { patch: bp, .. },
-                ) => {
+                (NodeData::Editor { patch: ap, .. }, NodeData::Editor { patch: bp, .. }) => {
                     if ap != bp {
                         d |= PAINT;
                         if ap.size != bp.size || ap.weight != bp.weight {
@@ -566,9 +554,7 @@ pub(crate) fn dirty_diff(old: &NodeData, new: &NodeData) -> u8 {
                 if ast.base != bst.base
                     || [ast.hover, ast.pressed, ast.disabled, ast.focus_visible]
                         .iter()
-                        .chain(
-                            [bst.hover, bst.pressed, bst.disabled, bst.focus_visible].iter(),
-                        )
+                        .chain([bst.hover, bst.pressed, bst.disabled, bst.focus_visible].iter())
                         .flatten()
                         .any(crate::style::patch_touches_layout)
                 {
