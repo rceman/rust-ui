@@ -238,6 +238,14 @@ where
     last_appearance: Appearance,
     /// last fatal backend error surfaced from a WndProc
     fatal: Option<crate::UiError>,
+    /// `turn()` is executing — native reentrancy (e.g. `SetFocus` inside
+    /// `OnTxUIActivate`) must queue another pump instead of recursing
+    in_turn: std::cell::Cell<bool>,
+    /// one coalesced `WM_PUMP` outstanding for a deferred turn
+    pump_queued: std::cell::Cell<bool>,
+    /// native messages deferred while their target peer was borrowed —
+    /// delivered at the top of the next `service_peer_events`
+    deferred_native: Vec<(NodeId, u32, usize, isize)>,
 }
 
 impl<S, M, U, V> Backend<S, M, U, V>
@@ -249,7 +257,35 @@ where
     /// One semantic turn: drain the peer sink into the runtime, pump
     /// (bounded), drain the scheduler, apply dirty layout/paint, present if
     /// needed. WndProc + WM_PUMP both funnel here.
+    ///
+    /// Reentrancy: `OnTxUIActivate` inside `apply_bounds`/`draw` can call
+    /// `TxSetFocus` → synchronous `WM_SETFOCUS` → `turn()`. A nested turn
+    /// would run view()/layout while the outer one is mid-layout, so a
+    /// reentrant call instead posts one coalesced `WM_PUMP`; the deferred
+    /// turn runs the body after the outer frame unwinds — the transition
+    /// is deferred, never dropped.
     pub(crate) fn turn(&mut self) -> UiResult {
+        if self.in_turn.get() {
+            if !self.pump_queued.replace(true)
+                && !self.hwnd.0.is_null()
+                && !self.closed.load(Ordering::SeqCst)
+            {
+                unsafe {
+                    let _ = PostMessageW(Some(self.hwnd), WM_PUMP, WPARAM(0), LPARAM(0));
+                }
+            }
+            return Ok(());
+        }
+        self.in_turn.set(true);
+        let r = self.turn_body();
+        self.in_turn.set(false);
+        r
+    }
+
+    fn turn_body(&mut self) -> UiResult {
+        // a pump post may still be in flight after this turn settles — it
+        // clears the flag so a later reentrant call re-arms the post
+        self.pump_queued.set(false);
         // peer-emitted semantic events (ack edits, selections)
         let items: Vec<NativeSinkItem> = std::mem::take(&mut *self.peer_ctx.sink.lock().unwrap());
         for it in items {
@@ -316,9 +352,77 @@ where
         }
     }
 
+    /// Send a raw window message to a node's peer, deferring while the
+    /// peer's `RefCell` is held (msftedit calls `TxSetFocus` mid-`send`,
+    /// which re-enters `WM_SETFOCUS` synchronously — a second `borrow()`
+    /// would panic). Deferred messages deliver at the top of the next
+    /// `service_peer_events`, still generation-checked.
+    pub(crate) fn send_native(
+        &mut self,
+        id: NodeId,
+        msg: u32,
+        wparam: usize,
+        lparam: isize,
+    ) {
+        // NOTE: no peer_for() — its generation filter borrows the cell and
+        // would panic during a live borrow; the deferred delivery runs the
+        // slot lookup then instead
+        let Some(peer) = self
+            .peer_ctx
+            .registry
+            .lock()
+            .unwrap()
+            .get(&id.slot)
+            .and_then(|w| w.upgrade())
+        else {
+            return;
+        };
+        match peer.try_borrow() {
+            Ok(p) if p.node() == id => {
+                // msftedit runs host callbacks inside the send — SetFocus,
+                // timers, invalidation all re-enter the WndProc
+                // synchronously; in_turn keeps a nested turn() deferred
+                // until this send unwinds (restore, not clear — the send
+                // may itself run inside an outer turn)
+                let was = self.in_turn.replace(true);
+                p.send(msg, wparam, lparam);
+                self.in_turn.set(was);
+            }
+            Ok(_) => {}
+            Err(_) => {
+                if self.deferred_native.len() < crate::event::EVENT_QUEUE_CAP {
+                    self.deferred_native.push((id, msg, wparam, lparam));
+                }
+            }
+        }
+    }
+
+    /// Raw window message to the focused peer (IME, focus, wheel routing).
+    pub(crate) fn send_focused(&mut self, msg: u32, wparam: usize, lparam: isize) {
+        let Some(id) = self.focus else { return };
+        self.send_native(id, msg, wparam, lparam);
+    }
+
     /// Drain every live peer's host-event queue: caret/capture/timer/change
     /// notifications msftedit posted while a call ran.
     pub(crate) fn service_peer_events(&mut self) -> UiResult {
+        // deferred focus/native sends first — the borrow that blocked them
+        // is unwound by the time a turn calls this
+        let pending: Vec<(NodeId, u32, usize, isize)> =
+            std::mem::take(&mut self.deferred_native);
+        for (id, msg, wp, lp) in pending {
+            if let Some(peer) = self
+                .peer_ctx
+                .registry
+                .lock()
+                .unwrap()
+                .get(&id.slot)
+                .and_then(|w| w.upgrade())
+                .filter(|p| p.borrow().node() == id)
+            {
+                peer.borrow().send(msg, wp, lp);
+            }
+        }
         let slots: Vec<u32> = self
             .peer_ctx
             .registry
@@ -728,7 +832,7 @@ where
         }
         if let Some(id) = hit {
             // native peer? forward the raw message + focus on down
-            if let Some(peer) = self.peer_for(id) {
+            if self.peer_for(id).is_some() {
                 let r = self.rects.get(&id).copied().unwrap_or_default();
                 let local = Point {
                     x: pos.x - r.x,
@@ -745,7 +849,7 @@ where
                     _ => (WM_MOUSEMOVE, 0usize),
                 };
                 let lp = ((local.y as isize) << 16) | (local.x as isize & 0xffff);
-                peer.borrow().send(msg, wp, lp);
+                self.send_native(id, msg, wp, lp);
                 self.service_peer_events()?;
                 return self.turn();
             }
@@ -839,11 +943,11 @@ where
         }
         // focused editor gets the raw key (native editing, IME)
         if let Some(focus) = self.focus
-            && let Some(peer) = self.peer_for(focus)
+            && self.peer_for(focus).is_some()
             && down
         {
             let submit = self.check_submit(focus, ev);
-            peer.borrow().send(WM_KEYDOWN, key as usize, 0);
+            self.send_native(focus, WM_KEYDOWN, key as usize, 0);
             self.service_peer_events()?;
             if let Some(sub) = submit {
                 self.push_input(focus, sub)?;
@@ -948,19 +1052,22 @@ where
     }
 
     /// Focus a node — blur the old (still routed even when it just hid),
-    /// focus the new, move the system caret when an editor owns focus.
+    /// focus the new. Peers get the raw focus messages so caret/edit state
+    /// tracks the framework focus owner.
     pub(crate) fn set_focus(&mut self, node: Option<NodeId>) {
         if self.focus == node {
             return;
         }
-        if let Some(old) = self.focus
-            && self.rt.arena.is_live(old)
-        {
-            let _ = self.push_input(old, NodeEvent::Focus(false));
+        if let Some(old) = self.focus {
+            if self.rt.arena.is_live(old) {
+                let _ = self.push_input(old, NodeEvent::Focus(false));
+            }
+            self.send_native(old, WM_KILLFOCUS, 0, 0);
         }
         self.focus = node;
         if let Some(id) = node {
             let _ = self.push_input(id, NodeEvent::Focus(true));
+            self.send_native(id, WM_SETFOCUS, 0, 0);
         }
     }
 
@@ -1195,8 +1302,8 @@ where
     }
     /// WM_CHAR — focused peer sees the raw message (IME/text semantics)
     pub(crate) fn char(&mut self, _ch: u32) -> UiResult {
-        if let Some(p) = self.focus_peer() {
-            p.borrow().send(WM_CHAR, _ch as usize, 0);
+        if self.focus.is_some() {
+            self.send_focused(WM_CHAR, _ch as usize, 0);
             self.service_peer_events()?;
         }
         self.turn()
@@ -1360,6 +1467,9 @@ where
         closed: Arc::new(AtomicBool::new(false)),
         last_appearance: appearance,
         fatal: None,
+        in_turn: std::cell::Cell::new(false),
+        pump_queued: std::cell::Cell::new(false),
+        deferred_native: Vec::new(),
     });
     backend.rt.theme = theme;
 

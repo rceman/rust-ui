@@ -141,35 +141,28 @@ pub(super) mod wndproc {
             }
             WM_IME_COMPOSITION => {
                 // richedit sees the raw message; preedit never becomes an edit
-                if let Some(peer) = be.focus_peer() {
-                    peer.borrow().send(msg, wparam.0, lparam.0);
-                }
+                be.send_focused(msg, wparam.0, lparam.0);
+                be.service_peer_events()?;
                 LRESULT(0)
             }
             WM_IME_NOTIFY => {
-                if let Some(peer) = be.focus_peer() {
-                    peer.borrow().send(msg, wparam.0, lparam.0);
-                }
+                be.send_focused(msg, wparam.0, lparam.0);
+                be.service_peer_events()?;
                 LRESULT(0)
             }
             WM_SETFOCUS => {
-                if let Some(p) = be.focus_peer() {
-                    p.borrow().send(msg, wparam.0, lparam.0);
-                }
+                be.send_focused(msg, wparam.0, lparam.0);
                 be.turn()?;
                 LRESULT(0)
             }
             WM_KILLFOCUS => {
-                if let Some(p) = be.focus_peer() {
-                    p.borrow().send(msg, wparam.0, lparam.0);
-                }
+                be.send_focused(msg, wparam.0, lparam.0);
                 be.turn()?;
                 LRESULT(0)
             }
             WM_MOUSEWHEEL => {
-                if let Some(p) = be.focus_peer() {
-                    p.borrow().send(msg, wparam.0, lparam.0);
-                }
+                be.send_focused(msg, wparam.0, lparam.0);
+                be.service_peer_events()?;
                 LRESULT(0)
             }
             WM_SIZE => {
