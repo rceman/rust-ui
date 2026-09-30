@@ -138,9 +138,19 @@ where
         return (0.0, 0.0);
     }
     match &n.data {
-        NodeData::Label { text, wrap, .. } => {
+        NodeData::Label {
+            text, wrap, patch, ..
+        } => {
+            // resolved text style drives metrics — a patched Exact size is
+            // a real measurement input, not just paint
+            let mut ts = crate::style::label_recipe();
+            ts.patch(patch);
+            let sz = match ts.size {
+                crate::style::TextSize::Body => 14.0,
+                crate::style::TextSize::Exact(d) => d.0,
+            };
             let w = if *wrap { avail_w } else { f32::MAX };
-            measure(text, w, 14.0)
+            measure(text, w, sz)
         }
         NodeData::Button {
             text,

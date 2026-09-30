@@ -693,6 +693,8 @@ impl Action {
 pub struct BoxProps {
     pub style: BoxStyle,
     pub(crate) layout: crate::geom::LayoutSpec,
+    /// show/hide — hidden boxes stage but suspend children + paint
+    pub(crate) visibility: crate::Visibility,
 }
 
 impl BoxProps {
@@ -709,6 +711,10 @@ impl BoxProps {
     }
     pub fn height(mut self, height: crate::geom::Length) -> Self {
         self.layout.height = height;
+        self
+    }
+    pub fn visibility(mut self, v: crate::Visibility) -> Self {
+        self.visibility = v;
         self
     }
     pub fn min_width(mut self, v: Dp) -> Self {

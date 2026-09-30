@@ -44,8 +44,9 @@ pub use theme::{
     SubmitPolicy, Theme, ThemeMode,
 };
 pub use ui::{
-    ButtonBuilder, Canvas, Column, CustomBuilder, CustomRender, LabelBuilder, Paint, Path2d,
-    PathOp, Role, Row, Semantics, SemanticsAction, Stack, Surface, TextInputBuilder, TextRun, Ui,
+    ActionBuilder, ButtonBuilder, Canvas, Column, CustomBuilder, CustomRender, LabelBuilder,
+    Paint, Path2d, PathOp, Role, Row, Semantics, SemanticsAction, Stack, Surface, TextBuilder,
+    TextInputBuilder, TextRun, Ui,
 };
 
 /// `use rust_ui::prelude::*` — the documented consumer surface in one place.

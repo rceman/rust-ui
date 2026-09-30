@@ -653,6 +653,28 @@ impl WindowlessPeer {
         self.shared().lib.iid_windowless_acc
     }
 
+    /// Re-style live content: patch the host default char format and push
+    /// it over ALL existing text. The stack copy is what EM_SETCHARFORMAT
+    /// consumes — the host borrow never crosses a `send` (msftedit calls
+    /// back into the host synchronously).
+    pub(crate) fn apply_format(&mut self, fg: COLORREF, size_twips: i32, bold: bool) {
+        let cf = {
+            let mut sh = self.shared_mut();
+            sh.host.cf.crTextColor = fg;
+            sh.host.cf.yHeight = size_twips;
+            sh.host.fg = fg;
+            let mut e = sh.host.cf.dwEffects.0;
+            if bold {
+                e |= CFE_BOLD.0;
+            } else {
+                e &= !CFE_BOLD.0;
+            }
+            sh.host.cf.dwEffects = CFE_EFFECTS(e);
+            *sh.host.cf
+        };
+        self.send(EM_SETCHARFORMAT, SCF_ALL as usize, &cf as *const _ as isize);
+    }
+
     /// Build the host + text services for one peer.
     pub(crate) fn create(
         id: u64,
@@ -684,7 +706,9 @@ impl WindowlessPeer {
                     dwMask: CFM_ALL,
                     // CFE_AUTOCOLOR: draw-time theme recoloring without
                     // rewriting character formats on every view
-                    dwEffects: CFE_EFFECTS(CFE_AUTOCOLOR.0),
+                    dwEffects: CFE_EFFECTS(
+                        CFE_AUTOCOLOR.0 | if cfg.bold { CFE_BOLD.0 } else { 0 },
+                    ),
                     yHeight: cfg.size_twips,
                     yOffset: 0,
                     crTextColor: colorref(cfg.fg),
@@ -1002,6 +1026,8 @@ pub(crate) struct PeerConfig {
     pub fg: [f32; 4],
     pub sel_bg: [f32; 4],
     pub sel_fg: [f32; 4],
+    /// bold flag folded into CHARFORMAT dwEffects (CFM_BOLD)
+    pub bold: bool,
 }
 
 impl crate::node::TextPeer for WindowlessPeer {

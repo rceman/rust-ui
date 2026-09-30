@@ -100,20 +100,33 @@ impl PeerCtx {
     /// a routing index of Weak handles, not a second owner.
     fn make_factory(
         self: &Rc<PeerCtx>,
-    ) -> impl Fn(bool) -> UiResult<Box<dyn crate::node::TextPeer>> + 'static {
+    ) -> impl Fn(bool, crate::style::TextStyle) -> UiResult<Box<dyn crate::node::TextPeer>> + 'static
+    {
         let ctx = self.clone();
-        move |multiline| {
+        move |multiline, ts| {
             let id = ctx.next_id.fetch_add(1, Ordering::SeqCst);
             let (appearance, theme) = ctx.colors.borrow().clone();
             let (fg, sel_bg, sel_fg) = palette(&theme, &appearance);
+            // resolved text style -> the peer's CHARFORMAT inputs
+            let size_pt = match ts.size {
+                crate::style::TextSize::Body => 14.0,
+                crate::style::TextSize::Exact(d) => d.0,
+            };
             let cfg = PeerConfig {
                 multiline,
                 read_only: false,
                 face: "Segoe UI".into(),
-                size_twips: 280, // 14pt = 280 twips
-                fg,
+                size_twips: (size_pt * 20.0) as i32,
+                fg: if ts.foreground
+                    == crate::style::Color::Role(crate::theme::ColorRole::Foreground)
+                {
+                    fg
+                } else {
+                    crate::style::resolve_color(ts.foreground, appearance.dark)
+                },
                 sel_bg,
                 sel_fg,
+                bold: ts.weight == crate::style::TextWeight::Bold,
             };
             let peer = WindowlessPeer::create(
                 id,
@@ -168,6 +181,23 @@ impl crate::node::TextPeer for PeerHandle {
         if slot != u32::MAX {
             self.ctx.registry.lock().unwrap().remove(&slot);
         }
+    }
+    /// Surgical patch changed on a mounted editor — resolve against the
+    /// live appearance and push the new char format over all content.
+    fn apply_text_style(&mut self, style: &crate::style::TextStyle) {
+        let (appearance, _) = self.ctx.colors.borrow().clone();
+        let c = crate::style::resolve_color(style.foreground, appearance.dark);
+        let fg = windows::Win32::Foundation::COLORREF(
+            ((c[0] * 255.0) as u32) | (((c[1] * 255.0) as u32) << 8) | (((c[2] * 255.0) as u32) << 16),
+        );
+        let pt = match style.size {
+            crate::style::TextSize::Body => 14.0,
+            crate::style::TextSize::Exact(d) => d.0,
+        };
+        let bold = style.weight == crate::style::TextWeight::Bold;
+        self.peer
+            .borrow_mut()
+            .apply_format(fg, (pt * 20.0) as i32, bold);
     }
     fn attach(&mut self, node: NodeId) {
         self.node_slot.set(node.slot);
@@ -779,8 +809,10 @@ where
             };
             if r.contains(p) {
                 match &n.data {
+                    // disabled/non-interactive nodes are inert chrome — no
+                    // hover, pressed, focus, or activation state attaches
                     NodeData::Button { .. } | NodeData::Editor { .. } | NodeData::Custom { .. }
-                    | NodeData::Action { .. } => {
+                    | NodeData::Action { .. } if n.interactive() => {
                         return Some(id);
                     }
                     _ => {}

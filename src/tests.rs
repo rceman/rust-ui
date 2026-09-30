@@ -266,7 +266,7 @@ impl<S: 'static> Rig<S> {
         let app = App::new(state, update, view);
         let mut rt = runtime_for(
             app,
-            Box::new(move |multiline| {
+            Box::new(move |multiline, _ts| {
                 Ok(Box::new(FakePeer::new(pf.clone(), multiline))
                     as Box<dyn crate::node::TextPeer>)
             }),
@@ -1784,7 +1784,7 @@ fn executor_rejection_fences_registration() {
     );
     let mut rt = runtime_for(
         app,
-        Box::new(move |ml| {
+        Box::new(move |ml, _ts| {
             Ok(Box::new(FakePeer::new(pf.clone(), ml)) as Box<dyn crate::node::TextPeer>)
         }),
         Theme::light(),
@@ -2263,7 +2263,7 @@ fn scope_adapter_captures_rc_and_root_msg_need_not_send() {
     let pf = peers.clone();
     let mut rt = runtime_for(
         app,
-        Box::new(move |ml| {
+        Box::new(move |ml, _ts| {
             Ok(Box::new(FakePeer::new(pf.clone(), ml)) as Box<dyn crate::node::TextPeer>)
         }),
         Theme::light(),
@@ -2971,7 +2971,7 @@ fn peer_factory_failure_tears_down_orderly() {
     let pf2 = pf.clone();
     let mut rt = runtime_for(
         app,
-        Box::new(move |ml| {
+        Box::new(move |ml, _ts| {
             let mut n = f2.lock().unwrap();
             if *n == 0 {
                 return Err(crate::UiError::Platform("peer create failed".into()));
@@ -3130,6 +3130,7 @@ fn native_probe_richedit_paints_text() {
         fg: [0.94, 0.94, 0.94, 1.0],
         sel_bg: [0.2, 0.4, 0.8, 1.0],
         sel_fg: [1.0, 1.0, 1.0, 1.0],
+        bold: false,
     };
     let mut peer = crate::platform::win32::WindowlessPeer::create(
         1,

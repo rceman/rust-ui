@@ -52,6 +52,10 @@ pub(crate) trait TextPeer {
         base: crate::text::TextRevision,
         requested: crate::text::TextRevision,
     ) -> UiResult;
+    /// Re-style live text: a changed surgical TextStylePatch resolves to a
+    /// full style and re-applies the peer's char format (fg/size/weight).
+    /// Default no-op — core tests use peers that don't style.
+    fn apply_text_style(&mut self, _style: &crate::style::TextStyle) {}
     /// Teardown — called exactly once per peer.
     fn release(&mut self);
     /// bound after the arena assigns the NodeId — peers tag their native
@@ -323,6 +327,9 @@ pub(crate) enum NodeData {
         max_lines: Option<u32>,
         placeholder: Option<Rc<str>>,
         accessible_label: Option<Rc<str>>,
+        /// surgical text style — native peers consume fg/size/weight only;
+        /// face stays the system editable face (one render path)
+        patch: crate::style::TextStylePatch,
         sync: TextPeerSync,
     },
     Custom {
@@ -500,6 +507,20 @@ pub(crate) fn dirty_diff(old: &NodeData, new: &NodeData) -> u8 {
             }
             if aph != bph || asnap.committed != bsnap.committed {
                 d |= PAINT;
+            }
+            match (old, new) {
+                (
+                    NodeData::Editor { patch: ap, .. },
+                    NodeData::Editor { patch: bp, .. },
+                ) => {
+                    if ap != bp {
+                        d |= PAINT;
+                        if ap.size != bp.size || ap.weight != bp.weight {
+                            d |= LAYOUT; // peer metrics change
+                        }
+                    }
+                }
+                _ => {}
             }
             if aro != bro || ad != bd || aal != bal || asu != bsu {
                 d |= SEMANTICS;

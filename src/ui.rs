@@ -470,6 +470,7 @@ impl Tx<'_> {
         props: ContainerProps,
         layout: LayoutSpec,
         factories: EventFactorySet,
+        visibility: Visibility,
         draw: impl FnOnce(&mut Ui<'_, '_, M>),
         action_depth: bool,
         build: impl FnOnce(ContainerProps) -> NodeData,
@@ -526,7 +527,7 @@ impl Tx<'_> {
         self.nodes.push(StagedNode {
             key,
             data,
-            visibility: Visibility::Visible,
+            visibility,
             layout,
             factories,
             adapters: self.adapters.clone(),
@@ -555,6 +556,7 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
             ContainerProps::default(),
             LayoutSpec::default(),
             EventFactorySet::default(),
+            Visibility::Visible,
             draw,
             false,
             |props| NodeData::Container { kind: crate::node::KIND_GROUP, props },
@@ -569,6 +571,7 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
             props.props(),
             LayoutSpec::default(),
             EventFactorySet::default(),
+            Visibility::Visible,
             draw,
             false,
             |props| NodeData::Container { kind: crate::node::KIND_COLUMN, props },
@@ -581,6 +584,7 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
             props.props(),
             LayoutSpec::default(),
             EventFactorySet::default(),
+            Visibility::Visible,
             draw,
             false,
             |props| NodeData::Container { kind: crate::node::KIND_ROW, props },
@@ -593,6 +597,7 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
             props.props(),
             LayoutSpec::default(),
             EventFactorySet::default(),
+            Visibility::Visible,
             draw,
             false,
             |props| NodeData::Container { kind: crate::node::KIND_STACK, props },
@@ -605,6 +610,7 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
             props.props(),
             LayoutSpec::default(),
             EventFactorySet::default(),
+            Visibility::Visible,
             draw,
             false,
             |props| NodeData::Container { kind: crate::node::KIND_SURFACE, props },
@@ -661,6 +667,7 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
             submit: SubmitPolicy::default(),
             max_lines: None,
             accessible_label: None,
+            patch: crate::style::TextStylePatch::default(),
             visibility: Visibility::Visible,
             layout: LayoutSpec::default(),
             factories: EventFactorySet::default(),
@@ -682,6 +689,7 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
             submit: SubmitPolicy::None,
             max_lines: None,
             accessible_label: None,
+            patch: crate::style::TextStylePatch::default(),
             visibility: Visibility::Visible,
             layout: LayoutSpec::default(),
             factories: EventFactorySet::default(),
@@ -788,6 +796,7 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
             ContainerProps::default(),
             LayoutSpec::default(),
             EventFactorySet::default(),
+            Visibility::Visible,
             |ui: &mut Ui<'_, '_, M>| {
                 for item in items {
                     let k = ErasedKey::new(key(item));
@@ -797,6 +806,7 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
                         ContainerProps::default(),
                         LayoutSpec::default(),
                         EventFactorySet::default(),
+                        Visibility::Visible,
                         |u| draw(u, item),
                         false,
                         |props| NodeData::Container { kind: crate::node::KIND_GROUP, props },
@@ -811,18 +821,17 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
     /// `ui.box_` — noninteractive painted box container; `BoxProps` carries
     /// the authored full `BoxStyle` plus layout inputs (size stays layout).
     pub fn box_(&mut self, props: BoxProps, draw: impl FnOnce(&mut Ui<'_, '_, M>)) {
-        let mut cp = ContainerProps {
+        let cp = ContainerProps {
             full: Some(props.style),
             ..Default::default()
         };
-        // authored padding feeds the container inner insets
-        let _ = &mut cp;
         self.tx.stage_container(
             crate::node::KIND_BOX,
             None,
             cp,
             props.layout,
             EventFactorySet::default(),
+            props.visibility,
             draw,
             false,
             |props| NodeData::Container { kind: crate::node::KIND_BOX, props },
@@ -844,6 +853,7 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
             ContainerProps::default(),
             LayoutSpec::default(),
             EventFactorySet::default(),
+            Visibility::Visible,
             draw,
             true,
             move |_| NodeData::Action {
@@ -1131,6 +1141,9 @@ pub struct TextInputBuilder<'a, 'ui, 'b, M: 'static> {
     submit: SubmitPolicy,
     max_lines: Option<u32>,
     accessible_label: Option<Rc<str>>,
+    /// surgical text patch — fg/size/weight map onto the native peer's
+    /// char format; face is fixed (one editable render path)
+    patch: crate::style::TextStylePatch,
     visibility: Visibility,
     layout: LayoutSpec,
     factories: EventFactorySet,
@@ -1138,6 +1151,12 @@ pub struct TextInputBuilder<'a, 'ui, 'b, M: 'static> {
 }
 
 impl<'a, 'ui, 'b, M: 'static> TextInputBuilder<'a, 'ui, 'b, M> {
+    /// SURGICAL text patch — covers fg/size/weight of the editable content
+    /// (the peer still owns its own paint; face is the system editable face)
+    pub fn style(mut self, p: crate::style::TextStylePatch) -> Self {
+        self.patch = p;
+        self
+    }
     pub fn placeholder(mut self, p: &str) -> Self {
         self.placeholder = Some(Rc::from(p));
         self
@@ -1209,7 +1228,7 @@ impl<'a, 'ui, 'b, M: 'static> Drop for TextInputBuilder<'a, 'ui, 'b, M> {
         // staged snapshot: Rc clones of the value's committed/pending — the
         // peer sync itself is carried by the retained node at commit
         let snapshot = self.value.snapshot();
-        let (placeholder, accessible_label, read_only, submit, max_lines, disabled, multiline) = (
+        let (placeholder, accessible_label, read_only, submit, max_lines, disabled, multiline, patch) = (
             self.placeholder.clone(),
             self.accessible_label.clone(),
             self.read_only,
@@ -1217,6 +1236,7 @@ impl<'a, 'ui, 'b, M: 'static> Drop for TextInputBuilder<'a, 'ui, 'b, M> {
             self.max_lines,
             self.disabled,
             self.multiline,
+            self.patch,
         );
         self.tx.stage_leaf(
             kind,
@@ -1233,6 +1253,7 @@ impl<'a, 'ui, 'b, M: 'static> Drop for TextInputBuilder<'a, 'ui, 'b, M> {
                 max_lines,
                 placeholder,
                 accessible_label,
+                patch,
                 sync: Default::default(),
             },
         );
