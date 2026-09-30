@@ -30,6 +30,8 @@ pub enum UiDiagnostic {
     DuplicateKey,
     DuplicateTextBinding,
     InvalidLayout,
+    InvalidStyle,
+    InvalidComposition,
 }
 
 pub type UiResult = Result<(), UiError>;
@@ -65,12 +67,13 @@ Notes on the signature set:
 - `UiResult` is the one app-level result; platform/asset failures convert into
   typed `UiError` variants rather than panicking.
 - A builder that detects an invalid build (duplicate key, a `TextValue` bound
-  to two mounted peers, a `Fill` on an unbounded axis) stages a typed
-  `UiDiagnostic` with non-sensitive context — a key fingerprint and node
-  kind, never user text. A fatal invalid build aborts the transaction before
-  any native mutation and `run` returns `Err` after orderly teardown. This is
-  for structural errors only: a `TextConflict` is an event, not a fatal
-  error.
+  to two mounted peers, a `Fill` on an unbounded axis, a malformed numeric
+  style, an actionable/focusable node nested inside an `ui.action`) stages a
+  typed `UiDiagnostic` with non-sensitive context — a key fingerprint and
+  node kind, never user text. A fatal invalid build aborts the transaction
+  before any native mutation and `run` returns `Err` after orderly teardown.
+  This is for structural errors only: a `TextConflict` is an event, not a
+  fatal error.
 
 ## Traversal, staging, commit
 
@@ -91,6 +94,14 @@ impl<'ui, M> Ui<'ui, M> {
     pub fn custom(&mut self, render: Rc<dyn CustomRender>) -> CustomBuilder<'_, M>;
     pub fn badge(&mut self, text: impl AsRef<str>) -> BadgeBuilder<'_, M>;
     pub fn separator(&mut self) -> SeparatorBuilder<'_, M>;
+
+    pub fn box_(&mut self, props: BoxProps, draw: impl FnOnce(&mut Ui<M>));
+    pub fn text(&mut self, text: impl AsRef<str>) -> TextBuilder<'_, M>;
+    pub fn action(
+        &mut self,
+        props: Action,
+        draw: impl FnOnce(&mut Ui<M>),
+    ) -> ActionBuilder<'_, M>;
 
     pub fn group(&mut self, key: impl KeyId, draw: impl FnOnce(&mut Ui<M>));
     pub fn scope<ChildMsg: 'static>(
@@ -122,6 +133,15 @@ notifications dispatch. Two consequences follow:
 - `label`/`badge` take `impl AsRef<str>`: a borrowed `&str` is compared
   against the retained value and copied only when changed — `format!`-built
   strings still allocate as usual.
+- `ui.box_` is the noninteractive painted box, `ui.text` the styled text
+  leaf, and `ui.action` the semantic activation wrapper for bespoke
+  controls — the public primitive vocabulary shared by the built-in
+  recipes. The authored style types (`BoxStyle`, `TextStyle`, the `*Patch`
+  types, capability-limited `.style` surfaces) and the shared
+  resolver/equality/damage rules are defined in
+  [STYLE_CUSTOMIZATION_MODEL.md](STYLE_CUSTOMIZATION_MODEL.md); the runtime
+  responsibility is only that resolved-value equality, not input identity,
+  decides downstream work.
 
 This is keyed structural reconciliation over one retained arena — not a
 browser DOM and not a second virtual view tree. Node storage and message

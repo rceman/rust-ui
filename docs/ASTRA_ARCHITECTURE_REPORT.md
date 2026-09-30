@@ -3,6 +3,17 @@
 Provenance: branch `agent/architecture-concept-astra`, baseline
 `1f28aac4e1aedd69e860102aff8642ff94121dbe`, 2026-09-30.
 
+Style review update: branch `agent/style-customization-model-review`,
+baseline `768eb172509a45ed15cdf5156fe57268ccaf8b08` — the authoritative
+styling definition now lives in
+[STYLE_CUSTOMIZATION_MODEL.md](STYLE_CUSTOMIZATION_MODEL.md). Rationale in
+brief: the owner's three workflows (FAST/CUSTOM/SURGICAL) are preserved over
+one shared box/text style representation with no hidden styling system or
+private renderer; component customization is capability-limited typed
+patches rather than full replacement; independent border sides, corner
+radii and padding are accepted; group/node opacity and shadows are
+deferred, not rejected.
+
 Status: architecture concept only — documentation, not approval, not a
 performance result, not native proof. All referenced Rust is proposed API
 exercise material, unimplemented and unverified by a compiler.
@@ -104,8 +115,10 @@ not the shortest candidate (C and D are smaller; B slightly).
 **Surface**: `App` (`new`/`title`/`executor`/`proxy`/`run`), `Ui<'ui, M>`
 containers (`row`, `column`, `stack`, `surface`), leaf builders (`label`,
 `button`, `icon`, `icon_button`, `badge`, `separator`, `text_input`,
-`text_area`, `image`, `custom`), `group`/`scope`/`keyed`, `theme`,
-`appearance`, `visibility`, `UiResult`/`UiError`/`UiDiagnostic`.
+`text_area`, `image`, `custom`), primitives (`box_`, `text`, `action`),
+`group`/`scope`/`keyed`, `theme`, `appearance`, `visibility`,
+`UiResult`/`UiError`/`UiDiagnostic` (incl. `InvalidStyle`,
+`InvalidComposition`).
 
 **State/events**: `UpdateCtx` (`spawn`, `cancel`, `scope`), the v0.1 rows of
 the event table in [STATE_AND_EVENTS.md](STATE_AND_EVENTS.md) (press, pointer enter/leave/down/up,
@@ -116,9 +129,15 @@ focus/blur, key, edit, submit, selection-changed, conflict, frame).
 `keep_native`, `SubmitPolicy`.
 
 **Layout/style**: `Length`, `dp`, `Align`, `Justify`, `Space`, `Visibility`, `Theme` +
-`ThemeMode` + `Theme::resolve` + `Appearance`, `ColorRole`, `Radius`,
-`MotionToken`, `ReducedMotion`, `ButtonVariant`, `ControlSize`, `ButtonStyle`,
-`Icon` enum.
+`ThemeMode` + `Theme::resolve` + `Appearance`, `ColorRole` (incl.
+`DestructiveForeground`), `Radius`, `MotionToken`, `ReducedMotion`,
+`ButtonVariant`, `ControlSize`, `Icon` enum. Style vocabulary per
+[STYLE_CUSTOMIZATION_MODEL.md](STYLE_CUSTOMIZATION_MODEL.md): `Color`,
+`Insets`, `CornerRadii`, `Border`/`BorderSide`, `BoxStyle`, `TextStyle`,
+`TextSize`/`TextWeight`, `VisualStyle`, `BoxProps`, `Action`/`ActionStyle`,
+`StateStyles`, and the patch family `BoxStylePatch`/`BorderPatch`/
+`CornerRadiiPatch`/`InsetsPatch`/`TextStylePatch`/`VisualStylePatch`/
+`ButtonStylePatch`/`TextInputStylePatch`.
 
 **Async/custom**: `Executor`, `BoxFuture`, `CancelToken`, `TaskSender`, `Job`,
 `UiProxy`, typed errors; `CustomRender`, `Canvas`, `Semantics`,
@@ -126,14 +145,25 @@ focus/blur, key, edit, submit, selection-changed, conflict, frame).
 
 **Deferred**: Checkbox, Switch, RadioGroup, Select, Popover, ScrollArea,
 Dialog, `on_open_change`/`on_scroll`/`on_change`, Activity component,
-baseline alignment, Linux backend,
+baseline alignment, group/node opacity and shadows (deferred, not rejected),
+Linux backend,
 virtualized large lists, GPU-required rendering, gallery example, effects
 test harness (recording `UpdateCtx`/virtual clock), any Mascot migration.
 
 ## Bounded spike: Native Composer Contract Spike
 
-Only after owner approval: one small app, built natively on Windows and
-macOS from one shared app source — only the platform modules differ.
+Only after owner approval, and **phased**: the immediate next step is a
+Windows-only phase — headless resolver/patch regression tests plus one
+opaque native Windows proof window containing a baseline `Primary` button, a
+surgically patched variant, a custom `ui.action` built from public
+primitives, and one native `TextArea`, exercising the styling gates in
+[STYLE_CUSTOMIZATION_MODEL.md](STYLE_CUSTOMIZATION_MODEL.md#required-windows-spike-tests-planned--none-executed).
+That first opaque window is a starter harness, not completion of the phase:
+all the Windows-relevant native/DPI/IME/UIA/identity/task/cancellation/
+resource and transparent-borderless gates below remain necessary. The macOS
+eligibility requirements — including every previously deferred proof — are
+unchanged and remain a separately approved, later cross-platform validation
+phase, not part of the immediate action and not started now.
 
 Contents: a Label, a Button, one native TextArea, a conditional panel, three
 keyed editable rows, a PNG/custom-painted tile, a tooltip, a deterministic
@@ -205,7 +235,7 @@ the framework.
 | State ownership/lifecycle | [STATE_AND_EVENTS.md](STATE_AND_EVENTS.md), [PROGRAMMING_MODEL.md](PROGRAMMING_MODEL.md) |
 | Native text boundary | [NATIVE_CONTROL_BOUNDARY.md](NATIVE_CONTROL_BOUNDARY.md) |
 | Custom rendering extension | [NATIVE_CONTROL_BOUNDARY.md](NATIVE_CONTROL_BOUNDARY.md), [API_EXAMPLES.md](API_EXAMPLES.md) 9 |
-| Styling/theme model | [LAYOUT_STYLE_MOTION.md](LAYOUT_STYLE_MOTION.md) |
+| Styling/theme model | [LAYOUT_STYLE_MOTION.md](LAYOUT_STYLE_MOTION.md), [STYLE_CUSTOMIZATION_MODEL.md](STYLE_CUSTOMIZATION_MODEL.md) (authoritative) |
 | Motion model + idle invariant | [LAYOUT_STYLE_MOTION.md](LAYOUT_STYLE_MOTION.md) (Motion) |
 | Async model | [STATE_AND_EVENTS.md](STATE_AND_EVENTS.md) (Async), [API_EXAMPLES.md](API_EXAMPLES.md) 5-6 |
 | Runtime/tree model | [PROGRAMMING_MODEL.md](PROGRAMMING_MODEL.md) |

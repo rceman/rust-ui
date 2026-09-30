@@ -69,7 +69,7 @@ trait TextMeasureBackend {
     fn shape_label(
         &mut self,
         text: &str,
-        style: &TextStyle,
+        style: &ResolvedTextStyle,
         max_width: Option<f32>,
     ) -> Result<TextMetrics, PlatformError>;
     fn invalidate_measure_cache(&mut self, reason: MeasureCacheInvalidate);
@@ -153,16 +153,20 @@ Roles:
   `AccessibilityBackend` syncs the semantics tree and imports the native
   text peers' own accessibility subtrees via `A11yHandle`.
 
-Supporting shapes — `PlatformError`, `TextMetrics`, `TextPatch`,
-`TextPeerTheme`, `TextStyle`, `MeasureCacheInvalidate`, `A11yHandle`,
-`SemanticsTree`, `LoopEvent`, `TextPeerEvent` — are internal typed
-structs/enums local to the platform modules; none exposes a raw OS handle.
-`TextPatch` distinguishes its variants: initialization (the current committed
-value, revision and binding), a native-acknowledgement marker, and a
-programmatic proposal with its base revision — so `mount` always receives the
-real committed value rather than accidentally attaching an empty peer, and
-`apply` carries the same patch on proposal state changes. There is no second
-editor state object.
+Supporting shapes split by ownership. Core-owned, platform-neutral:
+`ResolvedBoxStyle`, `ResolvedTextStyle`, `ResolvedVisualStyle`, `TextPatch`,
+`TextPeerUpdate`, `TextPeerTheme`, `TextMetrics`, `MeasureCacheInvalidate`,
+`SemanticsTree`, `LoopEvent`. Platform-adapter-local: `PlatformError`,
+`A11yHandle`, `TextPeerEvent`. None exposes a raw OS handle. A single shared
+core resolver turns public authored styles and patches into the `Resolved*`
+values — platform modules receive concrete colors/dp and the final peer
+theme/geometry only; there are no per-platform parallel recipes. `TextPatch`
+distinguishes its variants: initialization (the current committed value,
+revision and binding), a native-acknowledgement marker, and a programmatic
+proposal with its base revision — so `mount` always receives the real
+committed value rather than accidentally attaching an empty peer, and
+`apply` carries the same patch on proposal state changes. There is no
+second editor state object.
 
 ## Platform adapters — conceptual flow
 

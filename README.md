@@ -43,6 +43,7 @@ Proposed-model documentation only; no implementation exists yet.
 - [docs/LAYOUT_STYLE_MOTION.md](docs/LAYOUT_STYLE_MOTION.md) — layout primitives, typed theme/style, motion
 - [docs/NATIVE_CONTROL_BOUNDARY.md](docs/NATIVE_CONTROL_BOUNDARY.md) — text peer contract, geometry, custom rendering
 - [docs/BACKEND_ARCHITECTURE.md](docs/BACKEND_ARCHITECTURE.md) — crate packaging, Windows/macOS boundaries
-- [docs/API_EXAMPLES.md](docs/API_EXAMPLES.md) — ten consumer-code exercises
+- [docs/API_EXAMPLES.md](docs/API_EXAMPLES.md) — ten core exercises plus three style workflows
 - [docs/MASCOT_MIGRATION_PLAN.md](docs/MASCOT_MIGRATION_PLAN.md) — future extraction mapping (post-approval)
 - [docs/ASTRA_ARCHITECTURE_REPORT.md](docs/ASTRA_ARCHITECTURE_REPORT.md) — recommendation, risks, owner questions, spike plan
+- [docs/STYLE_CUSTOMIZATION_MODEL.md](docs/STYLE_CUSTOMIZATION_MODEL.md) — authoritative styling/customization model (style review update on `agent/style-customization-model-review`)

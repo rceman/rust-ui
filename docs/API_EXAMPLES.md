@@ -760,3 +760,84 @@ ui.scroll_area(|ui| {
 .on_scroll(Msg::Scrolled);
 ui.dialog(&self.confirm_open).title("Discard?").on_open_change(Msg::ConfirmOpen);
 ```
+
+## 11. Style customization
+
+The three workflows over one renderer — full semantics in
+[STYLE_CUSTOMIZATION_MODEL.md](STYLE_CUSTOMIZATION_MODEL.md).
+
+**A — high-level (FAST):**
+
+```rust
+ui.button("Send")
+    .variant(ButtonVariant::Primary)
+    .size(ControlSize::Md)
+    .icon(Icon::ArrowUp)
+    .on_press(|| Msg::Send);
+```
+
+**B — custom action from public primitives (CUSTOM):** the "Build succeeded —
+Open build log" banner — `ui.action` + `BoxStyle`/`ActionStyle` + `Row` +
+`ui.icon` + `ui.text`, accessible label mandatory, asymmetric radii/padding,
+hover patch touching only the box background:
+
+```rust
+enum Msg {
+    OpenBuildLog,
+}
+
+fn build_banner(ui: &mut Ui<Msg>, succeeded: bool) {
+    let style = ActionStyle::new(
+        BoxStyle::new()
+            .background(Color::role(ColorRole::Muted))
+            .border(Border::all(BorderSide::new(
+                dp(1.0),
+                Color::role(ColorRole::Border),
+            )))
+            .radii(CornerRadii {
+                top_left: dp(6.0),
+                top_right: dp(6.0),
+                ..Default::default()
+            })
+            .padding(Insets {
+                left: dp(12.0),
+                right: dp(12.0),
+                ..Default::default()
+            }),
+    )
+    .hover(BoxStylePatch {
+        background: Some(Color::role(ColorRole::Background)),
+        ..Default::default()
+    });
+
+    ui.group("build-banner", |ui| {
+        if succeeded {
+            ui.action(Action::new().label("Build succeeded; open build log").style(style), |ui| {
+                ui.row(Row::new().gap(Space::Sm).align(Align::Center), |ui| {
+                    ui.icon(Icon::ArrowUp).color_role(ColorRole::Foreground);
+                    ui.text("Build succeeded — open build log")
+                        .style(TextStyle::new().foreground(Color::role(ColorRole::Foreground)));
+                });
+            })
+            .on_press(|| Msg::OpenBuildLog);
+        }
+    });
+}
+```
+
+**C — surgical override (SURGICAL):** a standard `Primary` button where only
+the bottom border changes; every unrelated authored/resolved style and
+layout-input property in every state stays identical before OS enforcement
+(derived geometry may shift with the new border extent — see the invariant
+in [STYLE_CUSTOMIZATION_MODEL.md](STYLE_CUSTOMIZATION_MODEL.md)):
+
+```rust
+ui.button("Send")
+    .variant(ButtonVariant::Primary)
+    .style(
+        ButtonStylePatch::new()
+            .border_bottom_width(dp(2.0))
+            .border_bottom_color(Color::rgb(255, 0, 0)),
+    )
+    .on_press(|| Msg::Send);
+```

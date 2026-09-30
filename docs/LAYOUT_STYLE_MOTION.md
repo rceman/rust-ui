@@ -120,11 +120,12 @@ pub enum ThemeMode {
     System,
 }
 
+#[derive(Copy, Clone, Eq, PartialEq)]
 pub enum ColorRole {
     Background, Foreground,
     Muted, MutedForeground,
     Accent, AccentForeground,
-    Border, Destructive, Focus,
+    Border, Destructive, DestructiveForeground, Focus,
 }
 
 pub enum Space { Xs, Sm, Md, Lg }
@@ -133,13 +134,6 @@ pub enum MotionToken { Hover, Tooltip, Focus }
 
 pub enum ButtonVariant { Primary, Secondary, Ghost, Destructive }
 pub enum ControlSize { Sm, Md, Lg }
-
-#[derive(Default)]
-pub struct ButtonStyle {
-    pub foreground: Option<ColorRole>,
-    pub radius: Option<Radius>,
-    pub padding: Option<Space>,
-}
 
 pub enum Visibility {
     Visible,
@@ -157,32 +151,43 @@ impl Theme {
 ```
 
 Where each belongs: built-in enums (`ButtonVariant`, `ControlSize`,
-`ColorRole`, `Space`, `Radius`, `MotionToken`) express common variation;
-typed style structs (`ButtonStyle` and siblings) express rare overrides.
-There is no string property bag and no CSS runtime.
+`ColorRole`, `Space`, `Radius`, `MotionToken`) express common variation.
+The complete authored style and patch vocabulary — `Color`, `BoxStyle`,
+`TextStyle`, `VisualStyle`, the `*Patch` types, `Action`/`ActionStyle` and
+the `ui.box_`/`ui.text`/`ui.action` primitives — is defined once in
+[STYLE_CUSTOMIZATION_MODEL.md](STYLE_CUSTOMIZATION_MODEL.md), which is the
+authoritative styling specification. There is no string property bag and no
+CSS runtime.
 
-Style precedence, in order:
+Resolution precedence is defined there; in short:
 
 ```text
-built-in defaults
-  -> theme recipe (light/dark token resolution)
-  -> variant + size
-  -> typed overrides (e.g. ButtonStyle fields)
-  -> accessibility forced-colors / focus-visibility layer
+theme tokens
+  -> component defaults -> variant -> size
+  -> recipe interaction state
+  -> consumer base patch -> consumer active state patch
+  -> accessibility / OS enforcement
 ```
 
-Interaction states (hover/pressed/disabled) resolve inside the recipe, not as
-consumer-visible selectors. Per-node escape hatches stay typed:
+Surgical customization is a typed partial patch — the canonical case:
 
 ```rust
-ui.button("Accent")
+ui.button("Send")
     .variant(ButtonVariant::Primary)
-    .style(ButtonStyle {
-        foreground: Some(ColorRole::AccentForeground),
-        ..ButtonStyle::default()
-    })
+    .style(
+        ButtonStylePatch::new()
+            .border_bottom_width(dp(2.0))
+            .border_bottom_color(Color::rgb(255, 0, 0)),
+    )
     .motion(MotionToken::Hover);
 ```
+
+Only the two named fields change: every unrelated authored/resolved style
+and layout-input property in every interaction state stays identical before
+OS enforcement — derived geometry may shift with the new border extent, and
+`.motion` keeps working because the patch never touches motion
+configuration. Full merge, equality and per-view lifecycle rules live in the
+authoritative spec.
 
 `ui.theme(theme)` is called at the window root before building children and
 consumes the `Theme` value — it is copied/resolved into the window's token
