@@ -30,6 +30,35 @@ Platform dependencies are optional and isolated behind `#[cfg]` imports.
 Core, generic tests — model, tree, layout, theme, message flow — must compile
 and run headless on Linux even though a Linux backend is deferred.
 
+## Optional authoring boundary (reserved)
+
+Future optional CSS/generated frontends depend on rust-ui, not vice versa;
+a development watcher depends on its frontend. This reservation does not
+split the current one-crate implementation plan or create any crates now.
+The authoritative contract is
+[STYLE_CUSTOMIZATION_MODEL.md](STYLE_CUSTOMIZATION_MODEL.md#future-optional-authoring-frontends-reserved).
+
+Core owns typed style/layout inputs, recipes, ordered resolution, validation,
+resolved values, layout/paint/damage and peers. CSS-specific parsing, matching,
+specificity/cascade, shorthand/value conversion, variables and declaration
+ordering belong only to the optional frontend; filesystem notifications,
+debounce/coalescing and compile-request diagnostics belong to a dev watcher.
+No renderer or platform adapter interprets CSS or keeps a parallel recipe.
+
+A future restricted bridge may expose author-facing style-target capabilities,
+styling ancestry and runtime state and accept typed authored contributions;
+it cannot expose raw native handles, arena mutation or injection of final
+`Resolved*` values bypassing validation/enforcement. Stylesheet publication
+uses UI-thread staged validation, not native operations on a parser worker.
+Exact interfaces remain deferred; there are no new traits/signatures here.
+
+Rust-only builds incur no parser/matcher/watcher dependency or CSS AST,
+variable environment, selector storage/index allocation, dynamic core map,
+mandatory property provenance or hypothetical per-node dispatch cost. Optional
+integration storage/work is absent when unused. CSS-enabled matching has
+its own cost; build-time parsing alone cannot erase dynamic matching. These
+are design requirements, not measurements or a new permanent frame loop.
+
 ## Internal backend contract surface
 
 Private traits (never public, never exposing raw OS handles):
@@ -63,13 +92,19 @@ trait CanvasBackend {
     fn path(&mut self, path: &Path2d, paint: Paint);
     fn image(&mut self, image: &ImageSource, rect: Rect);
     fn text(&mut self, run: &TextRun, origin: Point);
+    fn box_shadow(
+        &mut self,
+        bounds: Rect,
+        radii: CornerRadii,
+        shadow: &ResolvedShadow,
+    ) -> Result<(), PlatformError>;
 }
 
 trait TextMeasureBackend {
     fn shape_label(
         &mut self,
         text: &str,
-        style: &TextStyle,
+        style: &ResolvedTextStyle,
         max_width: Option<f32>,
     ) -> Result<TextMetrics, PlatformError>;
     fn invalidate_measure_cache(&mut self, reason: MeasureCacheInvalidate);
@@ -153,16 +188,26 @@ Roles:
   `AccessibilityBackend` syncs the semantics tree and imports the native
   text peers' own accessibility subtrees via `A11yHandle`.
 
-Supporting shapes — `PlatformError`, `TextMetrics`, `TextPatch`,
-`TextPeerTheme`, `TextStyle`, `MeasureCacheInvalidate`, `A11yHandle`,
-`SemanticsTree`, `LoopEvent`, `TextPeerEvent` — are internal typed
-structs/enums local to the platform modules; none exposes a raw OS handle.
-`TextPatch` distinguishes its variants: initialization (the current committed
-value, revision and binding), a native-acknowledgement marker, and a
-programmatic proposal with its base revision — so `mount` always receives the
-real committed value rather than accidentally attaching an empty peer, and
-`apply` carries the same patch on proposal state changes. There is no second
-editor state object.
+Supporting shapes split by ownership. Core-owned, platform-neutral:
+`ResolvedBoxStyle`, `ResolvedTextStyle`, `ResolvedVisualStyle`, `TextPatch`,
+`TextPeerUpdate`, `TextPeerTheme`, `TextMetrics`, `MeasureCacheInvalidate`,
+`SemanticsTree`, `LoopEvent`, `ResolvedShadow`. Platform-adapter-local:
+`PlatformError`, `A11yHandle`, `TextPeerEvent`. None exposes a raw OS
+handle. A single shared core resolver turns public authored styles and
+patches into the `Resolved*` values — platform modules receive concrete
+colors/dp and the final peer theme/geometry only; there are no per-platform
+parallel recipes. `TextPatch` distinguishes its variants: initialization
+(the current committed value, revision and binding), a
+native-acknowledgement marker, and a programmatic
+proposal with its base revision — so `mount` always receives the real
+committed value rather than accidentally attaching an empty peer, and
+`apply` carries the same patch on proposal state changes. There is no
+second editor state object. `CanvasBackend::box_shadow` is the one dedicated
+shadow boundary: core computes shadow presence, normalized concrete geometry
+and the mandated finite ink bound; the adapter performs the cached
+silhouette render inside that support and propagates typed failures. There
+is no public `Canvas` filter/effects graph and no raw D2D handle; public
+`CustomRender` content wrapped in `ui.box_` gets the same public shadow.
 
 ## Platform adapters — conceptual flow
 

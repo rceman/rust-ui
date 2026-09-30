@@ -201,6 +201,56 @@ blocks activation entirely. They are independent.
   editing announcements); it never receives a duplicate painted editable
   label.
 
+## Peer styling
+
+Native text peers accept one capability-limited patch type,
+`TextInputStylePatch` — a chrome `BoxStylePatch` (background/border/radii/
+padding/shadow of the painted frame) plus an optional `foreground: Color`
+routed to the peer through a typed adapter:
+
+- chrome maps only to the painted frame; `foreground` is subject to normal
+  OS adjustment, and v0.1 requires peer backing and editable foreground to
+  resolve fully opaque;
+- the rectangular peer sits inside a mechanical safety inset — border +
+  padding + the paired authored corner radius per side, exact rule in
+  [STYLE_CUSTOMIZATION_MODEL.md](STYLE_CUSTOMIZATION_MODEL.md) — never
+  rounded-clipped or alpha-composited; too-small constraints are
+  `InvalidLayout`, nonopaque backing/foreground `Unsupported`;
+- chrome `shadow` is outer painted chrome only — it never blurs, clips or
+  composites live editing pixels, is ignored by safety-inset/minimum-host
+  math, and causes no layout or `TextPeer.apply` on change; its ink joins
+  the native-island overlap rule — it may not bleed over an unrelated native
+  peer's editing rectangle, else `UiError::Unsupported` before native
+  mutation (full bounds clipping is no excuse for arbitrary overlap);
+- selection/caret/IME colors and fonts stay primarily OS-owned — no public
+  `TextStyle` knobs on editable peers, system fonts and text scaling remain;
+- theme/style/geometry updates never remount the peer, `set_text`, or reset
+  undo/selection/composition — resolved-value equality skips redundant
+  `apply`, and a style update during active composition is never converted
+  into a text replace. Backends validate adapter capability before any
+  native commit.
+
+The full patch vocabulary and merge/equality rules live in
+[STYLE_CUSTOMIZATION_MODEL.md](STYLE_CUSTOMIZATION_MODEL.md).
+
+## Authoring-frontend preservation (reserved)
+
+All future authoring frontends lower native editable text through the same
+capability-limited `TextInputStylePatch` path, never a generic painted-text
+style. The common contract in
+[STYLE_CUSTOMIZATION_MODEL.md](STYLE_CUSTOMIZATION_MODEL.md#future-optional-authoring-frontends-reserved)
+reserves recoverable candidate validation before native mutation. It does
+not introduce CSS or change the peer contract: opaque backing/foreground,
+rectangular native islands, system editing/accessibility ownership, identity/
+generation and IME/selection/undo remain authoritative. Styling metadata is
+not a reconciliation key; style-only updates never replace text or remount.
+
+Valid color changes may require peer `apply`; geometry changes still follow
+layout and safety-inset rules. Shadow-only updates remain chrome paint/damage
+with no peer `apply`. Unsafe candidate colors, geometry or overlap are
+rejected before mutation, not made to work by recreating RichEdit. Workers
+never handle native objects. No CSS/native implementation is added now.
+
 ## Platform peers
 
 ### Windows — proposed: windowless RichEdit

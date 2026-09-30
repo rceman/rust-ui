@@ -740,6 +740,22 @@ This `Inbox` is a composition demo only — a production transcript applies the
 count+byte bounding and keyed records of example 6 rather than an unbounded
 `Vec`.
 
+## Future styling authoring (reserved, not a v0.1 API)
+
+Rust builders are the first authoring frontend; future optional CSS or
+generated/design-tool frontends feed the same typed style and layout inputs
+across FAST/CUSTOM/SURGICAL, not a fourth UI layer or another component model.
+The existing examples retain their Rust full-style/partial-patch semantics.
+A frontend may supply an effective typed stylesheet patch below inline Rust,
+without exposing CSS machinery to components, layout, renderer or peers.
+
+The single contract is
+[STYLE_CUSTOMIZATION_MODEL.md](STYLE_CUSTOMIZATION_MODEL.md#future-optional-authoring-frontends-reserved):
+static explicit bindings may eliminate parser/general-selector work in
+production, while dynamic selectors may still need compiled matching.
+No CSS APIs, selectors, watcher, metadata or CSS tests are implemented or
+added to the Windows spike. The existing 17 styling test groups stay unchanged.
+
 ## Future controls (not v0.1)
 
 Same core, no redesign — each is a typed props struct plus a typed
@@ -759,4 +775,135 @@ ui.scroll_area(|ui| {
 })
 .on_scroll(Msg::Scrolled);
 ui.dialog(&self.confirm_open).title("Discard?").on_open_change(Msg::ConfirmOpen);
+```
+
+## 11. Style customization
+
+The three workflows over one renderer — full semantics in
+[STYLE_CUSTOMIZATION_MODEL.md](STYLE_CUSTOMIZATION_MODEL.md).
+
+**A — high-level (FAST):**
+
+```rust
+ui.button("Send")
+    .variant(ButtonVariant::Primary)
+    .size(ControlSize::Md)
+    .icon(Icon::ArrowUp)
+    .on_press(|| Msg::Send);
+```
+
+**B — custom action from public primitives (CUSTOM):** the "Build succeeded —
+Open build log" banner — `ui.action` + `BoxStyle`/`ActionStyle` + `Row` +
+`ui.icon` + `ui.text`, accessible label mandatory, asymmetric radii/padding,
+hover patch touching only the box background:
+
+```rust
+enum Msg {
+    OpenBuildLog,
+}
+
+fn build_banner(ui: &mut Ui<Msg>, succeeded: bool) {
+    let style = ActionStyle::new(
+        BoxStyle::new()
+            .background(Color::role(ColorRole::Muted))
+            .border(Border::all(BorderSide::new(
+                dp(1.0),
+                Color::role(ColorRole::Border),
+            )))
+            .radii(CornerRadii {
+                top_left: dp(6.0),
+                top_right: dp(6.0),
+                ..Default::default()
+            })
+            .padding(Insets {
+                left: dp(12.0),
+                right: dp(12.0),
+                ..Default::default()
+            }),
+    )
+    .hover(BoxStylePatch {
+        background: Some(Color::role(ColorRole::Background)),
+        ..Default::default()
+    });
+
+    ui.group("build-banner", |ui| {
+        if succeeded {
+            ui.action(Action::new().label("Build succeeded; open build log").style(style), |ui| {
+                ui.row(Row::new().gap(Space::Sm).align(Align::Center), |ui| {
+                    ui.icon(Icon::ArrowUp).color_role(ColorRole::Foreground);
+                    ui.text("Build succeeded — open build log")
+                        .style(TextStyle::new().foreground(Color::role(ColorRole::Foreground)));
+                });
+            })
+            .on_press(|| Msg::OpenBuildLog);
+        }
+    });
+}
+```
+
+**C — surgical override (SURGICAL):** a standard `Primary` button where only
+the bottom border changes; every unrelated authored/resolved style and
+layout-input property in every state stays identical before OS enforcement
+(derived geometry may shift with the new border extent — see the invariant
+in [STYLE_CUSTOMIZATION_MODEL.md](STYLE_CUSTOMIZATION_MODEL.md)):
+
+```rust
+ui.button("Send")
+    .variant(ButtonVariant::Primary)
+    .style(
+        ButtonStylePatch::new()
+            .border_bottom_width(dp(2.0))
+            .border_bottom_color(Color::rgb(255, 0, 0)),
+    )
+    .on_press(|| Msg::Send);
+```
+
+**Shadow** — the v0.1 effect primitive (contract in
+[STYLE_CUSTOMIZATION_MODEL.md](STYLE_CUSTOMIZATION_MODEL.md)): `Surface` is
+elevated by default; a primitive `ui.box_` uses the identical descriptor; a
+surgical patch `Set`s or `Remove`s atomically:
+
+```rust
+ui.surface(Surface::new().padding(Space::Md), |ui| {
+    ui.label("Elevated by default");
+});
+
+ui.box_(
+    BoxProps::new().style(BoxStyle::new().shadow(Some(Shadow {
+        color: Color::role(ColorRole::Shadow),
+        offset_x: dp(0.0),
+        offset_y: dp(1.0),
+        blur_sigma: dp(2.0),
+    }))),
+    |ui| {
+        ui.text("Same shadow vocabulary on a primitive");
+    },
+);
+
+ui.surface(
+    Surface::new().style(BoxStylePatch {
+        shadow: ShadowPatch::Set(Shadow {
+            color: Color::rgba(0, 0, 0, 48),
+            offset_x: dp(-2.0),
+            offset_y: dp(3.0),
+            blur_sigma: dp(3.0),
+        }),
+        ..Default::default()
+    }),
+    |ui| {
+        ui.label("Signed offsets and a custom shadow color");
+    },
+);
+
+ui.surface(
+    Surface::new()
+        .padding(Space::Md)
+        .style(BoxStylePatch {
+            shadow: ShadowPatch::Remove,
+            ..Default::default()
+        }),
+    |ui| {
+        ui.label("Flat surface");
+    },
+);
 ```

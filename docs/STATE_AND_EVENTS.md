@@ -94,6 +94,11 @@ and produce no messages. `.on_key` only sees unhandled non-text keys; global
 shortcuts never steal active text composition. Tooltips emit no message by
 default — hover/focus is runtime chrome, not app state.
 
+`ui.action` nodes ride this same path — pointer release, Enter/Space and
+Invoke produce `.on_press`; `disabled` suppresses all of it. Runtime-driven
+interaction-state styling needs no app messages, while consumers can still
+explicitly bind the observational pointer/focus rows above.
+
 Future controls inherit this table rather than bypassing it: Dialog/Popover
 add focus scoping, Escape/dismissal, focus return to the invoker, a semantic
 role and a top-level platform overlay; ScrollArea adds clipping/damage and an
