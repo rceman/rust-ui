@@ -12,8 +12,10 @@ use windows::Win32::Foundation::RECT;
 
 use crate::geom::{Align, Length, Point, Visibility};
 use crate::node::{
-    KIND_COLUMN, KIND_GROUP, KIND_ROW, KIND_SCOPE, KIND_STACK, KIND_SURFACE, NodeData,
+    KIND_ACTION, KIND_BOX, KIND_COLUMN, KIND_GROUP, KIND_ROW, KIND_SCOPE, KIND_STACK,
+    KIND_SURFACE, NodeData,
 };
+use crate::style::Insets;
 use crate::runtime::UpdateCtx;
 use crate::theme::{ControlSize, Space};
 use crate::{NodeId, UiResult};
@@ -45,6 +47,62 @@ impl DipRect {
 
 fn space_px(s: Space) -> f32 {
     s.dp().0
+}
+
+/// Content insets for a node: painted box containers take padding from the
+/// resolved `BoxStyle` (per-side, patch-aware); actions inset by the live
+/// state's resolved style; layout-only containers keep `Space` padding.
+/// Border widths also consume insets — the border stroke is inset from the
+/// outer edge, so content sits inside the border line.
+fn node_insets(ctx: &PeerCtx, id: NodeId, n: &crate::node::Node) -> Insets {
+    match &n.data {
+        NodeData::Container { kind, props } => {
+            let b = props
+                .resolved_box(*kind)
+                .unwrap_or_default();
+            let mut i = b.padding;
+            // uniform border consumes insets inside its stroke
+            if let Some(side) = b.border.uniform() {
+                let w = side.width.0;
+                i.top.0 += w;
+                i.right.0 += w;
+                i.bottom.0 += w;
+                i.left.0 += w;
+            } else {
+                i.top.0 += b.border.top.width.0;
+                i.right.0 += b.border.right.width.0;
+                i.bottom.0 += b.border.bottom.width.0;
+                i.left.0 += b.border.left.width.0;
+            }
+            if i == Insets::default() {
+                return props
+                    .padding
+                    .map(|s| Insets::all(s.dp()))
+                    .unwrap_or_default();
+            }
+            i
+        }
+        NodeData::Action {
+            style, disabled, ..
+        } => {
+            let b = style.resolve(
+                *disabled,
+                ctx.pressed.get() == Some(id),
+                ctx.hot.get() == Some(id),
+                ctx.focus.get() == Some(id) && !*disabled,
+            );
+            let mut i = b.padding;
+            if let Some(side) = b.border.uniform() {
+                let w = side.width.0;
+                i.top.0 += w;
+                i.right.0 += w;
+                i.bottom.0 += w;
+                i.left.0 += w;
+            }
+            i
+        }
+        _ => Insets::default(),
+    }
 }
 
 /// Access a node's peer through the backend routing registry.
@@ -84,14 +142,42 @@ where
             let w = if *wrap { avail_w } else { f32::MAX };
             measure(text, w, 14.0)
         }
-        NodeData::Button { text, size, .. } => {
-            let (tw, _) = measure(text, f32::MAX, 14.0);
+        NodeData::Button {
+            text,
+            variant,
+            style,
+            disabled,
+            size,
+            ..
+        } => {
+            // resolved Normal-state style drives the natural size — state
+            // branches change paint/insets; the reserved row height comes
+            // from the size class, not the resolved padding
+            let vs = crate::style::resolve_button(
+                *variant,
+                *size,
+                style,
+                crate::style::StyleState::Normal,
+                false,
+                ctx.colors.borrow().0.dark,
+            );
+            let ts = vs.text_style;
+            let tsz = match ts.size {
+                crate::style::TextSize::Body => 14.0,
+                crate::style::TextSize::Exact(d) => d.0,
+            };
+            let (tw, _) = measure(text, f32::MAX, tsz);
+            let bs = &vs.box_style;
+            let (bw, bh) = border_insets(bs);
             let h = match size {
                 ControlSize::Sm => 28.0,
                 ControlSize::Md => 36.0,
                 ControlSize::Lg => 44.0,
             };
-            (tw + 32.0, h)
+            let w = tw + bs.padding.left.0 + bs.padding.right.0 + bw;
+            let _ = disabled;
+            let _ = bh;
+            (w, h)
         }
         NodeData::Editor {
             multiline,
@@ -129,9 +215,10 @@ where
             (want.width.min(avail_w), want.height)
         }
         NodeData::Container { kind, props } => {
-            let pad = props.padding.map(space_px).unwrap_or(0.0);
+            let pad = node_insets(ctx, id, n);
+            let (pad_h, pad_v) = (pad.left.0 + pad.right.0, pad.top.0 + pad.bottom.0);
             let gap = props.gap.map(space_px).unwrap_or(0.0);
-            let inner_w = (avail_w - pad * 2.0).max(0.0);
+            let inner_w = (avail_w - pad_h).max(0.0);
             let kids: Vec<(f32, f32)> = n
                 .children
                 .iter()
@@ -150,14 +237,14 @@ where
                 KIND_ROW => {
                     let w = kids.iter().map(|k| k.0).sum::<f32>()
                         + gap * kids.len().saturating_sub(1) as f32
-                        + pad * 2.0;
-                    let h = kids.iter().map(|k| k.1).fold(0.0f32, f32::max) + pad * 2.0;
+                        + pad_h;
+                    let h = kids.iter().map(|k| k.1).fold(0.0f32, f32::max) + pad_v;
                     (w.min(avail_w.max(0.0)), h)
                 }
-                // Stack/Surface: children overlay — take the max box
-                KIND_STACK | KIND_SURFACE => {
-                    let w = kids.iter().map(|k| k.0).fold(0.0f32, f32::max) + pad * 2.0;
-                    let h = kids.iter().map(|k| k.1).fold(0.0f32, f32::max) + pad * 2.0;
+                // Stack/Surface/Box: children overlay — take the max box
+                KIND_STACK | KIND_SURFACE | KIND_BOX => {
+                    let w = kids.iter().map(|k| k.0).fold(0.0f32, f32::max) + pad_h;
+                    let h = kids.iter().map(|k| k.1).fold(0.0f32, f32::max) + pad_v;
                     (w.min(avail_w.max(0.0)), h)
                 }
                 // Column, and transparent group/scope projecting onto the
@@ -165,10 +252,32 @@ where
                 _ => {
                     let h = kids.iter().map(|k| k.1).sum::<f32>()
                         + gap * kids.len().saturating_sub(1) as f32
-                        + pad * 2.0;
+                        + pad_v;
                     (avail_w, h)
                 }
             }
+        }
+        NodeData::Action { .. } => {
+            // semantic action wraps decorative content — stack semantics:
+            // children overlay inside the resolved live-state padding
+            let pad = node_insets(ctx, id, n);
+            let inner_w = (avail_w - pad.left.0 - pad.right.0).max(0.0);
+            let kids: Vec<(f32, f32)> = n
+                .children
+                .iter()
+                .filter_map(|slot| {
+                    let g = rt.arena.generation_of(*slot);
+                    let cid = NodeId {
+                        slot: *slot,
+                        generation: g,
+                    };
+                    rt.arena.get(cid)?;
+                    Some(natural(rt, ctx, cid, inner_w, measure))
+                })
+                .collect();
+            let w = kids.iter().map(|k| k.0).fold(0.0f32, f32::max) + pad.left.0 + pad.right.0;
+            let h = kids.iter().map(|k| k.1).fold(0.0f32, f32::max) + pad.top.0 + pad.bottom.0;
+            (w.min(avail_w.max(0.0)), h)
         }
         _ => (avail_w, 0.0),
     }
@@ -339,6 +448,7 @@ impl LayoutCache {
         }
         let kind = match &n.data {
             NodeData::Container { kind, .. } => *kind,
+            NodeData::Action { .. } => KIND_ACTION,
             _ => 0,
         };
         let props = match &n.data {
@@ -356,12 +466,12 @@ impl LayoutCache {
             return;
         }
         let mut measurer = super::render::measure_fn();
-        let pad = props.padding.map(space_px).unwrap_or(0.0);
+        let pad = node_insets(ctx, id, n);
         let inner = DipRect {
-            x: rect.x + pad,
-            y: rect.y + pad,
-            w: (rect.w - pad * 2.0).max(0.0),
-            h: (rect.h - pad * 2.0).max(0.0),
+            x: rect.x + pad.left.0,
+            y: rect.y + pad.top.0,
+            w: (rect.w - pad.left.0 - pad.right.0).max(0.0),
+            h: (rect.h - pad.top.0 - pad.bottom.0).max(0.0),
         };
         let ids: Vec<NodeId> = children
             .iter()
@@ -437,8 +547,8 @@ impl LayoutCache {
                     x += *sz + gap;
                 }
             }
-            // Stack/Surface: children take the full inner rect (declaration
-            // order paints later siblings on top).
+            // Stack/Surface/Box/Action: children take the full inner rect
+            // (declaration order paints later siblings on top).
             _ => {
                 for cid in ids {
                     self.walk(rt, ctx, cid, inner, rects, order, kind);
@@ -495,5 +605,17 @@ fn client_dip(hwnd: windows::Win32::Foundation::HWND, scale: f32) -> UiResult<(f
             (rc.right - rc.left) as f32 / scale,
             (rc.bottom - rc.top) as f32 / scale,
         ))
+    }
+}
+
+/// Total border thickness consumed around content (horizontal, vertical).
+fn border_insets(b: &crate::style::BoxStyle) -> (f32, f32) {
+    if let Some(side) = b.border.uniform() {
+        (side.width.0 * 2.0, side.width.0 * 2.0)
+    } else {
+        (
+            b.border.left.width.0 + b.border.right.width.0,
+            b.border.top.width.0 + b.border.bottom.width.0,
+        )
     }
 }

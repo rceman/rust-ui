@@ -3348,3 +3348,326 @@ fn uia_children_survive_rebuild() {
         );
     }
 }
+
+/// The spike scenario: Send A streams chunks -> Stop A -> Send B -> a late
+/// in-flight A chunk must not contaminate B; Stop must not block resend.
+#[test]
+fn send_stop_resend_late_chunks_fenced() {
+    struct S {
+        got: Vec<u32>,
+        busy: bool,
+    }
+    // channel so the test can fire a stale envelope later — a "late A chunk"
+    let late: Arc<Mutex<Option<crate::TaskSender<Msg>>>> = Arc::new(Mutex::new(None));
+    let late2 = late.clone();
+    let mut rig = Rig::new(
+        S { got: vec![], busy: false },
+        move |s: &mut S, m: Msg, cx: &mut UpdateCtx<Msg>| {
+            match m {
+                Msg::Kick => {
+                    if s.busy {
+                        return;
+                    }
+                    s.busy = true;
+                    let l = late2.clone();
+                    let _ = cx.spawn("stream", move |job| {
+                        *l.lock().unwrap() = Some(job.sender().clone());
+                        async move {
+                            let _ = job.send(Msg::Chunk(1)).await;
+                            std::future::pending::<()>().await;
+                        }
+                    });
+                }
+                Msg::Press => {
+                    cx.cancel("stream");
+                    s.busy = false;
+                }
+                Msg::Chunk(c) => s.got.push(c),
+                _ => {}
+            }
+        },
+        |_: &S, _: &mut Ui<Msg>| {},
+    );
+    rig.view().unwrap();
+    // Send A — task A registers and emits chunk 1
+    rig.rt.push_msg(Msg::Kick);
+    rig.pump().unwrap();
+    rig.exec.poll();
+    rig.pump().unwrap();
+    assert_eq!(rig.rt.state.got, vec![1]);
+    assert!(rig.rt.state.busy);
+    // Stop A — busy clears; the resend path is legal again
+    rig.rt.push_msg(Msg::Press);
+    rig.pump().unwrap();
+    assert!(!rig.rt.state.busy);
+    let stale_sender = late.lock().unwrap().take().expect("A sender");
+    // Send B — same key, fresh generation
+    rig.rt.push_msg(Msg::Kick);
+    rig.pump().unwrap();
+    assert!(rig.rt.state.busy);
+    rig.exec.poll(); // B sends chunk 1, parks
+    rig.pump().unwrap();
+    assert_eq!(rig.rt.state.got, vec![1, 1]);
+    // late A chunk: the fenced token's send must fail, nothing contaminates
+    let stale = stale_sender.clone();
+    let rt = tokio_block(async move { stale.send(Msg::Chunk(99)).await });
+    assert!(rt.is_err(), "fenced token send must fail, got {rt:?}");
+    rig.pump().unwrap();
+    assert_eq!(rig.rt.state.got, vec![1, 1]);
+}
+
+/// Minimal block-on for the test sender future — the send resolves
+/// immediately on a fenced token.
+#[cfg(windows)]
+fn tokio_block<F: std::future::Future>(fut: F) -> F::Output {
+    use std::sync::Arc;
+    use std::task::{Context, Poll, Wake};
+    struct W;
+    impl Wake for W {
+        fn wake(self: Arc<Self>) {}
+    }
+    let waker = std::task::Waker::from(Arc::new(W));
+    let mut cx = Context::from_waker(&waker);
+    let mut fut = std::pin::pin!(fut);
+    loop {
+        match fut.as_mut().poll(&mut cx) {
+            Poll::Ready(v) => return v,
+            Poll::Pending => std::thread::yield_now(),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// styling — the documented surgical invariant + resolution ordering
+// ---------------------------------------------------------------------------
+
+#[test]
+fn surgical_patch_changes_only_authored_fields() {
+    use crate::style::*;
+    use crate::theme::{ButtonVariant, ControlSize};
+    // the mandatory case from STYLE_CUSTOMIZATION_MODEL.md
+    let patch = ButtonStylePatch::new()
+        .border_bottom_width(crate::geom::dp(2.0))
+        .border_bottom_color(Color::rgb(255, 0, 0));
+    for &dark in &[false, true] {
+        for state in [
+            StyleState::Normal,
+            StyleState::Hover,
+            StyleState::Pressed,
+            StyleState::Disabled,
+        ] {
+            for &focus in &[false, true] {
+                let base = resolve_button(
+                    ButtonVariant::Primary,
+                    ControlSize::Md,
+                    &ButtonStylePatch::new(),
+                    state,
+                    focus,
+                    dark,
+                );
+                let patched = resolve_button(
+                    ButtonVariant::Primary,
+                    ControlSize::Md,
+                    &patch,
+                    state,
+                    focus,
+                    dark,
+                );
+                // exactly two fields may differ
+                let (a, b) = (base.box_style, patched.box_style);
+                assert_eq!(
+                    a.background, b.background,
+                    "background must not change ({state:?} focus={focus} dark={dark})"
+                );
+                assert_eq!(a.radii, b.radii, "radii must not change");
+                assert_eq!(a.padding, b.padding, "padding must not change");
+                assert_eq!(a.shadow, b.shadow, "shadow must not change");
+                assert_eq!(a.border.top, b.border.top, "top border unchanged");
+                assert_eq!(a.border.left, b.border.left, "left border unchanged");
+                assert_eq!(a.border.right, b.border.right, "right border unchanged");
+                assert_eq!(b.border.bottom.width, crate::geom::Dp(2.0));
+                assert_eq!(b.border.bottom.color, Color::rgb(255, 0, 0));
+                assert_eq!(base.text_style, patched.text_style, "text style unchanged");
+            }
+        }
+    }
+}
+
+#[test]
+fn patch_merge_and_resolution_order() {
+    use crate::style::*;
+    use crate::theme::{ButtonVariant, ControlSize};
+    // consumer base applies across ALL states (it sits over recipe state)
+    let patch = ButtonStylePatch::new().background(Color::rgb(1, 2, 3));
+    for state in [
+        StyleState::Normal,
+        StyleState::Hover,
+        StyleState::Pressed,
+    ] {
+        let v = resolve_button(
+            ButtonVariant::Primary,
+            ControlSize::Md,
+            &patch,
+            state,
+            false,
+            false,
+        );
+        assert_eq!(v.box_style.background, Color::rgb(1, 2, 3), "{state:?}");
+    }
+    // consumer state patch lands on top of that state's resolved values
+    let mut p = ButtonStylePatch::new().background(Color::rgb(1, 2, 3));
+    let mut hover = VisualStylePatch::new();
+    hover.box_style.background = Some(Color::rgb(9, 9, 9));
+    p = p.hover(hover);
+    let v = resolve_button(ButtonVariant::Primary, ControlSize::Md, &p, StyleState::Hover, false, false);
+    assert_eq!(v.box_style.background, Color::rgb(9, 9, 9));
+    // normal keeps the consumer base
+    let v = resolve_button(ButtonVariant::Primary, ControlSize::Md, &p, StyleState::Normal, false, false);
+    assert_eq!(v.box_style.background, Color::rgb(1, 2, 3));
+    // focus overlay: recipe focus border + consumer focus patch on top
+    let mut p2 = ButtonStylePatch::new();
+    let mut fv = VisualStylePatch::new();
+    fv.box_style.background = Some(Color::rgb(7, 7, 7));
+    p2 = p2.focus_visible(fv);
+    let v = resolve_button(ButtonVariant::Primary, ControlSize::Md, &p2, StyleState::Normal, true, false);
+    assert_eq!(v.box_style.background, Color::rgb(7, 7, 7));
+    assert!(v.box_style.border.top.width.0 > 0.0, "recipe focus ring present");
+}
+
+#[test]
+fn shadow_patch_is_atomic_set_remove() {
+    use crate::style::*;
+    let mut b = BoxStyle::new();
+    assert_eq!(b.shadow, None);
+    let sh = Shadow {
+        color: Color::rgb(0, 0, 0),
+        offset_x: crate::geom::Dp(0.0),
+        offset_y: crate::geom::Dp(4.0),
+        blur_sigma: crate::geom::Dp(8.0),
+    };
+    b.patch(&BoxStylePatch {
+        shadow: ShadowPatch::Set(sh),
+        ..Default::default()
+      });
+    assert_eq!(b.shadow, Some(sh));
+    // Unchanged never erases
+    b.patch(&BoxStylePatch::default());
+    assert_eq!(b.shadow, Some(sh));
+    // Remove forces none
+    b.patch(&BoxStylePatch {
+        shadow: ShadowPatch::Remove,
+        ..Default::default()
+    });
+    assert_eq!(b.shadow, None);
+}
+
+/// `ui.action` with decorative content stages cleanly; nested actionable
+/// children are a structural diagnostic, never staged.
+#[test]
+fn action_stages_and_rejects_nested_actionable() {
+    use crate::style::Action;
+    struct S;
+    let mut rig = Rig::new(
+        S,
+        |_: &mut S, _: Msg, _: &mut UpdateCtx<Msg>| {},
+        |_: &S, ui: &mut Ui<Msg>| {
+            ui.action(Action::new().label("tile"), |ui| {
+                ui.label("decorative");
+            })
+            .on_press(|| Msg::Press);
+        },
+    );
+    rig.view().unwrap();
+    // the action node committed with its child
+    let kinds: Vec<u8> = {
+        let root = rig.rt.root;
+        let rn = rig.rt.arena.get(root).unwrap();
+        rn.children
+            .iter()
+            .map(|&s| {
+                let g = rig.rt.arena.generation_of(s);
+                rig.rt.arena.get(crate::NodeId { slot: s, generation: g }).unwrap().kind_tag()
+            })
+            .collect()
+    };
+    assert_eq!(kinds, vec![crate::node::KIND_ACTION]);
+
+    // nested button inside an action -> InvalidComposition abort
+    let mut rig2 = Rig::new(
+        S,
+        |_: &mut S, _: Msg, _: &mut UpdateCtx<Msg>| {},
+        |_: &S, ui: &mut Ui<Msg>| {
+            ui.action(Action::new().label("bad"), |ui| {
+                ui.button("nested").on_press(|| Msg::Press);
+            })
+            .on_press(|| Msg::Press);
+        },
+    );
+    let r = rig2.view();
+    assert!(matches!(r, Err(crate::UiError::InvalidUi(crate::UiDiagnostic::InvalidComposition))), "{r:?}");
+}
+
+/// Patch removal on a later view pass restores recipe values — the node is
+/// the SAME retained node (no remount) and the committed style is the new
+/// declaration, not patch history.
+#[test]
+fn patch_removal_restores_recipe_without_remount() {
+    use crate::style::*;
+    struct S {
+        patched: bool,
+    }
+    let mut rig = Rig::new(
+        S { patched: true },
+        |_: &mut S, _: Msg, _: &mut UpdateCtx<Msg>| {},
+        |s: &S, ui: &mut Ui<Msg>| {
+            let b = ui.button("send").variant(crate::theme::ButtonVariant::Primary);
+            if s.patched {
+                b.style(
+                    ButtonStylePatch::new()
+                        .border_bottom_width(crate::geom::dp(2.0))
+                        .border_bottom_color(Color::rgb(255, 0, 0)),
+                )
+                .on_press(|| Msg::Press);
+            } else {
+                b.on_press(|| Msg::Press);
+            }
+        },
+    );
+    rig.view().unwrap();
+    let node_id = {
+        let root = rig.rt.root;
+        let rn = rig.rt.arena.get(root).unwrap();
+        let slot = rn.children[0];
+        crate::NodeId {
+            slot,
+            generation: rig.rt.arena.generation_of(slot),
+        }
+    };
+    // pass 1: patch committed
+    {
+        let n = rig.rt.arena.get(node_id).unwrap();
+        let NodeDataLike { patch: p } = button_style_of(n);
+        assert_eq!(
+            p.styles.base.box_style.border.bottom.width,
+            Some(crate::geom::Dp(2.0))
+        );
+    }
+    // pass 2: patch removed — same node, fresh declaration
+    rig.rt.state.patched = false;
+    rig.view().unwrap();
+    let n2 = rig.rt.arena.get(node_id).unwrap();
+    assert_eq!(button_style_of(n2).patch, Default::default());
+}
+
+#[cfg(windows)]
+struct NodeDataLike {
+    patch: crate::style::ButtonStylePatch,
+}
+
+#[cfg(windows)]
+fn button_style_of(n: &crate::node::Node) -> NodeDataLike {
+    match &n.data {
+        crate::node::NodeData::Button { style, .. } => NodeDataLike { patch: *style },
+        _ => panic!("expected button"),
+    }
+}

@@ -39,7 +39,10 @@ pub enum ColorRole {
     AccentForeground,
     Border,
     Destructive,
+    DestructiveForeground,
     Focus,
+    /// shadow tint — used by `Shadow` when authored via a role
+    Shadow,
 }
 
 #[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
@@ -95,14 +98,6 @@ pub enum ControlSize {
     #[default]
     Md,
     Lg,
-}
-
-/// Rare typed override layer for a button (foreground/radius/padding only).
-#[derive(Copy, Clone, Debug, Default, PartialEq)]
-pub struct ButtonStyle {
-    pub foreground: Option<ColorRole>,
-    pub radius: Option<Radius>,
-    pub padding: Option<Space>,
 }
 
 #[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]

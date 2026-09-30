@@ -82,6 +82,11 @@ pub(crate) struct PeerCtx {
     /// owning window — assigned on WM_CREATE (peers may mount before it)
     pub hwnd: std::cell::Cell<HWND>,
     pub scale: std::cell::Cell<f32>,
+    /// interaction state at layout-run time — state style branches can
+    /// consume content insets, so layout resolves the live state
+    pub hot: std::cell::Cell<Option<NodeId>>,
+    pub pressed: std::cell::Cell<Option<NodeId>>,
+    pub focus: std::cell::Cell<Option<NodeId>>,
     pub sink: Arc<Mutex<Vec<NativeSinkItem>>>,
     pub registry: Arc<Mutex<HashMap<u32, RcWeak<RefCell<WindowlessPeer>>>>>,
     next_id: AtomicU64,
@@ -705,6 +710,11 @@ where
 
     /// Relayout the whole tree — rect cache over LIVE NodeIds only.
     pub(crate) fn relayout(&mut self) -> UiResult {
+        // state branches can consume content insets — expose the live
+        // interaction state so layout resolves the same style the paint does
+        self.peer_ctx.hot.set(self.hot);
+        self.peer_ctx.pressed.set(self.pressed);
+        self.peer_ctx.focus.set(self.focus);
         let mut layout = LayoutCache::new(self.peer_ctx.scale.get());
         let (rects, order) = layout.run(&mut self.rt, &self.peer_ctx)?;
         // prune stale ids — backend cache holds live NodeIds only
@@ -769,7 +779,8 @@ where
             };
             if r.contains(p) {
                 match &n.data {
-                    NodeData::Button { .. } | NodeData::Editor { .. } | NodeData::Custom { .. } => {
+                    NodeData::Button { .. } | NodeData::Editor { .. } | NodeData::Custom { .. }
+                    | NodeData::Action { .. } => {
                         return Some(id);
                     }
                     _ => {}
@@ -1026,7 +1037,8 @@ where
                 };
                 n.visibility == Visibility::Visible
                     && n.interactive()
-                    && matches!(n.data, NodeData::Button { .. } | NodeData::Editor { .. })
+                    && matches!(n.data, NodeData::Button { .. } | NodeData::Editor { .. }
+                                | NodeData::Action { .. })
             })
             .collect();
         if eligible.is_empty() {
@@ -1217,6 +1229,15 @@ where
                         _ => (UIA_CustomControlTypeId, "Custom"),
                     };
                     (s.label, ct, loc)
+                }
+                // semantic action — Button when actionable (Invoke), else a
+                // named group; children are decorative
+                NodeData::Action { label, .. } => {
+                    if n.factories.on_press.is_some() {
+                        (label.to_string(), UIA_ButtonControlTypeId, "Button")
+                    } else {
+                        (label.to_string(), UIA_GroupControlTypeId, "Group")
+                    }
                 }
                 _ => continue,
             };
@@ -1430,6 +1451,9 @@ where
         lib: msft.clone(),
         hwnd: std::cell::Cell::new(HWND::default()),
         scale: std::cell::Cell::new(1.0),
+        hot: std::cell::Cell::new(None),
+        pressed: std::cell::Cell::new(None),
+        focus: std::cell::Cell::new(None),
         sink: sink.clone(),
         registry: Arc::new(Mutex::new(HashMap::new())),
         next_id: AtomicU64::new(1),

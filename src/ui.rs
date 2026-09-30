@@ -8,9 +8,12 @@ use crate::event::{EventFactorySet, FrameTime, KeyEvent, PointerEvent, ScrollOff
 use crate::geom::{Align, Justify, LayoutSpec, Point, Visibility};
 use crate::key::{ChildKey, ErasedKey, KeyId};
 use crate::node::{ContainerProps, MsgAdapters, NodeData, NodeId};
+use crate::style::{
+    Action, BoxProps, ButtonStylePatch,
+};
 use crate::text::{TextConflict, TextEdit, TextSelection, TextValue};
 use crate::theme::{
-    Appearance, ButtonStyle, ButtonVariant, ColorRole, ControlSize, MotionToken, Space,
+    Appearance, ButtonVariant, ColorRole, ControlSize, MotionToken, Space,
     SubmitPolicy, Theme,
 };
 
@@ -124,6 +127,7 @@ impl Row {
             align: Some(self.align),
             justify: Some(self.justify),
             padding: Some(self.padding),
+            ..Default::default()
         }
     }
 }
@@ -162,6 +166,7 @@ impl Column {
             align: Some(self.align),
             justify: Some(self.justify),
             padding: Some(self.padding),
+            ..Default::default()
         }
     }
 }
@@ -190,19 +195,42 @@ impl Stack {
 #[derive(Copy, Clone, Debug, Default, PartialEq)]
 pub struct Surface {
     pub padding: Space,
+    /// surgical patch — merges fieldwise within this build
+    pub patch: crate::style::BoxStylePatch,
 }
 
 impl Surface {
     pub fn new() -> Self {
         Self::default()
     }
+    /// recipe convenience — populates `BoxStyle.padding` before the patch
     pub fn padding(mut self, p: Space) -> Self {
         self.padding = p;
         self
     }
+    /// surgical patch — later `.style` calls deep-merge, `None` never erases
+    pub fn style(mut self, p: crate::style::BoxStylePatch) -> Self {
+        self.patch.merge(&p);
+        self
+    }
     pub(crate) fn props(&self) -> ContainerProps {
+        let mut patch = self.patch;
+        // Space padding is a recipe convenience feeding the same BoxStyle
+        // padding — a patch field wins over the convenience value
+        let d = self.padding.dp();
+        for f in [
+            &mut patch.padding.top,
+            &mut patch.padding.right,
+            &mut patch.padding.bottom,
+            &mut patch.padding.left,
+        ] {
+            if f.is_none() {
+                *f = Some(d);
+            }
+        }
         ContainerProps {
-            padding: Some(self.padding),
+            padding: None, // resolved from the box style, not Space
+            patch,
             ..Default::default()
         }
     }
@@ -255,6 +283,7 @@ impl StagedNode {
                 }
             }
             NodeData::Custom { .. } => crate::node::KIND_CUSTOM,
+            NodeData::Action { .. } => crate::node::KIND_ACTION,
         }
     }
 
@@ -318,6 +347,9 @@ impl UiFrame {
 /// retained arena is read-only through `view` and used for matching + Rc
 /// reuse. Buffers are cleared (capacity retained) each view pass.
 pub(crate) struct Tx<'r> {
+    /// >0 while an `ui.action` draw closure runs — actionable/native-peer
+    /// children staged inside are InvalidComposition diagnostics
+    pub(crate) action_depth: u32,
     /// flat staged node arena — `StagedNode.children` index into this
     pub nodes: Vec<StagedNode>,
     pub frames: Vec<UiFrame>,
@@ -394,6 +426,15 @@ impl Tx<'_> {
             self.diagnostics.push(d);
             return;
         }
+        // action content is decorative — no actionable/focusable/native
+        // peer children inside a semantic action
+        if self.action_depth > 0
+            && matches!(kind, crate::node::KIND_BUTTON | crate::node::KIND_ACTION
+                        | crate::node::KIND_TEXT_INPUT | crate::node::KIND_TEXT_AREA)
+        {
+            self.diagnostics.push(UiDiagnostic::InvalidComposition);
+            return;
+        }
         let frame_idx = self.frames.len() - 1;
         let key = match self.frames[frame_idx].child_key(kind, explicit) {
             Ok(k) => k,
@@ -420,17 +461,30 @@ impl Tx<'_> {
     }
 
     /// Stage a container: draw children into a fresh frame against the
-    /// matched retained node, then append the container.
+    /// matched retained node, then append the container. `build` produces
+    /// the node data (Container for layout kinds, Action for `ui.action`).
     fn stage_container<M: 'static>(
         &mut self,
         kind: u8,
         explicit: Option<ErasedKey>,
         props: ContainerProps,
         layout: LayoutSpec,
+        factories: EventFactorySet,
         draw: impl FnOnce(&mut Ui<'_, '_, M>),
+        action_depth: bool,
+        build: impl FnOnce(ContainerProps) -> NodeData,
     ) {
         if let Some(d) = layout.validate() {
             self.diagnostics.push(d);
+            return;
+        }
+        // nested actionable inside an action's decorative content is a
+        // structural diagnostic, not event bubbling
+        if self.action_depth > 0
+            && matches!(kind, crate::node::KIND_BUTTON | crate::node::KIND_ACTION
+                        | crate::node::KIND_TEXT_INPUT | crate::node::KIND_TEXT_AREA)
+        {
+            self.diagnostics.push(UiDiagnostic::InvalidComposition);
             return;
         }
         let frame_idx = self.frames.len() - 1;
@@ -450,6 +504,9 @@ impl Tx<'_> {
             key_buckets: HashMap::new(),
             retained,
         });
+        if action_depth {
+            self.action_depth += 1;
+        }
         // hand a Ui view of the same Tx to draw — self re-borrowed
         {
             let mut ui = Ui::<M> {
@@ -458,14 +515,20 @@ impl Tx<'_> {
             };
             draw(&mut ui);
         }
+        if action_depth {
+            self.action_depth -= 1;
+        }
         let child_frame = self.frames.pop().unwrap();
+        let data = build(props);
+        // leaf kinds staged inside an action are checked at stage_leaf;
+        // the container itself inside an action is still invalid
         let idx = self.nodes.len() as u32;
         self.nodes.push(StagedNode {
             key,
-            data: NodeData::Container { kind, props },
+            data,
             visibility: Visibility::Visible,
             layout,
-            factories: EventFactorySet::default(),
+            factories,
             adapters: self.adapters.clone(),
             children: child_frame.children,
         });
@@ -491,7 +554,10 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
             Some(ErasedKey::new(key)),
             ContainerProps::default(),
             LayoutSpec::default(),
+            EventFactorySet::default(),
             draw,
+            false,
+            |props| NodeData::Container { kind: crate::node::KIND_GROUP, props },
         );
     }
 
@@ -502,7 +568,10 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
             None,
             props.props(),
             LayoutSpec::default(),
+            EventFactorySet::default(),
             draw,
+            false,
+            |props| NodeData::Container { kind: crate::node::KIND_COLUMN, props },
         );
     }
     pub fn row(&mut self, props: Row, draw: impl FnOnce(&mut Ui<'_, '_, M>)) {
@@ -511,7 +580,10 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
             None,
             props.props(),
             LayoutSpec::default(),
+            EventFactorySet::default(),
             draw,
+            false,
+            |props| NodeData::Container { kind: crate::node::KIND_ROW, props },
         );
     }
     pub fn stack(&mut self, props: Stack, draw: impl FnOnce(&mut Ui<'_, '_, M>)) {
@@ -520,16 +592,22 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
             None,
             props.props(),
             LayoutSpec::default(),
+            EventFactorySet::default(),
             draw,
+            false,
+            |props| NodeData::Container { kind: crate::node::KIND_STACK, props },
         );
     }
-    pub fn surface(&mut self, props: Surface, draw: impl FnOnce(&mut Ui<'_, '_, M>)) {
+        pub fn surface(&mut self, props: Surface, draw: impl FnOnce(&mut Ui<'_, '_, M>)) {
         self.tx.stage_container(
             crate::node::KIND_SURFACE,
             None,
             props.props(),
             LayoutSpec::default(),
+            EventFactorySet::default(),
             draw,
+            false,
+            |props| NodeData::Container { kind: crate::node::KIND_SURFACE, props },
         );
     }
 
@@ -544,6 +622,7 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
             text,
             wrap: false,
             color_role: ColorRole::Foreground,
+            patch: crate::style::TextStylePatch::default(),
             visibility: Visibility::Visible,
             layout: LayoutSpec::default(),
             factories: EventFactorySet::default(),
@@ -556,7 +635,7 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
             tx: self.tx,
             text,
             variant: ButtonVariant::default(),
-            style: ButtonStyle::default(),
+            style: ButtonStylePatch::default(),
             disabled: false,
             size: ControlSize::default(),
             motion: Some(MotionToken::Hover),
@@ -708,6 +787,7 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
             None,
             ContainerProps::default(),
             LayoutSpec::default(),
+            EventFactorySet::default(),
             |ui: &mut Ui<'_, '_, M>| {
                 for item in items {
                     let k = ErasedKey::new(key(item));
@@ -716,11 +796,84 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
                         Some(k),
                         ContainerProps::default(),
                         LayoutSpec::default(),
+                        EventFactorySet::default(),
                         |u| draw(u, item),
+                        false,
+                        |props| NodeData::Container { kind: crate::node::KIND_GROUP, props },
                     );
                 }
             },
+            false,
+            |props| NodeData::Container { kind: crate::node::KIND_GROUP, props },
         );
+    }
+
+    /// `ui.box_` — noninteractive painted box container; `BoxProps` carries
+    /// the authored full `BoxStyle` plus layout inputs (size stays layout).
+    pub fn box_(&mut self, props: BoxProps, draw: impl FnOnce(&mut Ui<'_, '_, M>)) {
+        let mut cp = ContainerProps {
+            full: Some(props.style),
+            ..Default::default()
+        };
+        // authored padding feeds the container inner insets
+        let _ = &mut cp;
+        self.tx.stage_container(
+            crate::node::KIND_BOX,
+            None,
+            cp,
+            props.layout,
+            EventFactorySet::default(),
+            draw,
+            false,
+            |props| NodeData::Container { kind: crate::node::KIND_BOX, props },
+        );
+    }
+
+    /// `ui.action` — semantic activation wrapper over arbitrary decorative
+    /// content. The action node is the single hit/focus/press owner; nested
+    /// actionable or native-peer children are InvalidComposition.
+    pub fn action<'a>(
+        &'a mut self,
+        props: Action,
+        draw: impl FnOnce(&mut Ui<'_, '_, M>),
+    ) -> ActionBuilder<'a, 'ui, M> {
+        let before = self.tx.nodes.len();
+        self.tx.stage_container(
+            crate::node::KIND_ACTION,
+            None,
+            ContainerProps::default(),
+            LayoutSpec::default(),
+            EventFactorySet::default(),
+            draw,
+            true,
+            move |_| NodeData::Action {
+                label: Rc::from(props.label.as_str()),
+                style: props.style,
+                disabled: props.disabled,
+            },
+        );
+        // the staged node is the last pushed (containers append last)
+        let staged = (self.tx.nodes.len() > before)
+            .then_some(self.tx.nodes.len() as u32 - 1);
+        ActionBuilder {
+            tx: self.tx,
+            staged,
+            _m: std::marker::PhantomData,
+        }
+    }
+
+    /// `ui.text` — styled text leaf; `label` is a recipe convenience over
+    /// the same renderer.
+    pub fn text<'a, T: AsRef<str>>(&'a mut self, text: T) -> TextBuilder<'a, 'ui, T, M> {
+        TextBuilder {
+            tx: self.tx,
+            text,
+            wrap: false,
+            style: crate::style::TextStyle::default(),
+            visibility: Visibility::Visible,
+            layout: LayoutSpec::default(),
+            _m: std::marker::PhantomData,
+        }
     }
 
     /// Stage a theme override — propagated to the runtime at commit.
@@ -749,6 +902,7 @@ pub struct LabelBuilder<'a, 'ui, T: AsRef<str>, M: 'static> {
     text: T,
     wrap: bool,
     color_role: ColorRole,
+    patch: crate::style::TextStylePatch,
     visibility: Visibility,
     layout: LayoutSpec,
     factories: EventFactorySet,
@@ -760,8 +914,14 @@ impl<'a, 'ui, T: AsRef<str>, M: 'static> LabelBuilder<'a, 'ui, T, M> {
         self.wrap = wrap;
         self
     }
+    /// typed shorthand — sets only the recipe patch's foreground role
     pub fn color_role(mut self, r: ColorRole) -> Self {
         self.color_role = r;
+        self
+    }
+    /// surgical text patch — merges fieldwise within this build
+    pub fn style(mut self, p: crate::style::TextStylePatch) -> Self {
+        self.patch.merge(&p);
         self
     }
     pub fn visibility(mut self, v: Visibility) -> Self {
@@ -795,6 +955,12 @@ impl<'a, 'ui, T: AsRef<str>, M: 'static> Drop for LabelBuilder<'a, 'ui, T, M> {
         let text = self.text.as_ref();
         let wrap = self.wrap;
         let role = self.color_role;
+        let mut patch = self.patch;
+        // color_role shorthand populates the patch's foreground only when
+        // the consumer didn't set one explicitly
+        if patch.foreground.is_none() {
+            patch.foreground = Some(crate::style::Color::Role(role));
+        }
         self.tx.stage_leaf(
             crate::node::KIND_LABEL,
             None,
@@ -815,6 +981,7 @@ impl<'a, 'ui, T: AsRef<str>, M: 'static> Drop for LabelBuilder<'a, 'ui, T, M> {
                     text,
                     wrap,
                     color_role: role,
+                    patch,
                 }
             },
         );
@@ -825,7 +992,7 @@ pub struct ButtonBuilder<'a, 'ui, M: 'static> {
     tx: &'a mut Tx<'ui>,
     text: &'a str,
     variant: ButtonVariant,
-    style: ButtonStyle,
+    style: ButtonStylePatch,
     disabled: bool,
     size: ControlSize,
     motion: Option<MotionToken>,
@@ -845,8 +1012,10 @@ impl<'a, 'ui, M: 'static> ButtonBuilder<'a, 'ui, M> {
         self.size = s;
         self
     }
-    pub fn style(mut self, s: ButtonStyle) -> Self {
-        self.style = s;
+    /// surgical patch — merges fieldwise into the same build's patch;
+    /// each view pass rebuilds from declaration (no history)
+    pub fn style(mut self, s: ButtonStylePatch) -> Self {
+        self.style.merge(&s);
         self
     }
     pub fn disabled(mut self, d: bool) -> Self {
@@ -1131,6 +1300,120 @@ impl<'a, 'ui, M: 'static> Drop for CustomBuilder<'a, 'ui, M> {
             move |_| NodeData::Custom {
                 render,
                 frame_events,
+            },
+        );
+    }
+}
+
+/// `ui.action` builder — the node stages immediately (children must draw
+/// inside it); factory methods retrofit onto the staged node before the
+/// transaction commits.
+pub struct ActionBuilder<'a, 'ui, M: 'static> {
+    tx: &'a mut Tx<'ui>,
+    /// staged node index in `tx.nodes` — None when the stage was rejected
+    staged: Option<u32>,
+    _m: std::marker::PhantomData<fn() -> M>,
+}
+
+impl<'a, 'ui, M: 'static> ActionBuilder<'a, 'ui, M> {
+    fn set(&mut self, f: impl FnOnce(&mut EventFactorySet)) {
+        if let Some(i) = self.staged {
+            f(&mut self.tx.nodes[i as usize].factories);
+        }
+    }
+    pub fn on_press(mut self, f: impl Fn() -> M + 'static) -> Self {
+        self.set(|fac| fac.on_press = Some(Box::new(move || Box::new(f()))));
+        self
+    }
+    pub fn on_focus(mut self, f: impl Fn() -> M + 'static) -> Self {
+        self.set(|fac| fac.on_focus = Some(Box::new(move || Box::new(f()))));
+        self
+    }
+    pub fn on_blur(mut self, f: impl Fn() -> M + 'static) -> Self {
+        self.set(|fac| fac.on_blur = Some(Box::new(move || Box::new(f()))));
+        self
+    }
+    pub fn on_key(mut self, f: impl Fn(KeyEvent) -> Option<M> + 'static) -> Self {
+        self.set(|fac| fac.on_key = Some(Box::new(move |e| f(e).map(|m| Box::new(m) as _))));
+        self
+    }
+    pub fn on_pointer_enter(mut self, f: impl Fn(PointerEvent) -> M + 'static) -> Self {
+        self.set(|fac| fac.on_pointer_enter = Some(Box::new(move |e| Box::new(f(e)))));
+        self
+    }
+    pub fn on_pointer_leave(mut self, f: impl Fn(PointerEvent) -> M + 'static) -> Self {
+        self.set(|fac| fac.on_pointer_leave = Some(Box::new(move |e| Box::new(f(e)))));
+        self
+    }
+}
+
+/// `ui.text` — styled text leaf with a full authored `TextStyle`.
+pub struct TextBuilder<'a, 'ui, T: AsRef<str>, M: 'static> {
+    tx: &'a mut Tx<'ui>,
+    text: T,
+    wrap: bool,
+    style: crate::style::TextStyle,
+    visibility: Visibility,
+    layout: LayoutSpec,
+    _m: std::marker::PhantomData<fn() -> M>,
+}
+
+impl<'a, 'ui, T: AsRef<str>, M: 'static> TextBuilder<'a, 'ui, T, M> {
+    /// full authored style — primitives want complete styles, not patches
+    pub fn style(mut self, s: crate::style::TextStyle) -> Self {
+        self.style = s;
+        self
+    }
+    pub fn wrap(mut self, w: bool) -> Self {
+        self.wrap = w;
+        self
+    }
+    pub fn visibility(mut self, v: Visibility) -> Self {
+        self.visibility = v;
+        self
+    }
+    pub fn width(mut self, w: crate::geom::Length) -> Self {
+        self.layout.width = w;
+        self
+    }
+    pub fn height(mut self, h: crate::geom::Length) -> Self {
+        self.layout.height = h;
+        self
+    }
+}
+
+impl<'a, 'ui, T: AsRef<str>, M: 'static> Drop for TextBuilder<'a, 'ui, T, M> {
+    fn drop(&mut self) {
+        // authored full style lands as a patch over the label recipe — the
+        // staged label shape is shared with `ui.label`
+        let mut patch = crate::style::TextStylePatch::default();
+        patch.foreground = Some(self.style.foreground);
+        if let crate::style::TextSize::Exact(d) = self.style.size {
+            patch.size = Some(d);
+        }
+        patch.weight = Some(self.style.weight);
+        let text = self.text.as_ref();
+        let wrap = self.wrap;
+        self.tx.stage_leaf(
+            crate::node::KIND_LABEL,
+            None,
+            self.visibility,
+            self.layout,
+            EventFactorySet::default(),
+            move |retained| {
+                let text = match retained {
+                    Some(crate::node::Node {
+                        data: NodeData::Label { text: old, .. },
+                        ..
+                    }) if &**old == text => old.clone(),
+                    _ => Rc::from(text),
+                };
+                NodeData::Label {
+                    text,
+                    wrap,
+                    color_role: ColorRole::Foreground,
+                    patch,
+                }
             },
         );
     }

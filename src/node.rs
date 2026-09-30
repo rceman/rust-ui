@@ -10,7 +10,8 @@ use crate::text::{
     BindingToken, EditOrigin, LeaseCell, TextConflict, TextEdit, TextRevision, TextSelection,
     TextSnapshot,
 };
-use crate::theme::{ButtonStyle, ButtonVariant, MotionToken, Space, SubmitPolicy};
+use crate::style::ButtonStylePatch;
+use crate::theme::{ButtonVariant, MotionToken, Space, SubmitPolicy};
 
 /// Widget kind discriminant — feeds static-sibling ordinal identity.
 pub(crate) const KIND_COLUMN: u8 = 1;
@@ -24,6 +25,8 @@ pub(crate) const KIND_TEXT_AREA: u8 = 8;
 pub(crate) const KIND_CUSTOM: u8 = 9;
 pub(crate) const KIND_GROUP: u8 = 10;
 pub(crate) const KIND_SCOPE: u8 = 11;
+pub(crate) const KIND_BOX: u8 = 12;
+pub(crate) const KIND_ACTION: u8 = 13;
 
 /// Backend surface the retained core talks to. Windowless rich-text peers
 /// implement this; tests drive `FakePeer`s.
@@ -263,6 +266,26 @@ pub(crate) struct ContainerProps {
     pub align: Option<Align>,
     pub justify: Option<Justify>,
     pub padding: Option<Space>,
+    /// surface: surgical patch over `surface_recipe`
+    pub patch: crate::style::BoxStylePatch,
+    /// box_: full authored style (no recipe merge)
+    pub full: Option<crate::style::BoxStyle>,
+}
+
+impl ContainerProps {
+    /// Resolved box style for surface/box containers; None for plain
+    /// layout-only containers (row/column/stack/group/scope).
+    pub(crate) fn resolved_box(&self, kind: u8) -> Option<crate::style::BoxStyle> {
+        match kind {
+            KIND_SURFACE => {
+                let mut s = crate::style::surface_recipe();
+                s.patch(&self.patch);
+                Some(s)
+            }
+            KIND_BOX => Some(self.full.unwrap_or_default()),
+            _ => None,
+        }
+    }
 }
 
 /// Retained node payload per kind.
@@ -277,11 +300,14 @@ pub(crate) enum NodeData {
         text: Rc<str>,
         wrap: bool,
         color_role: crate::theme::ColorRole,
+        /// surgical text patch — `.color_role` is a shorthand that sets only
+        /// `patch.foreground = Some(Color::Role(..))`
+        patch: crate::style::TextStylePatch,
     },
     Button {
         text: Rc<str>,
         variant: ButtonVariant,
-        style: ButtonStyle,
+        style: ButtonStylePatch,
         disabled: bool,
         size: crate::theme::ControlSize,
         motion: Option<MotionToken>,
@@ -302,6 +328,13 @@ pub(crate) enum NodeData {
     Custom {
         render: Rc<dyn crate::ui::CustomRender>,
         frame_events: bool,
+    },
+    /// `ui.action` — semantic activation wrapper: children are decorative
+    /// content; the action node owns hit/focus/press/invoke
+    Action {
+        label: Rc<str>,
+        style: crate::style::ActionStyle,
+        disabled: bool,
     },
 }
 
@@ -336,12 +369,38 @@ pub(crate) fn dirty_diff(old: &NodeData, new: &NodeData) -> u8 {
     const PAINT: u8 = 0b0000_0010;
     const SEMANTICS: u8 = 0b0000_1000;
     match (old, new) {
-        (NodeData::Container { props: a, .. }, NodeData::Container { props: b, .. }) => {
-            if a != b {
-                LAYOUT
-            } else {
-                0
+        (
+            NodeData::Container {
+                kind: ak,
+                props: a,
+            },
+            NodeData::Container {
+                kind: bk,
+                props: b,
+            },
+        ) => {
+            if ak != bk {
+                return LAYOUT | PAINT | SEMANTICS;
             }
+            // split: visual props (patch/full) -> PAINT, structural -> LAYOUT;
+            // a patch that touches padding also consumes content insets
+            let (av, bv) = (a.visual_clone(), b.visual_clone());
+            let (al, bl) = (a.layout_clone(), b.layout_clone());
+            let mut d = 0;
+            if al != bl {
+                d |= LAYOUT;
+            }
+            if av != bv {
+                d |= PAINT;
+                // patch affecting padding/radii feeds layout insets
+                if crate::style::patch_touches_layout(&a.patch)
+                    || crate::style::patch_touches_layout(&b.patch)
+                    || a.full != b.full
+                {
+                    d |= LAYOUT;
+                }
+            }
+            d
         }
         (
             NodeData::Label {
@@ -357,14 +416,28 @@ pub(crate) fn dirty_diff(old: &NodeData, new: &NodeData) -> u8 {
                 ..
             },
         ) => {
-            if at != bt {
+            if at != bt || aw != bw {
                 LAYOUT | PAINT
-            } else if aw != bw {
-                LAYOUT | PAINT
-            } else if ac != bc {
-                PAINT
             } else {
-                0
+                let mut d = 0;
+                if ac != bc {
+                    d |= PAINT;
+                }
+                match (old, new) {
+                    (
+                        NodeData::Label { patch: ap, .. },
+                        NodeData::Label { patch: bp, .. },
+                    ) => {
+                        if ap != bp {
+                            d |= PAINT;
+                            if ap.size != bp.size || ap.weight != bp.weight {
+                                d |= LAYOUT; // metrics change
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+                d
             }
         }
         (
@@ -452,7 +525,53 @@ pub(crate) fn dirty_diff(old: &NodeData, new: &NodeData) -> u8 {
             }
             d
         }
+        (
+            NodeData::Action {
+                label: al,
+                style: ast,
+                disabled: ad,
+            },
+            NodeData::Action {
+                label: bl,
+                style: bst,
+                disabled: bd,
+            },
+        ) => {
+            let mut d = 0;
+            if ast != bst {
+                d |= PAINT;
+                // base padding feeds content insets — a changed base or any
+                // patch that touches padding may change child rects
+                if ast.base != bst.base
+                    || [ast.hover, ast.pressed, ast.disabled, ast.focus_visible]
+                        .iter()
+                        .chain(
+                            [bst.hover, bst.pressed, bst.disabled, bst.focus_visible].iter(),
+                        )
+                        .flatten()
+                        .any(crate::style::patch_touches_layout)
+                {
+                    d |= LAYOUT;
+                }
+            }
+            if ad != bd {
+                d |= SEMANTICS;
+            }
+            if al != bl {
+                d |= SEMANTICS;
+            }
+            d
+        }
         _ => 0b0000_0111, // kind swap — everything
+    }
+}
+
+impl ContainerProps {
+    fn visual_clone(&self) -> (crate::style::BoxStylePatch, Option<crate::style::BoxStyle>) {
+        (self.patch, self.full)
+    }
+    fn layout_clone(&self) -> (Option<Space>, Option<Align>, Option<Justify>, Option<Space>) {
+        (self.gap, self.align, self.justify, self.padding)
     }
 }
 
@@ -471,6 +590,7 @@ impl Node {
                 }
             }
             NodeData::Custom { .. } => KIND_CUSTOM,
+            NodeData::Action { .. } => KIND_ACTION,
         }
     }
 
@@ -483,6 +603,7 @@ impl Node {
         match &self.data {
             NodeData::Button { disabled, .. } => !disabled,
             NodeData::Editor { disabled, .. } => !disabled,
+            NodeData::Action { disabled, .. } => !disabled,
             _ => true,
         }
     }

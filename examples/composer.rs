@@ -196,7 +196,12 @@ impl Spike {
                 self.turn_counter += 1;
                 let _ = cx.spawn("stream", |job| async move { Self::stream(job).await });
             }
-            Msg::Stop => cx.cancel("stream"),
+            Msg::Stop => {
+                // cancel fences the registration — late chunks/completion
+                // drop at mailbox resolve; busy clears so a resend is legal
+                cx.cancel("stream");
+                self.busy = false;
+            }
             Msg::Chunk(c) => {
                 if self.busy {
                     let room = RESPONSE_CAP.saturating_sub(self.response.len());
@@ -273,7 +278,16 @@ impl Spike {
                 },
             );
             ui.row(Row::new().gap(Space::Sm), |ui| {
-                ui.button("send").disabled(self.busy).on_press(|| Msg::Send);
+                // SURGICAL — the documented mandatory case: only the bottom
+                // border changes as authored/resolved values
+                ui.button("send")
+                    .disabled(self.busy)
+                    .style(
+                        ButtonStylePatch::new()
+                            .border_bottom_width(dp(2.0))
+                            .border_bottom_color(Color::rgb(255, 0, 0)),
+                    )
+                    .on_press(|| Msg::Send);
                 ui.button("stop")
                     .variant(ButtonVariant::Destructive)
                     .disabled(!self.busy)
@@ -298,7 +312,34 @@ impl Spike {
                 ui.button("mk B").on_press(|| Msg::RecreateB);
             });
             ui.label(self.response.as_str()).wrap(true);
-            ui.custom(self.tile.clone());
+            // CUSTOM — a semantic action built only from public primitives:
+            // Action props + box_/text children; activates like a button
+            ui.action(
+                Action::new()
+                    .label("custom tile action")
+                    .style(
+                        ActionStyle::new(
+                            BoxStyle::new()
+                                .background(Color::role(ColorRole::Muted))
+                                .radii(CornerRadii::all(dp(8.0)))
+                                .padding(Insets::all(dp(10.0)))
+                                .shadow(Some(Shadow {
+                                    color: Color::role(ColorRole::Shadow),
+                                    offset_x: dp(0.0),
+                                    offset_y: dp(3.0),
+                                    blur_sigma: dp(6.0),
+                                })),
+                        )
+                        .hover(BoxStylePatch::new().background(Color::role(ColorRole::Border))),
+                    ),
+                |ui| {
+                    ui.row(Row::new().gap(Space::Sm), |ui| {
+                        ui.label("custom action").color_role(ColorRole::Foreground);
+                        ui.custom(self.tile.clone());
+                    });
+                },
+            )
+            .on_press(|| Msg::ToggleDetails);
         });
     }
 }

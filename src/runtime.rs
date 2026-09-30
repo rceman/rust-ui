@@ -274,6 +274,7 @@ where
         nodes.clear();
         let (root_children, theme, staged_nodes) = {
             let mut tx = Tx {
+                action_depth: 0,
                 nodes,
                 frames: vec![UiFrame {
                     children: Vec::new(),

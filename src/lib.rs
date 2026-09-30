@@ -11,6 +11,7 @@ mod key;
 mod node;
 mod runtime;
 mod sched;
+mod style;
 mod tasks;
 mod text;
 mod theme;
@@ -24,6 +25,12 @@ pub use geom::{
 pub use key::KeyId;
 pub use node::NodeId;
 pub use runtime::UpdateCtx;
+pub use style::{
+    Action, ActionStyle, Border, BorderPatch, BorderSide, BorderSidePatch, BoxProps, BoxStyle,
+    BoxStylePatch, ButtonStylePatch, Color, CornerRadii, CornerRadiiPatch, Insets, InsetsPatch,
+    Shadow, ShadowPatch, StateStyles, StyleState, TextSize, TextStyle, TextStylePatch, TextWeight,
+    VisualStyle, VisualStylePatch,
+};
 pub use tasks::{
     BoxFuture, CancelToken, Executor, Job, ProxySendError, SendError, TaskSender, TaskStartError,
     UiProxy,
@@ -33,8 +40,8 @@ pub use text::{
     TextValue,
 };
 pub use theme::{
-    Appearance, ButtonStyle, ButtonVariant, ColorRole, ControlSize, MotionToken, Radius,
-    ReducedMotion, Space, SubmitPolicy, Theme, ThemeMode,
+    Appearance, ButtonVariant, ColorRole, ControlSize, MotionToken, Radius, ReducedMotion, Space,
+    SubmitPolicy, Theme, ThemeMode,
 };
 pub use ui::{
     ButtonBuilder, Canvas, Column, CustomBuilder, CustomRender, LabelBuilder, Paint, Path2d,
@@ -53,9 +60,15 @@ pub mod prelude {
         AcceptOutcome, BindingToken, EditOrigin, TextConflict, TextEdit, TextRevision,
         TextSelection, TextValue,
     };
+    pub use crate::style::{
+        Action, ActionStyle, Border, BorderPatch, BorderSide, BorderSidePatch, BoxProps, BoxStyle,
+        BoxStylePatch, ButtonStylePatch, Color, CornerRadii, CornerRadiiPatch, Insets, InsetsPatch,
+        Shadow, ShadowPatch, StateStyles, TextSize, TextStyle, TextStylePatch, TextWeight,
+        VisualStyle, VisualStylePatch,
+    };
     pub use crate::theme::{
-        Appearance, ButtonStyle, ButtonVariant, ColorRole, ControlSize, MotionToken, Radius,
-        ReducedMotion, Space, SubmitPolicy, Theme, ThemeMode,
+        Appearance, ButtonVariant, ColorRole, ControlSize, MotionToken, Radius, ReducedMotion,
+        Space, SubmitPolicy, Theme, ThemeMode,
     };
     pub use crate::ui::{
         Canvas, Column, CustomRender, Paint, Path2d, PathOp, Role, Row, Semantics, SemanticsAction,
@@ -87,6 +100,8 @@ pub enum UiDiagnostic {
     /// a rejected programmatic proposal with no `on_conflict` handler —
     /// surfaced as a structured diagnostic and suppressed (no retry loop)
     UnhandledTextConflict,
+    /// actionable/focusable/native-peer content inside `ui.action`
+    InvalidComposition,
 }
 
 impl std::fmt::Display for UiDiagnostic {
@@ -96,6 +111,7 @@ impl std::fmt::Display for UiDiagnostic {
             UiDiagnostic::DuplicateTextBinding => "TextValue bound to two mounted peers",
             UiDiagnostic::InvalidLayout => "invalid layout",
             UiDiagnostic::UnhandledTextConflict => "text conflict without on_conflict handler",
+            UiDiagnostic::InvalidComposition => "invalid composition (actionable/peer inside action)",
         };
         f.write_str(s)
     }

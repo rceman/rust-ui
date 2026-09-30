@@ -271,7 +271,7 @@ where
             CW_USEDEFAULT,
             CW_USEDEFAULT,
             980,
-            640,
+            900,
             None,
             None,
             Some(inst.into()),
