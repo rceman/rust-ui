@@ -122,7 +122,7 @@ impl PeerCtx {
                 {
                     fg
                 } else {
-                    crate::style::resolve_color(ts.foreground, appearance.dark)
+                    crate::style::resolve_color(ts.foreground, theme.dark)
                 },
                 sel_bg,
                 sel_fg,
@@ -185,8 +185,8 @@ impl crate::node::TextPeer for PeerHandle {
     /// Surgical patch changed on a mounted editor — resolve against the
     /// live appearance and push the new char format over all content.
     fn apply_text_style(&mut self, style: &crate::style::TextStyle) {
-        let (appearance, _) = self.ctx.colors.borrow().clone();
-        let c = crate::style::resolve_color(style.foreground, appearance.dark);
+        let (_, theme) = self.ctx.colors.borrow().clone();
+        let c = crate::style::resolve_color(style.foreground, theme.dark);
         let fg = windows::Win32::Foundation::COLORREF(
             ((c[0] * 255.0) as u32) | (((c[1] * 255.0) as u32) << 8) | (((c[2] * 255.0) as u32) << 16),
         );
@@ -211,8 +211,8 @@ impl crate::node::TextPeer for PeerHandle {
 }
 
 /// Theme palette handed to peers (fg/selection colors as `COLORREF` floats).
-pub(crate) fn palette(_theme: &Theme, appearance: &Appearance) -> ([f32; 4], [f32; 4], [f32; 4]) {
-    if appearance.dark {
+pub(crate) fn palette(theme: &Theme, _appearance: &Appearance) -> ([f32; 4], [f32; 4], [f32; 4]) {
+    if theme.dark {
         (
             [0.94, 0.94, 0.94, 1.0],
             [0.17, 0.36, 0.72, 1.0],
@@ -1304,7 +1304,7 @@ where
             if let Ok(raw) = peer.borrow().query_iid(&iid) {
                 let acc: IRicheditWindowlessAccessibility =
                     unsafe { windows::core::Interface::from_raw(raw) };
-                if let Ok(site) = u.site()
+                if let Ok(site) = u.site(k.id)
                     && let Ok(prov) = unsafe { acc.CreateProvider(&site) }
                     && let Ok(frag) = prov.cast::<IRawElementProviderFragment>()
                 {

@@ -169,7 +169,7 @@ where
                 style,
                 crate::style::StyleState::Normal,
                 false,
-                ctx.colors.borrow().0.dark,
+                ctx.colors.borrow().1.dark,
             );
             let ts = vs.text_style;
             let tsz = match ts.size {

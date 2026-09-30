@@ -318,7 +318,8 @@ impl Renderer {
         V: Fn(&S, &mut crate::Ui<'_, '_, M>),
     {
         self.hwnd = be.hwnd;
-        let dark = be.rt.appearance().dark;
+        // resolved theme darkness — the app-selected mode, not raw OS state
+        let dark = be.rt.theme.dark;
         let dpi = self.dpi;
         let target = self.ensure_target()?;
         unsafe {
