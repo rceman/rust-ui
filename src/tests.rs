@@ -3350,6 +3350,61 @@ fn uia_children_survive_rebuild() {
     }
 }
 
+/// A disabled control must surface as non-enabled + non-focusable in UIA
+/// — the assistive-tech contract that pairs with hit-test/dispatch gating.
+#[test]
+fn uia_disabled_node_reports_not_enabled() {
+    use crate::platform::win32::uia::{ChildBuild, UiaRoot};
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::Accessibility::*;
+    use windows::core::Interface;
+
+    let root = UiaRoot::new(HWND::default(), "t").expect("root");
+    let mk = |generation: u64, enabled: bool| ChildBuild {
+        id: crate::NodeId { slot: 0, generation },
+        name: "off".into(),
+        ct: UIA_ButtonControlTypeId,
+        localized: "Button",
+        rect: UiaRect {
+            left: 0.0,
+            top: 0.0,
+            width: 10.0,
+            height: 10.0,
+        },
+        actionable: true,
+        enabled,
+        peer_node: false,
+        native: None,
+    };
+    root.rebuild(vec![mk(0, false)]).expect("rebuild");
+    let rf: IRawElementProviderFragment = root.provider().cast().expect("root frag");
+    let btn = unsafe { rf.Navigate(NavigateDirection_FirstChild).expect("child") };
+    let s: IRawElementProviderSimple = btn.cast().expect("simple");
+    unsafe {
+        let en = s
+            .GetPropertyValue(UIA_IsEnabledPropertyId)
+            .expect("enabled");
+        // VT_BOOL: VARIANT_TRUE is nonzero
+        let b = en.Anonymous.Anonymous.Anonymous.boolVal.0;
+        assert_eq!(b, 0, "disabled node must report IsEnabled=false");
+        let f = s
+            .GetPropertyValue(UIA_IsKeyboardFocusablePropertyId)
+            .expect("focusable");
+        assert_eq!(
+            f.Anonymous.Anonymous.Anonymous.boolVal.0, 0,
+            "disabled node must not be keyboard-focusable"
+        );
+    }
+    // dead generation fences every accessor
+    root.rebuild(vec![mk(1, true)]).expect("rebuild2");
+    unsafe {
+        assert!(
+            s.GetPropertyValue(UIA_NamePropertyId).is_err(),
+            "stale fragment must not answer after remint"
+        );
+    }
+}
+
 /// The spike scenario: Send A streams chunks -> Stop A -> Send B -> a late
 /// in-flight A chunk must not contaminate B; Stop must not block resend.
 #[test]
