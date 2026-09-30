@@ -32,3 +32,17 @@ Start with:
 - `docs/RUST_UI_ARCHITECTURE_CONCEPT_TASK.md`
 - `docs/MASCOT_PROVEN_CONTEXT.md`
 - `docs/ASTRA_HANDOFF.md`
+
+## Architecture concept deliverables
+
+Proposed-model documentation only; no implementation exists yet.
+
+- [docs/ARCHITECTURE_OPTIONS.md](docs/ARCHITECTURE_OPTIONS.md) — candidate models A-F comparison and references
+- [docs/PROGRAMMING_MODEL.md](docs/PROGRAMMING_MODEL.md) — recommended model, signatures, tree/keys/invalidation
+- [docs/STATE_AND_EVENTS.md](docs/STATE_AND_EVENTS.md) — state ownership, event table, async contracts
+- [docs/LAYOUT_STYLE_MOTION.md](docs/LAYOUT_STYLE_MOTION.md) — layout primitives, typed theme/style, motion
+- [docs/NATIVE_CONTROL_BOUNDARY.md](docs/NATIVE_CONTROL_BOUNDARY.md) — text peer contract, geometry, custom rendering
+- [docs/BACKEND_ARCHITECTURE.md](docs/BACKEND_ARCHITECTURE.md) — crate packaging, Windows/macOS boundaries
+- [docs/API_EXAMPLES.md](docs/API_EXAMPLES.md) — ten consumer-code exercises
+- [docs/MASCOT_MIGRATION_PLAN.md](docs/MASCOT_MIGRATION_PLAN.md) — future extraction mapping (post-approval)
+- [docs/ASTRA_ARCHITECTURE_REPORT.md](docs/ASTRA_ARCHITECTURE_REPORT.md) — recommendation, risks, owner questions, spike plan
