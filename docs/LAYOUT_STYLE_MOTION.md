@@ -125,7 +125,7 @@ pub enum ColorRole {
     Background, Foreground,
     Muted, MutedForeground,
     Accent, AccentForeground,
-    Border, Destructive, DestructiveForeground, Focus,
+    Border, Destructive, DestructiveForeground, Focus, Shadow,
 }
 
 pub enum Space { Xs, Sm, Md, Lg }
@@ -152,12 +152,14 @@ impl Theme {
 
 Where each belongs: built-in enums (`ButtonVariant`, `ControlSize`,
 `ColorRole`, `Space`, `Radius`, `MotionToken`) express common variation.
-The complete authored style and patch vocabulary — `Color`, `BoxStyle`,
-`TextStyle`, `VisualStyle`, the `*Patch` types, `Action`/`ActionStyle` and
-the `ui.box_`/`ui.text`/`ui.action` primitives — is defined once in
+The complete authored style and patch vocabulary — `Color`, `BoxStyle`
+(including the single outer `Shadow`), `TextStyle`, `VisualStyle`, the
+`*Patch` types, `Action`/`ActionStyle` and the `ui.box_`/`ui.text`/
+`ui.action` primitives — is defined once in
 [STYLE_CUSTOMIZATION_MODEL.md](STYLE_CUSTOMIZATION_MODEL.md), which is the
-authoritative styling specification. There is no string property bag and no
-CSS runtime.
+authoritative styling specification; its shadow contract (bounds, damage,
+cache, native-peer rules) applies unchanged here. There is no string
+property bag and no CSS runtime.
 
 Resolution precedence is defined there; in short:
 

@@ -141,7 +141,8 @@ notifications dispatch. Two consequences follow:
   resolver/equality/damage rules are defined in
   [STYLE_CUSTOMIZATION_MODEL.md](STYLE_CUSTOMIZATION_MODEL.md); the runtime
   responsibility is only that resolved-value equality, not input identity,
-  decides downstream work.
+  decides downstream work — e.g. a shadow-only descriptor change is
+  paint+finite-damage with no layout, peer or accessibility touch.
 
 This is keyed structural reconciliation over one retained arena — not a
 browser DOM and not a second virtual view tree. Node storage and message

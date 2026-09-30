@@ -11,8 +11,14 @@ brief: the owner's three workflows (FAST/CUSTOM/SURGICAL) are preserved over
 one shared box/text style representation with no hidden styling system or
 private renderer; component customization is capability-limited typed
 patches rather than full replacement; independent border sides, corner
-radii and padding are accepted; group/node opacity and shadows are
-deferred, not rejected.
+radii and padding are accepted; group/node opacity is deferred.
+
+Shadow correction on the same branch over committed `2aa9a54962a7e12cfaa50d14588d0faf67f4f755`:
+the earlier "all shadows deferred" stance was narrowed — a basic one-`Shadow`
+outer box shadow is recommended for v0.1 after re-review found a cached
+native shadow path in owner-supplied Mascot context (inspected read-only at
+snapshot `14e576ff`; evidence of implementability, not a runtime validation
+and no port). Only spread/inset/shadow lists stay deferred.
 
 Status: architecture concept only — documentation, not approval, not a
 performance result, not native proof. All referenced Rust is proposed API
@@ -130,14 +136,16 @@ focus/blur, key, edit, submit, selection-changed, conflict, frame).
 
 **Layout/style**: `Length`, `dp`, `Align`, `Justify`, `Space`, `Visibility`, `Theme` +
 `ThemeMode` + `Theme::resolve` + `Appearance`, `ColorRole` (incl.
-`DestructiveForeground`), `Radius`, `MotionToken`, `ReducedMotion`,
+`DestructiveForeground`, `Shadow`), `Radius`, `MotionToken`, `ReducedMotion`,
 `ButtonVariant`, `ControlSize`, `Icon` enum. Style vocabulary per
 [STYLE_CUSTOMIZATION_MODEL.md](STYLE_CUSTOMIZATION_MODEL.md): `Color`,
 `Insets`, `CornerRadii`, `Border`/`BorderSide`, `BoxStyle`, `TextStyle`,
 `TextSize`/`TextWeight`, `VisualStyle`, `BoxProps`, `Action`/`ActionStyle`,
-`StateStyles`, and the patch family `BoxStylePatch`/`BorderPatch`/
+`StateStyles`, `Shadow`, and the patch family `BoxStylePatch`/`BorderPatch`/
 `CornerRadiiPatch`/`InsetsPatch`/`TextStylePatch`/`VisualStylePatch`/
-`ButtonStylePatch`/`TextInputStylePatch`.
+`ButtonStylePatch`/`TextInputStylePatch`/`ShadowPatch` — internally resolved
+as `ResolvedBoxStyle`/`ResolvedTextStyle`/`ResolvedVisualStyle`/
+`ResolvedShadow`.
 
 **Async/custom**: `Executor`, `BoxFuture`, `CancelToken`, `TaskSender`, `Job`,
 `UiProxy`, typed errors; `CustomRender`, `Canvas`, `Semantics`,
@@ -145,8 +153,8 @@ focus/blur, key, edit, submit, selection-changed, conflict, frame).
 
 **Deferred**: Checkbox, Switch, RadioGroup, Select, Popover, ScrollArea,
 Dialog, `on_open_change`/`on_scroll`/`on_change`, Activity component,
-baseline alignment, group/node opacity and shadows (deferred, not rejected),
-Linux backend,
+baseline alignment, group/node opacity and shadow spread/inset/lists
+(deferred, not rejected), Linux backend,
 virtualized large lists, GPU-required rendering, gallery example, effects
 test harness (recording `UpdateCtx`/virtual clock), any Mascot migration.
 

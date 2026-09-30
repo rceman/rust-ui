@@ -1,8 +1,9 @@
 # Style Customization Model
 
 Status: architecture concept only — proposed API exercise, not implemented,
-not type-checked, and not approved by the owner. This document is the single
-authoritative styling definition; [LAYOUT_STYLE_MOTION.md](LAYOUT_STYLE_MOTION.md)
+not type-checked, and not finally approved by the owner. This document is
+the single authoritative styling definition;
+[LAYOUT_STYLE_MOTION.md](LAYOUT_STYLE_MOTION.md)
 keeps layout, motion and theme mechanics and links here rather than restating
 style rules.
 
@@ -152,8 +153,10 @@ pub struct Dp(f32);
 lives in [LAYOUT_STYLE_MOTION.md](LAYOUT_STYLE_MOTION.md)); `Color::default()`
 is transparent `Color::rgba(0, 0, 0, 0)`, which keeps every composite
 `Default` below coherent. `Dp` is `Copy, Clone, PartialEq` with a zero
-`Default`; numeric validation (finite, non-negative — positive for text
-size) is staged as diagnostics, never constructor panics.
+`Default`; validation is field-specific, staged as diagnostics and never
+constructor panics: shadow `offset_x`/`offset_y` are finite and *signed*;
+`blur_sigma`, border widths, radii, padding and layout extents are finite
+non-negative; text size is positive.
 
 - Straight sRGB `u8` channels only — no float channels, so malformed colors
   are unrepresentable; backends convert to premultiplied form internally.
@@ -205,12 +208,21 @@ impl Border {
     pub fn all(side: BorderSide) -> Self;
 }
 
+#[derive(Copy, Clone, PartialEq)]
+pub struct Shadow {
+    pub color: Color,
+    pub offset_x: Dp,
+    pub offset_y: Dp,
+    pub blur_sigma: Dp,
+}
+
 #[derive(Copy, Clone, Default, PartialEq)]
 pub struct BoxStyle {
     pub background: Color,
     pub border: Border,
     pub radii: CornerRadii,
     pub padding: Insets,
+    pub shadow: Option<Shadow>,
 }
 impl BoxStyle {
     pub fn new() -> Self;
@@ -218,6 +230,7 @@ impl BoxStyle {
     pub fn border(self, border: Border) -> Self;
     pub fn radii(self, radii: CornerRadii) -> Self;
     pub fn padding(self, padding: Insets) -> Self;
+    pub fn shadow(self, shadow: Option<Shadow>) -> Self;
 }
 
 #[derive(Copy, Clone, Eq, PartialEq)]
@@ -256,9 +269,10 @@ pub struct VisualStyle {
 }
 ```
 
-Defaults: `BoxStyle::new()` is transparent background, zero-width borders,
-zero radii, zero padding. `TextStyle::new()`/`TextStyle::default()` is
-`ColorRole::Foreground`, `Normal` weight, and `TextSize::Body` — a *token*
+Defaults: `BoxStyle::new()`/`BoxStyle::default()` is transparent background,
+zero-width borders, zero radii, zero padding, `shadow: None`.
+`TextStyle::new()`/`TextStyle::default()` is `ColorRole::Foreground`,
+`Normal` weight, and `TextSize::Body` — a *token*
 that resolves to the theme base text size adjusted for OS text scaling, not
 a literal `Dp` baked into a parameterless constructor. `TextSize` is the
 recommended shape: it makes the theme-resolved default explicit instead of
@@ -272,7 +286,17 @@ a text behavior prop. `Space`/`Radius` tokens remain for recipes and layout
 and expand to concrete `Insets`/`CornerRadii` during resolution — likewise
 `Surface::padding(Space::Md)` is a recipe convenience that populates the
 same `BoxStyle.padding` before any consumer patch, not a second padding.
-No shadow type is declared.
+
+`Shadow` is v0.1's *only* effect primitive — one optional outer box shadow
+per box, shared by `BoxStyle` (and thus `Surface`, `Button`, `Action`)
+through the same style path. `blur_sigma` is deliberately named: a Gaussian
+standard deviation in logical dp, not a CSS blur-radius. `offset_x`/`offset_y`
+are finite and *signed* (negative is legitimate); `blur_sigma` is finite
+non-negative, and `dp(0.0)` is a sharp offset silhouette. Alpha comes only
+from `Shadow.color` — a new semantic `ColorRole::Shadow`, or an explicit
+rgba. `Shadow` has no constructors; examples use named struct fields. There
+is no spread field, no inset, no shadow list, no filter/effects API — the
+full contract is in [Box shadow (v0.1)](#outer-box-shadow-v01) below.
 
 ## Partial patches
 
@@ -308,11 +332,20 @@ pub struct InsetsPatch {
 }
 
 #[derive(Copy, Clone, Default, PartialEq)]
+pub enum ShadowPatch {
+    #[default]
+    Unchanged,
+    Set(Shadow),
+    Remove,
+}
+
+#[derive(Copy, Clone, Default, PartialEq)]
 pub struct BoxStylePatch {
     pub background: Option<Color>,
     pub border: BorderPatch,
     pub radii: CornerRadiiPatch,
     pub padding: InsetsPatch,
+    pub shadow: ShadowPatch,
 }
 
 #[derive(Copy, Clone, Default, PartialEq)]
@@ -343,6 +376,17 @@ Rules:
   theme-resolved equality bypass: resolution compares concrete values.
 - `TextStylePatch.size: Some(dp)` maps to `TextSize::Exact(dp)`; `None`
   leaves the full style's size token (e.g. `Body`) untouched.
+- `shadow` is the one deliberate exception to recursive field merging:
+  `ShadowPatch` is an *atomic* optional-property command, not a nested
+  `Option` — `Set(Shadow)` supplies a complete descriptor and changes only
+  shadow, `Remove` forces none, `Unchanged` preserves the recipe/earlier
+  current-build value. There is no per-parameter partial shadow patch
+  (modifying a shadow that may not exist is undefined); a different shadow
+  means a complete explicit descriptor. Within one build's merge chain, a
+  later `Set`/`Remove` wins and `Unchanged` never erases earlier values;
+  the next view pass still reconstructs from the declaration — no history.
+  This is optional-property set/remove, not `BoxStyle` replacement and no
+  generic effect-patch trait.
 - Patches are Copy-sized sparse POD-like values — no string maps, no `Vec`s.
 
 `ButtonStylePatch` is the named wrapper for the props valid on button and
@@ -455,11 +499,11 @@ theme tokens
 - **Regression invariant (before OS enforcement):** patching only bottom
   border width/color leaves every unrelated authored/resolved style and
   layout-input property — background, foreground, the other three borders,
-  radii, padding, size, motion and focus configuration — value-identical in
-  *each* supported state. Derived geometry and measurement *may* change (the
-  new border width consumes content insets), and OS-enforced colors may
-  legitimately differ — the invariant covers inputs before enforcement, not
-  pixel-identical output.
+  radii, padding, shadow, size, motion and focus configuration — value-
+  identical in *each* supported state. Derived geometry and measurement
+  *may* change (the new border width consumes content insets), and
+  OS-enforced colors may legitimately differ — the invariant covers inputs
+  before enforcement, not pixel-identical output.
 - Accessibility/OS enforcement (forced colors, required focus visibility,
   reduced motion) always runs last and may override consumer colors —
   explicitly a separate concern from the regression invariant, which holds
@@ -501,7 +545,7 @@ ButtonStylePatch::new().hover(VisualStylePatch {
 | min / max width | **v0.1 as layout props** — `.min_width`/`.max_width` |
 | min / max height | **v0.1 as layout props** — `.min_height`/`.max_height` |
 | opacity (group/node) | **deferred** — paint-color alpha suffices for flat fills; real group opacity needs offscreen/ink-bounds work; not rejected forever |
-| shadow | **deferred** — same offscreen/ink-bounds/native complexity; not rejected forever |
+| shadow | **v0.1 basic** — one optional outer `Shadow` per `BoxStyle`; spread, inset and shadow lists stay deferred |
 
 Rejected outright: CSS parser, selectors, specificity, cascade, arbitrary
 inheritance, string property bags, DOM concepts, pseudo-selector strings,
@@ -509,7 +553,7 @@ browser layout machinery, percent sizing.
 
 Deferred: gradients, filters, transforms, blend modes, complex border dashes
 and border images, general font-family/variable-font loading, authored
-transitions, general Flexbox/Grid.
+transitions, general Flexbox/Grid, shadow spread/inset/shadow lists.
 
 ## Geometry and validation
 
@@ -524,13 +568,126 @@ transitions, general Flexbox/Grid.
 - Corner radii use a finite, deterministic proportional clamp so adjacent
   radii sums fit the final box — geometry normalization on already-valid
   input; authored values are not mutated.
-- Validation: `Dp` finite and non-negative, `min <= max`. Malformed numeric
+- Validation is field-specific: finite signed shadow offsets; finite
+  non-negative `blur_sigma`, border widths, radii, padding and layout
+  extents; positive text size; `min <= max`. Malformed numeric
   styles produce `UiDiagnostic::InvalidStyle` before any native mutation;
   forbidden interactive nesting produces `UiDiagnostic::InvalidComposition`;
   an impossible platform capability produces `UiError::Unsupported`. Nothing
   is silently ignored or clamped except the declared radii normalization.
 - Alpha fills over painted content are permitted; alpha on live text and
   ancestor group opacity are not.
+
+## Outer box shadow (v0.1)
+
+**Correction provenance.** The earlier review deferred all shadows; that
+deferral was too broad for elevated surfaces and for public-primitive
+equivalence. On re-review, committed Mascot source at tracking snapshot
+`14e576ff1e4270c59a271143827940efbb599395` (inspected read-only via
+`git show`, no checkout) — `crates/mascot-ui-win32/src/paint.rs` — confirms a
+*cached* native shadow path exists: a `Painter` `Option<ShadowCache>` keyed
+on window-px/scale/bubble-geometry/radius/theme, early-returning on an equal
+key, rasterizing a rounded white silhouette through `CLSID_D2D1Shadow` and
+drawing it beneath the bubble. That shows the pattern is implementable; it
+is not a fresh runtime or performance validation, nothing is ported or
+copied, and this recommendation is independent of that implementation.
+
+Contract:
+
+- Exactly one optional outer shadow per box — the four-field `Shadow`
+  descriptor above — shared by `BoxStyle` consumers (`box_`, `Surface`,
+  `Button`, `Action`) through the existing style path. No shadow lists, no
+  inset, no spread, no filter/effects API, no CSS semantics. Spread is
+  deferred deliberately: ordinary subtle Surface/Card elevation needs only
+  silhouette translation + blur; spread adds shape dilation/erosion, the
+  negative-spread/corner-radius interaction and extra edge behavior for no
+  current basic requirement — a separate future review may revisit it, as
+  with inset and lists. Group/node opacity stays deferred unchanged.
+- The default elevated `Surface` recipe proposes
+  `Some(Shadow { color: Color::role(ColorRole::Shadow), offset_x: dp(0.0), offset_y: dp(1.0), blur_sigma: dp(2.0) })`,
+  with `Theme::light` `Shadow` = `Color::rgba(0, 0, 0, 32)` and
+  `Theme::dark` = `Color::rgba(0, 0, 0, 64)` — proposed recipe choices, not
+  measured values or copied semantics. `ui.box_` and `Button` default flat;
+  a flat surface is
+  `Surface::new().style(BoxStylePatch { shadow: ShadowPatch::Remove, ..Default::default() })`,
+  and `Surface::padding`/existing props are unaffected. Forced-colors/
+  high-contrast resolves a decorative shadow to `None` *after* patches; a
+  shadow is never the sole focus or status indication.
+- Source silhouette: the node's own opaque outer rounded box using the
+  already-normalized corner geometry — never captured children, text or
+  native-peer pixels. Fill alpha does not scale the cast silhouette; only
+  `Shadow.color` alpha does.
+- Paint order: outer-only — the shadow is clipped out of the original
+  rounded-box interior (so no inset effect, and a contained opaque native
+  peer is never under shadow alpha) and painted before the box's own
+  fill/border/children in existing declaration order. No new z-index.
+- Layout isolation: a shadow never contributes to desired size, layout or
+  content insets, hit-testing, focus, accessibility or window autosizing.
+  It may extend outside its own rect but respects inherited clip and the
+  window client clip — never its own content rectangle, which would erase
+  it; a caller wanting the full halo supplies room.
+- Finite bound: at resolved final box `B` and positive finite DPI scale `s`,
+  in device pixels `B_s = scale(B, s)`, `r_px = ceil(3 * blur_sigma * s)`,
+  `o_px = (offset_x * s, offset_y * s)`, and the shadow extent is
+  `S_px = inflate(translate(B_s, o_px), r_px)` — a mandated finite 3σ
+  truncated Gaussian plus one physical-pixel AA/sampling guard. Backends
+  crop to this support; nothing here asserts an infinite Gaussian has
+  finite support or that backend defaults already match it.
+- Damage: node paint ink includes its own box + `S_px` + existing
+  focus/descendant ink. The exact recipe on change/removal/move: retain the
+  old effective device-pixel bound *with its old clipping*; compute the
+  guarded outward old ink intersected with the *old* inherited clip and the
+  guarded outward new ink intersected with the *new* inherited clip
+  separately; union those two regions, then intersect with the current
+  client region. Old ink is never re-clipped by a new ancestor clip — at
+  unchanged DPI this clears prior pixels on move/remove/clip change. On a
+  DPI/render-target recreation (a different coordinate generation), the
+  whole current client is invalidated once and the affected raster cache
+  invalidated, rather than mixing rectangles from incompatible generations —
+  genuine external invalidation, not a shadow layout mutation or an idle
+  loop. No stale halos.
+- Validation: malformed numerics — non-finite signed offsets, non-finite or
+  negative `blur_sigma`, a zero/negative/non-finite DPI scale, or overflow
+  in computed extents/allocation sizes — are
+  `UiDiagnostic::InvalidStyle` before native mutation; a valid but
+  unallocatable raster/cache target returns the existing typed platform
+  error — no silent smaller blur. `alpha = 0` normalizes to no resolved
+  shadow: transitions between zero-alpha authored descriptors produce
+  neither allocation nor repaint, while the authored prop still updates.
+- Equality/cache: a private `ResolvedShadow` (concrete color + dp) joins
+  `ResolvedBoxStyle`; comparison covers presence, color, signed offsets and
+  sigma, while the normalized radii/box geometry feed the draw bounds and
+  raster silhouette. A shadow-only descriptor change is paint+damage only —
+  no layout, no `TextPeer.apply`, no a11y/focus mutation; shape/size changes
+  reach the silhouette through the existing layout causes. An unchanged
+  resolved shadow produces no repaint, raster rebuild or scheduled work,
+  and never restarts unrelated motion.
+- Backends may keep a dedicated bounded silhouette/blur raster cache keyed
+  on snapped silhouette size + normalized radii + `blur_sigma` + concrete
+  color + DPI + render-target/device generation (plus sampling phase where
+  needed). Offset/location are draw placement: translation *reuses* the
+  local raster while snapped silhouette and the applicable sampling-phase
+  key stay unchanged — a fractional-phase or geometry change may invalidate
+  that key, which is genuine invalidation work, not a no-op traversal.
+  Caches budget by bytes, evict
+  safely, and reclaim on unmount/`Remove`/device loss; at most one shadow
+  entry per node plus explicitly budgeted renderer sharing — no
+  ever-growing map. Device-loss/OS-expose invalidation is genuine re-render
+  work, distinct from no-op re-traversal. This is a fixed-size primitive,
+  not a generic effects graph; no zero-allocation or benchmark promise —
+  native Windows validates cache behavior in the spike.
+- No shadow animation: descriptor changes apply statically on commit — no
+  frame or timer demand; unrelated motion continues independently.
+
+Planned bound oracle (arithmetic test expectations, not measurements):
+`B = (x10, y20, w100, h40)`, offsets `(-3, +4)`, `blur_sigma = 2`. At
+`s = 1`: `r = 6`, `S_px = (left 1, top 18, right 113, bottom 70)`; the
+old/new ink union + 1 px guard yields `(0, 17, 114, 71)` before tighter
+clip. At `s = 1.25`: `r = 8`, `S_px = (0.75, 22, 141.75, 88)`; the guarded
+union is `(-1, 21, 143, 89)`, and a client clip at `left = 0` yields
+`(0, 21, 143, 89)`. Planned edge tests cover signed offsets, zero sigma,
+old+new halo unions on move/remove/unmount, ancestor/client clipping, radii
+and DPI variation — all planned, none executed.
 
 ## Resolution internals, equality and damage
 
@@ -549,7 +706,7 @@ transitions, general Flexbox/Grid.
 
   | Changed resolved input | Downstream work |
   |---|---|
-  | background / border color / text foreground | paint only |
+  | background / border color / text foreground / shadow descriptor | paint + finite damage only |
   | border width, padding | measure + layout + paint (content insets) |
   | radii | paint + clip + hit-test boundary |
   | text size / weight | shaping + measure + layout + paint |
@@ -624,6 +781,19 @@ impl TextInputStylePatch {
   computed extents must stay finite — no overflow from sums. Alpha border
   paint remains allowed *outside* the editing region; there are simply no
   transparency-flag, mask or group-opacity fields on native peers.
+- Chrome `shadow` is painted chrome only — never a peer theme/editor style,
+  and it never blurs, clips or composites live editing pixels. The outer-
+  only interior exclusion above keeps the contained rectangular peer
+  untouched; safety-inset and opaque-backing/foreground rules are exactly
+  unchanged — a shadow is ignored by minimum host-size and safety
+  calculations and a shadow-only change produces no layout or
+  `TextPeer.apply`. Shadow ink joins the existing native-island overlap
+  validation: it may not bleed over an unrelated native peer's editing
+  rectangle — keep such peers outside the shadow footprint or diagnose
+  `UiError::Unsupported` before native mutation; full bounds clipping is
+  not an excuse for arbitrary peer overlap. The shadow silhouette comes
+  from the node's own authored geometry, never from stroking or capturing
+  the editor.
 - Selection, caret, IME and undo remain native: their colors and fonts are
   primarily OS-owned and are not public `TextStyle` knobs; system fonts and
   text scaling remain in force.
@@ -730,6 +900,46 @@ and layout-input property in every state stays identical before OS
 enforcement — the regression invariant above (derived geometry may shift
 with the new border extent).
 
+A shadow works the same way — the elevated `Surface` default, an identical
+public-primitive descriptor, and an explicit `Remove` for a flat surface:
+
+```rust
+ui.surface(Surface::new().padding(Space::Md), |ui| {
+    ui.label("Elevated by default");
+});
+
+ui.box_(
+    BoxProps::new().style(BoxStyle::new().shadow(Some(Shadow {
+        color: Color::role(ColorRole::Shadow),
+        offset_x: dp(0.0),
+        offset_y: dp(1.0),
+        blur_sigma: dp(2.0),
+    }))),
+    |ui| {
+        ui.text("Same shadow vocabulary on a primitive");
+    },
+);
+
+ui.surface(Surface::new().style(BoxStylePatch {
+    shadow: ShadowPatch::Set(Shadow {
+        color: Color::rgba(0, 0, 0, 48),
+        offset_x: dp(-2.0),
+        offset_y: dp(3.0),
+        blur_sigma: dp(3.0),
+    }),
+    ..Default::default()
+}), |ui| {
+    ui.label("Signed offsets and a custom shadow color");
+});
+
+ui.surface(Surface::new().style(BoxStylePatch {
+    shadow: ShadowPatch::Remove,
+    ..Default::default()
+}), |ui| {
+    ui.label("Flat");
+});
+```
+
 ## Required Windows spike tests (planned — none executed)
 
 Each is a concrete test to be written during the Windows spike; golden
@@ -749,9 +959,9 @@ resolved-style fixtures are recorded when an implementation exists.
    focus-visible and the hover+focus, pressed+hover and pressed+focus
    combinations: before OS enforcement only `border.bottom.width`/`color`
    differ; compare every unrelated field — other three borders, background,
-   foreground, radii, padding, text size/weight, layout inputs, motion and
-   focus configuration — while derived geometry may legitimately shift with
-   the new border extent.
+   foreground, radii, padding, shadow, text size/weight, layout inputs,
+   motion and focus configuration — while derived geometry may legitimately
+   shift with the new border extent.
 4. **Per-side geometry.** Each border side paints independently; per-corner
    radii fields are preserved through resolution; asymmetric `Insets` apply
    per side; the proportional radii clamp produces deterministic final
@@ -786,9 +996,48 @@ resolved-style fixtures are recorded when an implementation exists.
     omit it on the next pass on the same keyed node: the resolved style
     returns to recipe defaults for those fields and retained node/peer
     identity is unchanged — patches carry no history across view passes.
+12. **Shadow recipe defaults.** The default `Surface` resolves the exact
+    descriptor in the shadow section (`Shadow` role, `(0,1)` offset,
+    `sigma = 2`) with the proposed concrete light `rgba(0,0,0,32)` and dark
+    `rgba(0,0,0,64)` role values; a flat `BoxStyle`/`Button` resolves
+    `None`; forced-colors/high-contrast resolves the shadow to `None` after
+    patches.
+13. **Primitive parity.** A public-primitive `ui.box_`/`ui.action` using the
+    same `Shadow` descriptor produces the same `ResolvedShadow` and the same
+    shadow render operation/ink boundary as a built-in surface under
+    fixtures with identical box bounds, normalized radii, DPI and clip —
+    unrelated box props may differ; no private painter access anywhere.
+14. **Atomic patch semantics.** `Set`/`Remove` change only the optional
+    shadow; before OS enforcement every unrelated property, recipe, state,
+    layout and motion value is identical; `Unchanged` merges preserving an
+    earlier `Set`/`Remove` within one build; omitting the patch next pass
+    restores the recipe value. (High-contrast suppression of the shadow is
+    checked separately in group 12.)
+15. **Shadow-only damage.** A changed descriptor produces paint + finite
+    damage only — zero layout, text measurement, native `apply`, unrelated
+    a11y or focus change.
+16. **Bound oracle.** The numerical bound above: signed positive/negative
+    offsets, `sigma = 0`, old+new halo unions on move/remove/unmount and on
+    an *ancestor clip change* (old ink cleared under its old clip), client/
+    ancestor clipping, radii and DPI variation — no pixels beyond the
+    mandated finite bound. Also malformed-input coverage: non-finite signed
+    offsets, non-finite or negative `blur_sigma`, and zero/negative/
+    non-finite DPI scale are rejected as `InvalidStyle` before mutation.
+17. **No-op and cache.** An unchanged resolved shadow produces no repaint,
+    raster rebuild, timer, frame or motion restart; cache-key coverage plus
+    device-loss invalidation and bounded byte-cache reclamation. Included
+    edge cases — all still *only-shadow* changes, so unrelated paint updates
+    aren't forbidden: an `alpha = 0` descriptor normalizing to no resolved
+    shadow without repaint, and the native-peer overlap rule — shadow ink
+    bleeding onto an unrelated native editing rectangle is diagnosed before
+    native mutation rather than silently clipped; the `TextPeer`
+    generation/rect/undo/IME stays unchanged through any chrome shadow
+    update.
 
-These styling gates augment the existing spike — they replace nothing in the
-native/identity/task/cancellation/resource baseline.
+All shadow gates are planned, not executed; render/pixel-containment checks
+must exercise real native output in the spike, not merely reassert the
+formula. These styling gates augment the existing spike — they replace
+nothing in the native/identity/task/cancellation/resource baseline.
 
 ## Ergonomics and inspectability
 
@@ -818,9 +1067,12 @@ is a later, separately approved phase — no platform work starts now.
 
 ## Decisions for the owner
 
-- Approve the v0.1 property set and the deferred list above (opacity and
-  shadow are deferred, not rejected — they need offscreen/ink-bounds design
-  before re-review).
+- The FAST/CUSTOM/SURGICAL model is accepted in principle per the task —
+  final approval rides with overall API approval.
+- Approve the v0.1 property set and the deferred list above: group/node
+  opacity stays deferred (offscreen/ink-bounds design needed); a basic outer
+  shadow is now *recommended for v0.1* with spread/inset/lists deferred —
+  confirm or narrow it.
 - `TextSize::{Body, Exact(Dp)}` is recorded as a *recommended* shape —
   accepted as part of overall API approval, not an unresolved alternative:
   it makes the theme-resolved default explicit instead of storing a fake

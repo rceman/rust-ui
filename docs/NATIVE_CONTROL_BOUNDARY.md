@@ -205,8 +205,8 @@ blocks activation entirely. They are independent.
 
 Native text peers accept one capability-limited patch type,
 `TextInputStylePatch` — a chrome `BoxStylePatch` (background/border/radii/
-padding of the painted frame) plus an optional `foreground: Color` routed to
-the peer through a typed adapter:
+padding/shadow of the painted frame) plus an optional `foreground: Color`
+routed to the peer through a typed adapter:
 
 - chrome maps only to the painted frame; `foreground` is subject to normal
   OS adjustment, and v0.1 requires peer backing and editable foreground to
@@ -216,6 +216,12 @@ the peer through a typed adapter:
   [STYLE_CUSTOMIZATION_MODEL.md](STYLE_CUSTOMIZATION_MODEL.md) — never
   rounded-clipped or alpha-composited; too-small constraints are
   `InvalidLayout`, nonopaque backing/foreground `Unsupported`;
+- chrome `shadow` is outer painted chrome only — it never blurs, clips or
+  composites live editing pixels, is ignored by safety-inset/minimum-host
+  math, and causes no layout or `TextPeer.apply` on change; its ink joins
+  the native-island overlap rule — it may not bleed over an unrelated native
+  peer's editing rectangle, else `UiError::Unsupported` before native
+  mutation (full bounds clipping is no excuse for arbitrary overlap);
 - selection/caret/IME colors and fonts stay primarily OS-owned — no public
   `TextStyle` knobs on editable peers, system fonts and text scaling remain;
 - theme/style/geometry updates never remount the peer, `set_text`, or reset

@@ -841,3 +841,53 @@ ui.button("Send")
     )
     .on_press(|| Msg::Send);
 ```
+
+**Shadow** — the v0.1 effect primitive (contract in
+[STYLE_CUSTOMIZATION_MODEL.md](STYLE_CUSTOMIZATION_MODEL.md)): `Surface` is
+elevated by default; a primitive `ui.box_` uses the identical descriptor; a
+surgical patch `Set`s or `Remove`s atomically:
+
+```rust
+ui.surface(Surface::new().padding(Space::Md), |ui| {
+    ui.label("Elevated by default");
+});
+
+ui.box_(
+    BoxProps::new().style(BoxStyle::new().shadow(Some(Shadow {
+        color: Color::role(ColorRole::Shadow),
+        offset_x: dp(0.0),
+        offset_y: dp(1.0),
+        blur_sigma: dp(2.0),
+    }))),
+    |ui| {
+        ui.text("Same shadow vocabulary on a primitive");
+    },
+);
+
+ui.surface(
+    Surface::new().style(BoxStylePatch {
+        shadow: ShadowPatch::Set(Shadow {
+            color: Color::rgba(0, 0, 0, 48),
+            offset_x: dp(-2.0),
+            offset_y: dp(3.0),
+            blur_sigma: dp(3.0),
+        }),
+        ..Default::default()
+    }),
+    |ui| {
+        ui.label("Signed offsets and a custom shadow color");
+    },
+);
+
+ui.surface(
+    Surface::new()
+        .padding(Space::Md)
+        .style(BoxStylePatch {
+            shadow: ShadowPatch::Remove,
+            ..Default::default()
+        }),
+    |ui| {
+        ui.label("Flat surface");
+    },
+);
+```

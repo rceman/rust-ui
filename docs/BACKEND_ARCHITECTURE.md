@@ -63,6 +63,12 @@ trait CanvasBackend {
     fn path(&mut self, path: &Path2d, paint: Paint);
     fn image(&mut self, image: &ImageSource, rect: Rect);
     fn text(&mut self, run: &TextRun, origin: Point);
+    fn box_shadow(
+        &mut self,
+        bounds: Rect,
+        radii: CornerRadii,
+        shadow: &ResolvedShadow,
+    ) -> Result<(), PlatformError>;
 }
 
 trait TextMeasureBackend {
@@ -156,17 +162,23 @@ Roles:
 Supporting shapes split by ownership. Core-owned, platform-neutral:
 `ResolvedBoxStyle`, `ResolvedTextStyle`, `ResolvedVisualStyle`, `TextPatch`,
 `TextPeerUpdate`, `TextPeerTheme`, `TextMetrics`, `MeasureCacheInvalidate`,
-`SemanticsTree`, `LoopEvent`. Platform-adapter-local: `PlatformError`,
-`A11yHandle`, `TextPeerEvent`. None exposes a raw OS handle. A single shared
-core resolver turns public authored styles and patches into the `Resolved*`
-values — platform modules receive concrete colors/dp and the final peer
-theme/geometry only; there are no per-platform parallel recipes. `TextPatch`
-distinguishes its variants: initialization (the current committed value,
-revision and binding), a native-acknowledgement marker, and a programmatic
+`SemanticsTree`, `LoopEvent`, `ResolvedShadow`. Platform-adapter-local:
+`PlatformError`, `A11yHandle`, `TextPeerEvent`. None exposes a raw OS
+handle. A single shared core resolver turns public authored styles and
+patches into the `Resolved*` values — platform modules receive concrete
+colors/dp and the final peer theme/geometry only; there are no per-platform
+parallel recipes. `TextPatch` distinguishes its variants: initialization
+(the current committed value, revision and binding), a
+native-acknowledgement marker, and a programmatic
 proposal with its base revision — so `mount` always receives the real
 committed value rather than accidentally attaching an empty peer, and
 `apply` carries the same patch on proposal state changes. There is no
-second editor state object.
+second editor state object. `CanvasBackend::box_shadow` is the one dedicated
+shadow boundary: core computes shadow presence, normalized concrete geometry
+and the mandated finite ink bound; the adapter performs the cached
+silhouette render inside that support and propagates typed failures. There
+is no public `Canvas` filter/effects graph and no raw D2D handle; public
+`CustomRender` content wrapped in `ui.box_` gets the same public shadow.
 
 ## Platform adapters — conceptual flow
 
