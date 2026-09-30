@@ -3137,7 +3137,7 @@ fn native_probe_richedit_paints_text() {
         });
     }
     let cfg = crate::platform::win32::PeerConfig {
-        multiline: false,
+        multiline: true,
         read_only: false,
         face: "Segoe UI".into(),
         size_twips: 280,
@@ -3203,8 +3203,8 @@ fn native_probe_richedit_paints_text() {
                 format: DXGI_FORMAT_B8G8R8A8_UNORM,
                 alphaMode: D2D1_ALPHA_MODE_IGNORE,
             },
-            dpiX: 150.0,
-            dpiY: 150.0,
+            dpiX: 120.0,
+            dpiY: 120.0,
             ..Default::default()
         };
         let _ = (memdc, screen);
@@ -3222,7 +3222,7 @@ fn native_probe_richedit_paints_text() {
             )
             .expect("hwnd rt");
         let rt: ID2D1RenderTarget = hrt.cast().expect("cast");
-        rt.SetDpi(150.0, 150.0);
+        rt.SetDpi(120.0, 120.0);
         rt.BeginDraw();
         rt.Clear(Some(&D2D1_COLOR_F {
             r: 0.0,
@@ -3253,7 +3253,7 @@ fn native_probe_richedit_paints_text() {
         };
         // draw bounds are DIP; with dpi=150 the framebuffer is at scale
         // 1.5625, so the text lands at DIP*1.5625 pixels
-        let s = 1.5625f32;
+        let s = 1.25f32;
         let inside = lit_at(
             (34.0 * s) as i32,
             (167.0 * s) as i32,

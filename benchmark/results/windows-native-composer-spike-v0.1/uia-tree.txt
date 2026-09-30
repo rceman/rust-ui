@@ -1,23 +1,22 @@
-'rust-ui' ControlType.Window [416,416 980x900]
-  'composer spike' ControlType.Text [460,489 121x23]
-  'RichEdit Control' ControlType.Edit [Infinity,Infinity -Infinityx-Infinity]
-  'show details' ControlType.Button [470,592 137x45]
-  'RichEdit Control' ControlType.Edit [Infinity,Infinity -Infinityx-Infinity]
-  'RichEdit Control' ControlType.Edit [Infinity,Infinity -Infinityx-Infinity]
-  'RichEdit Control' ControlType.Edit [Infinity,Infinity -Infinityx-Infinity]
-  'send' ControlType.Button [470,797 76x45]
-  'stop' ControlType.Button [556,797 73x45]
-  'reorder' ControlType.Button [640,797 97x45]
-  'replace' ControlType.Button [747,797 95x45]
-  'dark' ControlType.Button [470,872 76x45]
-  'light' ControlType.Button [556,872 77x45]
-  'reduce' ControlType.Button [643,872 95x45]
-  'motion' ControlType.Button [748,872 98x45]
-  'bold' ControlType.Button [856,872 75x45]
-  'rm B' ControlType.Button [942,872 75x45]
-  'mk B' ControlType.Button [1028,872 78x45]
-  '' ControlType.Text [416,416 980x900]
-  'custom tile action' ControlType.Button [460,970 283x105]
-  'custom action' ControlType.Text [482,993 108x60]
-  'decorative tile' ControlType.Image [601,993 120x60]
-
+ControlType.Window name='rust-ui' enabled=True focusable=False rect=352,352-1332,1252
+  ControlType.Text name='composer spike' enabled=True focusable=False rect=396,425-517,448
+  ControlType.Edit name='RichEdit Control' enabled=True focusable=True rect=396,459-1289,499
+  ControlType.Button name='show details' enabled=True focusable=True rect=406,528-543,573
+  ControlType.Edit name='RichEdit Control' enabled=True focusable=True rect=396,594-1289,634
+  ControlType.Edit name='RichEdit Control' enabled=True focusable=True rect=396,634-1289,674
+  ControlType.Edit name='RichEdit Control' enabled=True focusable=True rect=396,674-1289,714
+  ControlType.Button name='send' enabled=True focusable=True rect=406,733-482,778
+  ControlType.Button name='stop' enabled=False focusable=False rect=492,733-565,778
+  ControlType.Button name='reorder' enabled=True focusable=True rect=576,733-673,778
+  ControlType.Button name='replace' enabled=True focusable=True rect=683,733-778,778
+  ControlType.Button name='dark' enabled=True focusable=True rect=406,808-482,853
+  ControlType.Button name='light' enabled=True focusable=True rect=492,808-569,853
+  ControlType.Button name='reduce' enabled=True focusable=True rect=579,808-674,853
+  ControlType.Button name='motion' enabled=True focusable=True rect=684,808-782,853
+  ControlType.Button name='bold' enabled=True focusable=True rect=792,808-867,853
+  ControlType.Button name='rm B' enabled=True focusable=True rect=878,808-953,853
+  ControlType.Button name='mk B' enabled=True focusable=True rect=964,808-1042,853
+  ControlType.Text name='' enabled=True focusable=False rect=352,352-1332,1252
+  ControlType.Button name='custom tile action' enabled=True focusable=True rect=396,906-679,1011
+  ControlType.Text name='custom action' enabled=True focusable=False rect=418,929-526,989
+  ControlType.Image name='decorative tile' enabled=True focusable=False rect=537,929-657,989

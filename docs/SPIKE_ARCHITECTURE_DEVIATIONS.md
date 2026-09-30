@@ -1,6 +1,6 @@
 # Spike architecture deviations — composer contract v0.1
 
-**Candidate:** `89b39f1` on `agent/windows-native-composer-contract-spike-v0.1-swe2`
+**Candidate:** final working tree on `agent/windows-native-composer-contract-spike-v0.1-swe2`
 **Baseline:** Astra architecture `29c67025dc88221899a8ab1b381f08491d44b85b`
 
 Deviations discovered while implementing the Windows backend against the
@@ -27,33 +27,37 @@ observably correct — text paints inside its pill, not outside.
 in their own bounds; compositor clips don't reach them" — i.e. peers are
 final leaf surfaces, not clip children.
 
-## 2. `lprcBounds` does not position text
+## 2. `TxDrawD2D` anchors unreliably into a shared hwnd target — peers render to their own bitmap
 
-`ITextServices2::TxDrawD2D` accepts a `RECTL` `lprcBounds`. Empirically,
-content draws at the **format-space origin** (the rect the peer's
-`TxGetClientRect` describes), not at `lprcBounds`' origin. `lprcBounds`
-acts as the destination rect of the view, not a transform.
+`ITextServices2::TxDrawD2D` takes `lprcBounds` as the destination rect.
+Empirically the bounds rect DOES translate the anchor (moving `top` moves
+the drawn text) but the content lands offset from it — by roughly one
+line height above `bounds.top` — for peers whose format space was latched
+by measurement before real layout bounds existed. Neither scroll messages
+(`EM_SETSCROLLPOS`, `EM_LINESCROLL`), `EM_SETRECTNP`, re-activation, nor
+`TxGetViewInset` reliably reset that anchor.
 
-**Consequence:** `apply_bounds` receives the content rect (the area inside
-editor chrome), and `draw` re-passes the same rect. The padding between
-pill border and text is owned by `TxGetViewInset` — the editor chrome's
-padding is the host's view-inset, not a renderer offset.
+**Resolution (implemented):** each peer renders into its own
+`ID2D1BitmapRenderTarget` at LOCAL `(0,0,w,h)` — anchoring inside a
+peer-owned surface is exact — and the frame blits the bitmap at the
+global content rect via `DrawBitmap`. `TxGetViewInset` stays zero; the
+padding between pill chrome and text lives in the blit destination rect
+(content rect = pill rect minus insets).
 
-**Contract implication:** the peer's authored padding belongs to the host
-contract (`TxGetViewInset`), not to the compositor's rect math. A
-`text_input` patch that changes padding therefore has no paint-time effect
-— it maps to host bounds at layout time.
+**Contract implication:** a native text peer is a *leaf surface*, not an
+inline draw — the compositor positions its rectangle; the peer's internal
+origin is always `(0,0)`. This is also the shape a future
+DirectComposition visual-per-peer path wants.
 
-## 3. Activation latches the format space
+## 3. Activation latches the format space; peers get one activation
 
-`OnTxInPlaceActivate` binds the format space **once**. If activated with a
-zero or scratch rect, content never re-wraps and never measures again.
-
-**Consequence:** peers activate lazily — only when `apply_bounds` sees a
-non-empty rect — and `apply_bounds` re-activates when the size actually
-changes. `natural_size` activates with a tall scratch height because
-`EM_REQUESTRESIZE` requires an activated service to report; the lazy
-activation is therefore load-bearing for measurement, not a defect.
+`OnTxInPlaceActivate` binds the format space **once**. Re-activating at a
+different rect does not reliably re-anchor content, so peers activate
+lazily — at the first non-empty bounds — and never deactivate/re-activate
+on size changes (the mascot reference contract). `natural_size` activates
+with a tall scratch height because `EM_REQUESTRESIZE` requires an
+activated service to report; the lazy activation is therefore
+load-bearing for measurement, not a defect.
 
 **Contract implication:** an editor's activation is not "create-time"; it
 is "first real bounds". Any implementation detail that relies on
@@ -134,3 +138,21 @@ a hack. `natural_size` therefore:
 **Contract implication:** measurement is a native peer concern, not a
 pure-DWrite concern; the peer must exist before layout can ask for its
 natural height.
+
+## 9. Peers mount inside `CreateWindowExW` with no hwnd
+
+The first `turn()` runs while `CreateWindowExW` is still on the stack
+(WM_CREATE/WM_SIZE dispatch synchronously inside the call), so peers mount
+with `host.hwnd == HWND::default()`. With an invalid hwnd,
+`ClientToScreen` inside msftedit silently fails, `IRicheditWindowless
+Accessibility::CreateProvider` yields fragments that report `Infinity`
+bounding rectangles, and IME/caret popup placement is wrong.
+
+**Consequence:** after the window exists, the backend repairs every
+already-mounted peer via `set_hwnd` (registry walk, generation-safe). The
+fix restores both the D2D draw path and real editor bounding rects in the
+UIA tree.
+
+**Contract implication:** peer creation must tolerate a temporarily
+invalid host hwnd; the backend owns the repair pass — consumers of
+`peer_factory` never see it.

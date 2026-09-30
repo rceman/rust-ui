@@ -416,15 +416,9 @@ impl ITextHost_Impl for HostBox {
     }
     fn TxGetViewInset(&self, prc: *mut RECT) -> Result<()> {
         unsafe {
-            // editor chrome padding in local DIP — msftedit insets the
-            // text view inside the format space; the pill border sits
-            // outside it (drawn by our renderer)
-            *prc = RECT {
-                left: 6,
-                top: 5,
-                right: 6,
-                bottom: 5,
-            };
+            // content padding lives in the bitmap's destination rect —
+            // the format space itself gets no inset
+            *prc = RECT::default();
         }
         Ok(())
     }
@@ -625,6 +619,10 @@ pub(crate) struct WindowlessPeer {
     multiline: bool,
     /// OnTxInPlaceActivate once the peer has real (non-empty) bounds
     activated: Cell<bool>,
+    /// peer-local compatible bitmap target — TxDrawD2D renders into this
+    /// local space and we blit it into the window target at the global rect
+    bmp_target:
+        std::cell::RefCell<Option<windows::Win32::Graphics::Direct2D::ID2D1BitmapRenderTarget>>,
 }
 
 impl WindowlessPeer {
@@ -799,6 +797,7 @@ impl WindowlessPeer {
                 sink,
                 multiline: cfg.multiline,
                 activated: Cell::new(false),
+                bmp_target: std::cell::RefCell::new(None),
             })
         }
     }
@@ -868,7 +867,11 @@ impl WindowlessPeer {
     }
 
     /// Draw the peer's content into the window's D2D target. `bounds` is the
-    /// peer's rect in the target's logical DIP units.
+    /// peer's rect in the target's logical DIP units. The peer paints into a
+    /// per-peer compatible bitmap at LOCAL coords and we blit it at the
+    /// global rect — TxDrawD2D's anchoring into a shared hwnd target is
+    /// unreliable (content lands offset from lprcBounds); owning the
+    /// intermediate surface makes the mapping exact.
     pub(crate) fn draw(
         &self,
         rt: &ID2D1RenderTarget,
@@ -876,21 +879,95 @@ impl WindowlessPeer {
     ) -> UiResult<()> {
         self.ensure_activated();
         let (l, t, r, b) = bounds;
-        let rc = RECTL {
-            left: l.round() as i32,
-            top: t.round() as i32,
-            right: r.round() as i32,
-            bottom: b.round() as i32,
+        let (w, h) = (r - l, b - t);
+        if w <= 0.0 || h <= 0.0 {
+            return Ok(());
+        }
+        let mut bmp_target = self.bmp_target.borrow_mut();
+        let bt = match &*bmp_target {
+            Some(bt) => Some(bt.clone()),
+            None => None,
         };
+        // create/resize the peer-local surface when size changes
+        let bt = match bt {
+            Some(bt)
+                if {
+                    let sz = unsafe { bt.GetSize() };
+                    (sz.width - w).abs() < 0.5 && (sz.height - h).abs() < 0.5
+                } =>
+            {
+                bt
+            }
+            _ => unsafe {
+                match rt.CreateCompatibleRenderTarget(
+                    None,
+                    Some(&windows::Win32::Graphics::Direct2D::Common::D2D_SIZE_U {
+                        width: (w * self.shared().host.scale).ceil() as u32,
+                        height: (h * self.shared().host.scale).ceil() as u32,
+                    }),
+                    None,
+                    windows::Win32::Graphics::Direct2D::D2D1_COMPATIBLE_RENDER_TARGET_OPTIONS_NONE,
+                ) {
+                    Ok(t) => {
+                        let bt: windows::Win32::Graphics::Direct2D::ID2D1BitmapRenderTarget = t
+                            .cast()
+                            .map_err(|e| UiError::Platform(format!("compat target cast: {e}")))?;
+                        bt.SetDpi(
+                            self.shared().host.scale * 96.0,
+                            self.shared().host.scale * 96.0,
+                        );
+                        *bmp_target = Some(bt.clone());
+                        bt
+                    }
+                    Err(e) => return Err(UiError::Platform(format!("compat target: {e}"))),
+                }
+            },
+        };
+        // render the peer into its own surface at LOCAL (0,0,w,h)
         unsafe {
-            self.tx().TxDrawD2D(
-                rt,
+            use windows::Win32::Graphics::Direct2D::Common::D2D1_COLOR_F;
+            bt.BeginDraw();
+            bt.Clear(Some(&D2D1_COLOR_F {
+                r: 0.0,
+                g: 0.0,
+                b: 0.0,
+                a: 0.0,
+            }));
+            let rc = RECTL {
+                left: 0,
+                top: 0,
+                right: w.round() as i32,
+                bottom: h.round() as i32,
+            };
+            let rt2: ID2D1RenderTarget = bt
+                .cast()
+                .map_err(|e| UiError::Platform(format!("bt cast: {e}")))?;
+            let draw_r = self.tx().TxDrawD2D(
+                &rt2,
                 &rc as *const RECTL as *mut RECTL,
                 std::ptr::null_mut(),
                 0,
-            )
+            );
+            let end_r = bt.EndDraw(None, None);
+            if let Err(e) = draw_r.and(end_r) {
+                return Err(UiError::Platform(format!("TxDrawD2D(peer): {e}")));
+            }
+            let bmp = bt.GetBitmap()?;
+            let dest = windows::Win32::Graphics::Direct2D::Common::D2D_RECT_F {
+                left: l,
+                top: t,
+                right: r,
+                bottom: b,
+            };
+            rt.DrawBitmap(
+                &bmp,
+                Some(&dest),
+                1.0,
+                windows::Win32::Graphics::Direct2D::D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR,
+                None,
+            );
         }
-        .map_err(|e| UiError::Platform(format!("TxDrawD2D: {e}")))
+        Ok(())
     }
 
     /// Natural content size in DIP at the given layout width (REQRESIZE).
@@ -917,32 +994,12 @@ impl WindowlessPeer {
     /// Global bounds (window DIP) + DPI scale — updates without recreate.
     /// The first non-empty bounds activate the text service (the format
     /// space latches at activation, so activating at mount — before layout —
-    /// would latch a 0×0 space and draw nothing). A SIZE change after
-    /// activation re-latches the format space via deactivate+activate.
+    /// would latch a 0×0 space and draw nothing). The client rect is a live
+    /// property (`TxGetClientRect` reads `host.bounds`) — never relatched,
+    /// matching the proven mascot contract.
     pub(crate) fn apply_bounds(&self, bounds: RECT, scale: f32) {
-        let relatch = {
-            let mut s = self.shared_mut();
-            let w_changed = (bounds.right - bounds.left)
-                != (s.host.bounds.right - s.host.bounds.left)
-                || (bounds.bottom - bounds.top) != (s.host.bounds.bottom - s.host.bounds.top);
-            s.host.bounds = bounds;
-            s.host.scale = scale;
-            w_changed && self.activated.get()
-        };
-        if relatch && self.tx.is_some() {
-            unsafe {
-                let _ = self.tx().OnTxInPlaceDeactivate();
-                let w = bounds.right - bounds.left;
-                let h = bounds.bottom - bounds.top;
-                let mut local = RECT {
-                    left: 0,
-                    top: 0,
-                    right: w,
-                    bottom: h,
-                };
-                let _ = self.tx().OnTxInPlaceActivate(&mut local);
-            }
-        }
+        self.shared_mut().host.bounds = bounds;
+        self.shared_mut().host.scale = scale;
         self.ensure_activated();
     }
 

@@ -1570,6 +1570,19 @@ where
     let hwnd = window::create(&title, route)?;
     backend.hwnd = hwnd;
     backend.peer_ctx.hwnd.set(hwnd);
+    // peers that mounted inside CreateWindowExW latched an invalid hwnd —
+    // repair them once the window exists (IME/caret/coord conversion and
+    // msftedit's UIA provider both need the host window handle)
+    for p in backend
+        .peer_ctx
+        .registry
+        .lock()
+        .unwrap()
+        .values()
+        .filter_map(|w| w.upgrade())
+    {
+        p.borrow().set_hwnd(hwnd);
+    }
     let scale = unsafe { windows::Win32::UI::HiDpi::GetDpiForWindow(hwnd) as f32 / 96.0 };
     backend.peer_ctx.scale.set(scale.max(0.5));
 

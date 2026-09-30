@@ -8,7 +8,7 @@
 
 - `composer-dark.png` — system/dark theme, all controls resolved (send shows the surgical red bottom border; custom action has typed shadow)
 - `composer-light.png` — after `light` UIA-invoked `SetTheme(Light)` — editor text follows the resolved palette live (peers re-read `Theme.dark`); same layout, no remount
-- `uia-tree.txt` — the raw-tree enumeration of the live window: label, three `RichEdit Control` Edit peers, every button, the custom action, the image semantics node
+- `uia-tree.txt` — the raw-tree enumeration of the live window: label, three `RichEdit Control` Edit peers **with real bounding rects** (the hwnd-repair fix also unbroke msftedit's provider bounds), every button, the custom action, the image semantics node
 - `perf.txt` — idle process after 2.5s settle: `0.00% CPU` over a 3s window, `35.6 MB` working set, 20 threads (executor + timer + text-service workers)
 - `send-mid.png` / `send-done.png` — UIA `Invoke` on `send` streams 16 fake chunks; mid-flight shows partial text with `send` disabled + `stop` enabled; completion re-enables `send`
 - `send-mid.png` / `send-done.png` — UIA `Invoke` on `send` streams 16 fake chunks; mid-flight shows partial text with `send` disabled + `stop` enabled; completion re-enables `send`
@@ -16,7 +16,7 @@
 ## Verification status (this candidate)
 
 - `cargo check --all-targets` — clean (warnings: unused/dead seams only)
-- `cargo test --lib` — **69/69**
+- `cargo test --lib` — **69/69** (includes the `ElementProviderFromPoint` snapshot-rect test and the native-paint probe)
 - `cargo build --example composer` — clean
 - Native runtime — real Win32 window; windowless RichEdit peers with UIA providers; typed input lands; disabled nodes report `IsEnabled=false` and skip hit-test/focus; `ElementProviderFromPoint` hit-tests snapshot rects because msftedit's windowless provider reports an unusable bounds (Infinity) — deviation noted in `docs/SPIKE_ARCHITECTURE_DEVIATIONS.md`
 
