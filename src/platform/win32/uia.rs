@@ -40,8 +40,9 @@ pub(crate) struct Snapshot {
     hwnd: HWND,
     /// posted-action sink — press/focus ride PostMessage, never direct calls
     post_hwnd: HWND,
-    /// actual focus owner as a weak fragment (set on runtime focus events)
-    focus: Mutex<Weak<IRawElementProviderFragment>>,
+    /// actual focus owner (set on runtime focus events) — resolved to a
+    /// live fragment through `order` on demand
+    focus: Mutex<Option<NodeId>>,
 }
 
 impl Snapshot {
@@ -100,6 +101,9 @@ struct PaintFragment {
     control_type: UIA_CONTROLTYPE_ID,
     localized: &'static str,
     rect: Mutex<UiaRect>,
+    /// actionable (has a press factory) — Invoke is exposed only then
+    actionable: bool,
+    enabled: bool,
     invoke: Mutex<Weak<IInvokeProvider>>,
     root: Mutex<Weak<IRawElementProviderFragment>>,
 }
@@ -115,7 +119,7 @@ impl IRawElementProviderSimple_Impl for PaintFragment_Impl {
         Ok(ProviderOptions_ServerSideProvider | ProviderOptions_UseComThreading)
     }
     fn GetPatternProvider(&self, patternid: UIA_PATTERN_ID) -> Result<IUnknown> {
-        if patternid == UIA_InvokePatternId {
+        if patternid == UIA_InvokePatternId && self.actionable {
             if let Some(p) = self.invoke.lock().unwrap().upgrade() {
                 return Ok(p.cast::<IUnknown>().unwrap());
             }
@@ -133,6 +137,14 @@ impl IRawElementProviderSimple_Impl for PaintFragment_Impl {
             x if x == UIA_ControlTypePropertyId => Ok(VARIANT::from(self.control_type.0 as i32)),
             x if x == UIA_LocalizedControlTypePropertyId => {
                 Ok(VARIANT::from(BSTR::from(self.localized)))
+            }
+            x if x == UIA_IsEnabledPropertyId => Ok(VARIANT::from(self.enabled)),
+            x if x == UIA_IsKeyboardFocusablePropertyId => {
+                Ok(VARIANT::from(self.actionable && self.enabled))
+            }
+            x if x == UIA_HasKeyboardFocusPropertyId => {
+                let focused = *self.snap.focus.lock().unwrap() == Some(self.node);
+                Ok(VARIANT::from(focused))
             }
             _ => Ok(VARIANT::default()),
         }
@@ -335,11 +347,14 @@ impl IRawElementProviderFragmentRoot_Impl for RootFragment_Impl {
         Err(E_NOTIMPL.into())
     }
     fn GetFocus(&self) -> Result<IRawElementProviderFragment> {
+        let focus = *self.snap.focus.lock().unwrap();
         self.snap
-            .focus
+            .order
             .lock()
             .unwrap()
-            .upgrade()
+            .iter()
+            .find(|(id, _)| Some(*id) == focus)
+            .and_then(|(_, w)| w.upgrade())
             .ok_or_else(|| E_NOTIMPL.into())
     }
 }
@@ -358,6 +373,10 @@ pub(crate) struct ChildBuild {
     pub ct: UIA_CONTROLTYPE_ID,
     pub localized: &'static str,
     pub rect: UiaRect,
+    /// actionable — exposes IInvokeProvider (press factories)
+    pub actionable: bool,
+    /// !disabled && visible
+    pub enabled: bool,
     /// the node's real windowless provider when this is an editor
     pub native: Option<IRawElementProviderFragment>,
     /// the node is an editor — needs the native provider if available
@@ -373,7 +392,10 @@ pub(crate) struct UiaRoot {
     root_frag: IRawElementProviderFragment,
     /// editor slot -> its native provider's fragment (kept so next/prev
     /// navigation can answer while the peer lives)
-    native: Mutex<HashMap<u32, IRawElementProviderFragment>>,
+    pub(crate) native: Mutex<HashMap<u32, IRawElementProviderFragment>>,
+    /// strong refs to the painted fragments — `order` keeps only weaks;
+    /// without this the children are destroyed at rebuild return
+    children: Mutex<Vec<IRawElementProviderFragment>>,
 }
 
 impl UiaRoot {
@@ -384,7 +406,7 @@ impl UiaRoot {
             order: Mutex::new(Vec::new()),
             hwnd,
             post_hwnd: hwnd,
-            focus: Mutex::new(Weak::new()),
+            focus: Mutex::new(None),
         });
         let site_co = windows_core::ComObject::new(WindowlessSite {
             snap: snap.clone(),
@@ -409,6 +431,7 @@ impl UiaRoot {
             root,
             root_frag,
             native: Mutex::new(HashMap::new()),
+            children: Mutex::new(Vec::new()),
         })
     }
 
@@ -431,9 +454,18 @@ impl UiaRoot {
         // native providers stay registered (editors persist across rebuilds)
         let mut live = HashMap::new();
         let mut order = Vec::new();
+        let mut keep: Vec<IRawElementProviderFragment> = Vec::new();
         for k in children {
             live.insert(k.id.slot, k.id.generation);
-            if let Some(native) = k.native {
+            // editors ride their peer's real provider — reuse the one
+            // registered for this slot so providers persist across rebuilds
+            // instead of being re-created per WM_GETOBJECT
+            let native = match k.native {
+                Some(f) => Some(f),
+                None if k.peer_node => self.native.lock().unwrap().get(&k.id.slot).cloned(),
+                None => None,
+            };
+            if let Some(native) = native {
                 order.push((k.id, native.downgrade()?));
                 continue;
             }
@@ -444,6 +476,8 @@ impl UiaRoot {
                 control_type: k.ct,
                 localized: k.localized,
                 rect: Mutex::new(k.rect),
+                actionable: k.actionable,
+                enabled: k.enabled,
                 invoke: Mutex::new(Weak::new()),
                 root: Mutex::new(Weak::new()),
             });
@@ -451,10 +485,14 @@ impl UiaRoot {
             let invoke: IInvokeProvider = co.to_interface();
             *co.get().invoke.lock().unwrap() = invoke.downgrade()?;
             *co.get().root.lock().unwrap() = self.root_frag.downgrade()?;
+            // `order` keeps weaks for navigation; `children` holds the
+            // strong refs so painted fragments outlive the rebuild
+            keep.push(frag.clone());
             order.push((k.id, frag.downgrade()?));
         }
         *self.snap.live.lock().unwrap() = live;
         *self.snap.order.lock().unwrap() = order;
+        *self.children.lock().unwrap() = keep;
         Ok(())
     }
 
@@ -463,6 +501,12 @@ impl UiaRoot {
     pub(crate) fn register_native(&self, slot: u32, frag: IRawElementProviderFragment) -> UiResult {
         self.native.lock().unwrap().insert(slot, frag);
         Ok(())
+    }
+
+    /// Runtime focus moved — record the owner so GetFocus/HasKeyboardFocus
+    /// resolve through the live order.
+    pub(crate) fn set_focus(&self, id: Option<NodeId>) {
+        *self.snap.focus.lock().unwrap() = id;
     }
 
     /// Disconnect all UIA — closed flag + provider tables drop BEFORE the
@@ -474,6 +518,7 @@ impl UiaRoot {
         self.snap.live.lock().unwrap().clear();
         self.snap.order.lock().unwrap().clear();
         self.native.lock().unwrap().clear();
+        self.children.lock().unwrap().clear();
     }
 
     pub(crate) fn provider(&self) -> IRawElementProviderFragmentRoot {

@@ -3262,3 +3262,89 @@ fn native_probe_richedit_paints_text() {
         assert!(lit > 50, "peer text must paint visible pixels, got {lit}");
     }
 }
+
+
+#[cfg(windows)]
+fn uia_variant_string(v: &windows::Win32::System::Variant::VARIANT) -> String {
+    // VARIANT(vt=VT_BSTR) -> String
+    unsafe {
+        let inner = &*(v as *const _ as *const windows::Win32::System::Variant::VARIANT);
+        let _ = inner;
+        // bstrVal lives in the nested anonymous union
+        let bstr: &windows::core::BSTR = std::mem::transmute(&v.Anonymous.Anonymous.Anonymous.bstrVal);
+        bstr.to_string()
+    }
+}
+
+/// UIA: painted fragments must survive rebuild — previously `rebuild` kept
+/// only `Weak`s and dropped the strong refs at loop end, so every painted
+/// child died instantly and `Navigate` could never produce it.
+#[cfg(windows)]
+#[test]
+fn uia_children_survive_rebuild() {
+    use crate::platform::win32::uia::{ChildBuild, UiaRoot};
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::Accessibility::*;
+    use windows::core::Interface;
+
+    let root = UiaRoot::new(HWND::default(), "t").expect("root");
+    let mk = |slot: u32, name: &str, ct: UIA_CONTROLTYPE_ID, loc: &'static str, act| {
+        ChildBuild {
+            id: crate::NodeId { slot, generation: 0 },
+            name: name.into(),
+            ct,
+            localized: loc,
+            rect: UiaRect { left: 0.0, top: 0.0, width: 10.0, height: 10.0 },
+            actionable: act,
+            enabled: true,
+            peer_node: false,
+            native: None,
+        }
+    };
+    root.rebuild(vec![
+        mk(0, "lbl", UIA_TextControlTypeId, "Text", false),
+        mk(1, "btn", UIA_ButtonControlTypeId, "Button", true),
+    ])
+    .expect("rebuild");
+
+    let rf: IRawElementProviderFragment = root.provider().cast().expect("root frag");
+    // first child = the label — upgrade through the weak must succeed
+    let first = unsafe { rf.Navigate(NavigateDirection_FirstChild).expect("first child") };
+    // sibling navigation label -> button
+    let second = unsafe {
+        first
+            .Navigate(NavigateDirection_NextSibling)
+            .expect("next sibling")
+    };
+    let simple: IRawElementProviderSimple = second.cast().expect("simple");
+    unsafe {
+        let name = simple.GetPropertyValue(UIA_NamePropertyId).expect("name");
+        assert_eq!(uia_variant_string(&name), "btn");
+        let ct = simple
+            .GetPropertyValue(UIA_ControlTypePropertyId)
+            .expect("ct");
+        // vt = VT_I4; lVal inside the union
+        let lval = ct.Anonymous.Anonymous.Anonymous.lVal;
+        assert_eq!(lval, UIA_ButtonControlTypeId.0);
+        // actionable -> InvokePattern present; label -> absent
+        simple
+            .GetPatternProvider(UIA_InvokePatternId)
+            .expect("button must expose invoke");
+        let lbl: IRawElementProviderSimple = first.cast().expect("lbl simple");
+        assert!(
+            lbl.GetPatternProvider(UIA_InvokePatternId).is_err(),
+            "label must not expose invoke"
+        );
+    }
+    // focus tracking: set_focus marks the owner; GetFocus resolves it
+    root.set_focus(Some(crate::NodeId { slot: 1, generation: 0 }));
+    let rroot: IRawElementProviderFragmentRoot = root.provider().cast().expect("rroot");
+    unsafe {
+        let f = rroot.GetFocus().expect("focus must resolve");
+        let fs: IRawElementProviderSimple = f.cast().expect("fs");
+        assert_eq!(
+            uia_variant_string(&fs.GetPropertyValue(UIA_NamePropertyId).unwrap()),
+            "btn"
+        );
+    }
+}

@@ -11,7 +11,7 @@
 mod layout;
 mod render;
 mod text;
-mod uia;
+pub(crate) mod uia;
 mod window;
 
 pub(crate) use layout::{DipRect, LayoutCache};
@@ -1065,6 +1065,9 @@ where
             self.send_native(old, WM_KILLFOCUS, 0, 0);
         }
         self.focus = node;
+        if let Some(u) = &self.uia {
+            u.set_focus(node);
+        }
         if let Some(id) = node {
             let _ = self.push_input(id, NodeEvent::Focus(true));
             self.send_native(id, WM_SETFOCUS, 0, 0);
@@ -1223,14 +1226,21 @@ where
                 ct,
                 localized: loc,
                 rect,
+                actionable: n.factories.on_press.is_some(),
+                enabled: n.interactive(),
                 peer_node: matches!(n.data, NodeData::Editor { .. }),
                 native: None,
             });
         }
-        // editors get the REAL windowless provider when available
+        // editors get the REAL windowless provider when available — reuse
+        // an already-registered provider so one peer maps to one provider
+        // across WM_GETOBJECT rebuilds (no duplicate editable semantics)
         for k in &mut kids {
             if !k.peer_node {
                 continue;
+            }
+            if u.native.lock().unwrap().contains_key(&k.id.slot) {
+                continue; // rebuild() picks it up from the registry
             }
             let Some(peer) = self.peer_for(k.id) else {
                 continue;
