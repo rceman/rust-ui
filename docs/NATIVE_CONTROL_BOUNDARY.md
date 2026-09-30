@@ -233,6 +233,24 @@ routed to the peer through a typed adapter:
 The full patch vocabulary and merge/equality rules live in
 [STYLE_CUSTOMIZATION_MODEL.md](STYLE_CUSTOMIZATION_MODEL.md).
 
+## Authoring-frontend preservation (reserved)
+
+All future authoring frontends lower native editable text through the same
+capability-limited `TextInputStylePatch` path, never a generic painted-text
+style. The common contract in
+[STYLE_CUSTOMIZATION_MODEL.md](STYLE_CUSTOMIZATION_MODEL.md#future-optional-authoring-frontends-reserved)
+reserves recoverable candidate validation before native mutation. It does
+not introduce CSS or change the peer contract: opaque backing/foreground,
+rectangular native islands, system editing/accessibility ownership, identity/
+generation and IME/selection/undo remain authoritative. Styling metadata is
+not a reconciliation key; style-only updates never replace text or remount.
+
+Valid color changes may require peer `apply`; geometry changes still follow
+layout and safety-inset rules. Shadow-only updates remain chrome paint/damage
+with no peer `apply`. Unsafe candidate colors, geometry or overlap are
+rejected before mutation, not made to work by recreating RichEdit. Workers
+never handle native objects. No CSS/native implementation is added now.
+
 ## Platform peers
 
 ### Windows — proposed: windowless RichEdit

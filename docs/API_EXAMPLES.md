@@ -740,6 +740,22 @@ This `Inbox` is a composition demo only — a production transcript applies the
 count+byte bounding and keyed records of example 6 rather than an unbounded
 `Vec`.
 
+## Future styling authoring (reserved, not a v0.1 API)
+
+Rust builders are the first authoring frontend; future optional CSS or
+generated/design-tool frontends feed the same typed style and layout inputs
+across FAST/CUSTOM/SURGICAL, not a fourth UI layer or another component model.
+The existing examples retain their Rust full-style/partial-patch semantics.
+A frontend may supply an effective typed stylesheet patch below inline Rust,
+without exposing CSS machinery to components, layout, renderer or peers.
+
+The single contract is
+[STYLE_CUSTOMIZATION_MODEL.md](STYLE_CUSTOMIZATION_MODEL.md#future-optional-authoring-frontends-reserved):
+static explicit bindings may eliminate parser/general-selector work in
+production, while dynamic selectors may still need compiled matching.
+No CSS APIs, selectors, watcher, metadata or CSS tests are implemented or
+added to the Windows spike. The existing 17 styling test groups stay unchanged.
+
 ## Future controls (not v0.1)
 
 Same core, no redesign — each is a typed props struct plus a typed

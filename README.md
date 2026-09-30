@@ -21,11 +21,17 @@ The project is intentionally being designed before implementation is migrated fr
 
 - browser/DOM runtime;
 - JavaScript;
-- CSS/Tailwind runtime;
+- CSS/Tailwind parser or selector runtime in core or v0.1;
 - Electron/WebView;
 - a Qt-sized universal framework;
 - copying the entire shadcn catalog;
 - mascot/agent/provider-specific logic.
+
+Future optional CSS/generated styling frontends are architecturally supported
+through the same typed style/layout inputs, not dependencies of core or
+features of v0.1. The reserved boundary lives in
+[the canonical styling model](docs/STYLE_CUSTOMIZATION_MODEL.md#future-optional-authoring-frontends-reserved).
+No frontend or watcher is implemented now.
 
 Start with:
 

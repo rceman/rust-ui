@@ -70,10 +70,12 @@ Notes on the signature set:
   to two mounted peers, a `Fill` on an unbounded axis, a malformed numeric
   style, an actionable/focusable node nested inside an `ui.action`) stages a
   typed `UiDiagnostic` with non-sensitive context — a key fingerprint and
-  node kind, never user text. A fatal invalid build aborts the transaction
-  before any native mutation and `run` returns `Err` after orderly teardown.
-  This is for structural errors only: a `TextConflict` is an event, not a
-  fatal error.
+  node kind, never user text. A fatal programmer-invalid Rust build aborts
+  the transaction before native mutation and `run` returns `Err` after orderly
+  teardown. Future externally supplied stylesheet candidates use a separate
+  reserved recoverable-validation contract below; no such API exists in v0.1.
+  The fatal policy covers programmer-invalid UI; a `TextConflict` remains an
+  event, not a fatal error.
 
 ## Traversal, staging, commit
 
@@ -150,6 +152,33 @@ factories are type-erased internally, which is fine because the public
 surface keeps `M` typed and no unsafe downcasting escapes to consumers. Closures
 at call sites may box and rebind on every `view` pass; the model does not
 promise zero allocation or fixed traversal cost.
+
+## Future external style contributions (reserved)
+
+Rust builders remain the first frontend to the shared typed style/layout
+inputs. The effective stylesheet slot, primitive full-style precedence,
+state-combination handling and recoverable publication contract are defined
+once in
+[STYLE_CUSTOMIZATION_MODEL.md](STYLE_CUSTOMIZATION_MODEL.md#future-optional-authoring-frontends-reserved).
+They reserve future integration, not a generic property/value IR or a new
+v0.1 runtime path. Authored/base inputs must remain distinct from optional
+stylesheet and inline contributions; removing contributions recomputes from
+sources, not previously resolved values.
+
+A future external update stages matching/resolution and layout/native-capability
+validation before logically atomic stylesheet/style-target publication. Invalid
+candidates retain the previous valid stylesheet/UI and report diagnostics,
+not the fatal programmer-invalid build teardown above. Stylesheet revisions
+and node generations fence stale results; workers never handle native objects.
+The opt-in bridge must participate in runtime-owned interaction changes that
+bypass `view` as well as app-view transactions. Concrete equality still decides
+damage and unchanged targets never restart motion; coalesced event wakeups
+never introduce a render loop. Exact integration APIs remain deferred.
+
+Style IDs/classes are metadata, not identity: changing them must not change
+keys, generations or native peer lifetime. Logical styling ancestry is not
+message/key scaffolding or private component decomposition. No metadata APIs,
+storage, indexes, CSS tests or implementation are added to v0.1 for this seam.
 
 ## Identity and keys
 

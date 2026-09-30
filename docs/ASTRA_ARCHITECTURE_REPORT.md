@@ -20,7 +20,32 @@ native shadow path in owner-supplied Mascot context (inspected read-only at
 snapshot `14e576ff`; evidence of implementability, not a runtime validation
 and no port). Only spread/inset/shadow lists stay deferred.
 
-Status: architecture concept only — documentation, not approval, not a
+Optional-frontend correction over `0bf0add83fa3a7e4052d058414b55d458deb2f8d`:
+the independent review's **APPROVE WITH ARCHITECTURE CHANGES** is addressed
+by the authoritative reserved frontend boundary in
+[STYLE_CUSTOMIZATION_MODEL.md](STYLE_CUSTOMIZATION_MODEL.md#future-optional-authoring-frontends-reserved).
+Rust builders remain first; optional future CSS/generated authoring lowers
+to the existing typed style/layout inputs, without replacing components,
+layout algorithms, retained arena, resolved-style family, renderer, damage
+or native-peer contracts. No generic property/value IR is introduced.
+CSS parser/selectors/specificity/cascade remain rejected core dependencies,
+out of scope for v0.1, but supported as optional future authoring. DOM/browser
+layout, browser-relative sizing, CSS-dependent rendering and core dynamic
+property bags remain rejected.
+
+FAST/CUSTOM/SURGICAL and basic outer `Shadow` are accepted. The corrected
+style architecture is ready for owner approval of the Windows spike, not
+permission to begin it. The future-only stylesheet slot precedes inline Rust;
+state matching/cascade finishes in its frontend, with no duplicate state
+tracking. Recoverable external candidate publication, metadata-only semantics
+and frontend-owned provenance are reserved, not implemented. Rust-only cost
+is unchanged by design; CSS-enabled dynamic matching is not promised free.
+Static explicit bindings may avoid a general selector engine, whereas general
+selectors may still require compiled matching after build-time parsing.
+Future CSS profile/interfaces/implementation require separate approval and
+are not blockers for the current native-contract spike.
+
+Status: architecture concept only — documentation, not final approval, not a
 performance result, not native proof. All referenced Rust is proposed API
 exercise material, unimplemented and unverified by a compiler.
 
@@ -157,6 +182,9 @@ baseline alignment, group/node opacity and shadow spread/inset/lists
 (deferred, not rejected), Linux backend,
 virtualized large lists, GPU-required rendering, gallery example, effects
 test harness (recording `UpdateCtx`/virtual clock), any Mascot migration.
+Optional CSS parser/matching/cascade, watcher/hot reload and selector metadata/
+APIs are separately deferred implementation, not core dependencies or
+Windows-spike work; their authoring boundary is reserved above.
 
 ## Bounded spike: Native Composer Contract Spike
 

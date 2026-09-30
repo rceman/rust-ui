@@ -10,6 +10,13 @@ style rules.
 Written on branch `agent/style-customization-model-review` against the
 committed architecture at `768eb172509a45ed15cdf5156fe57268ccaf8b08`.
 
+Optional-frontend correction against `0bf0add83fa3a7e4052d058414b55d458deb2f8d`:
+the independent review's **APPROVE WITH ARCHITECTURE CHANGES** is addressed
+by the reserved boundary below. It supersedes earlier blanket CSS exclusions
+for future optional authoring, not the original CSS-free v0.1 implementation
+scope. FAST/CUSTOM/SURGICAL and the basic outer-shadow correction remain
+accepted; no frontend or integration machinery is implemented by this review.
+
 ## Three workflows, one renderer
 
 The review keeps the owner's three first-class workflows — they are three
@@ -78,11 +85,13 @@ impl BoxProps {
 ```
 
 `BoxProps` is opaque — it bundles the authored `BoxStyle` plus the retained
-layout props, kept separate inside so style never overwrites size. The same
+layout props, kept separate so visual style never overwrites size. A future
+frontend may separately project declarations into typed layout inputs; it
+never moves dimensions into visual-style patches. The same
 `.width`/`.height` (`Length`) and `.min_*`/`.max_*` (`Dp`) setter vocabulary
 exists on every node and container builder — rows, columns, `ui.action`,
 built-ins and native inputs — so size is uniformly layout, not style. `Row`
-gap/alignment and `Length` stay layout; styling moves none of them.
+gap/alignment and `Length` stay layout; visual styling moves none of them.
 
 ### Action — semantic bespoke controls
 
@@ -281,7 +290,7 @@ faking a constant. `TextSize::Exact(dp)` requests an explicit logical size —
 requested unscaled dp value, not a bypass. Text sizes must be positive
 finite (stricter than the non-negative rule for padding/borders). System
 font is fixed for v0.1: no public font-family or string font loading, no
-text decorations, no letter spacing, no arbitrary inheritance. `.wrap` stays
+text decorations, no letter spacing, no arbitrary core inheritance. `.wrap` stays
 a text behavior prop. `Space`/`Radius` tokens remain for recipes and layout
 and expand to concrete `Insets`/`CornerRadii` during resolution — likewise
 `Surface::padding(Space::Md)` is a recipe convenience that populates the
@@ -467,27 +476,36 @@ impl ActionStyle {
 
 `ActionStyle` owns a full authored `BoxStyle` base plus optional named
 state patches; it carries no text style — box/text children inside an
-`ui.action` declare their own explicit styles, and nothing inherits down.
+`ui.action` declare their own explicit styles; core never implicitly inherits
+styles down.
 A built-in `Button` resolves one `VisualStyle` and binds its own recipe's
 text and icon parts to that resolved text style — a closed recipe-part
 mapping, not ancestor inheritance.
 
-Precedence, in exactly this order — "why did this property get this value?"
-always has one answer:
+Ordered source composition — "why did this property get this value?" has
+one deterministic answer. The stylesheet slot is **reserved for a future
+optional frontend**, absent in v0.1; without it the existing Rust resolution
+order and outputs are unchanged:
 
 ```text
 theme tokens
   -> component defaults
   -> variant
   -> size
-  -> recipe interaction-state overlay
-  -> consumer BASE partial patch
-  -> consumer ACTIVE state patch
+  -> recipe interaction/focus overlays
+  -> effective stylesheet patch for CURRENT runtime state (future optional)
+  -> inline Rust BASE partial patch
+  -> inline Rust ACTIVE/focus_visible patch
   -> accessibility / OS enforcement
 ```
 
-- The interaction branch is exclusive: `disabled`, else `pressed`, else
-  `hover`, else `normal` — a priority chain, never "hover+pressed"
+Specificity/cascade completes inside the optional frontend before its patch
+enters this slot. Inline Rust is stronger host policy, not a browser style
+attribute; CSS `!important`, if supported later, cannot jump over that host
+layer or accessibility/OS enforcement. No specificity enters the core resolver.
+
+- The Rust recipe/inline interaction branch is exclusive: `disabled`, else
+  `pressed`, else `hover`, else `normal` — a priority chain, never "hover+pressed"
   specificity. `focus_visible` is orthogonal: the recipe focus overlay
   applies after the recipe's active branch; the consumer `focus_visible`
   patch applies after the consumer's active branch.
@@ -514,8 +532,8 @@ theme tokens
   zeroing border widths cannot remove it.
 - App-driven state styling (a "selected" row, an error tint) is chosen in
   `view` by passing a different variant/style — there is no pseudo-selector
-  system. Motion stays `MotionToken` + the earliest-deadline scheduler; no
-  style animation selectors or loops.
+  system in core or v0.1. Motion stays `MotionToken` + the earliest-deadline
+  scheduler; no style animation selectors or loops.
 
 Typed state example (optional, shows the layered patch shape):
 
@@ -547,13 +565,22 @@ ButtonStylePatch::new().hover(VisualStylePatch {
 | opacity (group/node) | **deferred** — paint-color alpha suffices for flat fills; real group opacity needs offscreen/ink-bounds work; not rejected forever |
 | shadow | **v0.1 basic** — one optional outer `Shadow` per `BoxStyle`; spread, inset and shadow lists stay deferred |
 
-Rejected outright: CSS parser, selectors, specificity, cascade, arbitrary
-inheritance, string property bags, DOM concepts, pseudo-selector strings,
-browser layout machinery, percent sizing.
+CSS parser, selectors, specificity and cascade are **rejected as core
+dependencies**, **out of scope/deferred for v0.1 implementation**, and
+**architecturally supported in a future optional authoring frontend**. That
+frontend lowers to the same typed inputs; it does not make the core a CSS
+engine. The reserved boundary is defined below.
 
-Deferred: gradients, filters, transforms, blend modes, complex border dashes
-and border images, general font-family/variable-font loading, authored
-transitions, general Flexbox/Grid, shadow spread/inset/shadow lists.
+Genuinely rejected from core: DOM dependency, browser layout model, a general
+browser Flexbox/Grid requirement, percentage/browser-relative layout
+semantics, renderer dependence on CSS, string/dynamic property bags,
+arbitrary implicit inheritance and pseudo-selector strings in core APIs.
+Future native layout additions require separate review, not browser parity.
+
+Deferred native visual properties: gradients, filters, transforms, blend
+modes, complex border dashes/images, general font-family/variable-font
+loading, authored transitions, shadow spread/inset/shadow lists. Their
+appearance in CSS syntax does not approve them for core.
 
 ## Geometry and validation
 
@@ -597,9 +624,9 @@ Contract:
 - Exactly one optional outer shadow per box — the four-field `Shadow`
   descriptor above — shared by `BoxStyle` consumers (`box_`, `Surface`,
   `Button`, `Action`) through the existing style path. No shadow lists, no
-  inset, no spread, no filter/effects API, no CSS semantics. Spread is
-  deferred deliberately: ordinary subtle Surface/Card elevation needs only
-  silhouette translation + blur; spread adds shape dilation/erosion, the
+  inset, no spread, no filter/effects API, no CSS runtime semantics in core.
+  Spread is deferred deliberately: ordinary subtle Surface/Card elevation
+  needs only silhouette translation + blur; spread adds shape dilation/erosion, the
   negative-spread/corner-radius interaction and extra edge behavior for no
   current basic requirement — a separate future review may revisit it, as
   with inset and lists. Group/node opacity stays deferred unchanged.
@@ -732,10 +759,10 @@ and DPI variation — all planned, none executed.
 - The retained style **target** is kept separate from transient interpolated
   presentation: an unchanged target never restarts a transition, so a
   repeated view pass emits no motion ticks after settle.
-- One retained arena — no extra virtual tree, no subscriptions. Closure
-  factories and app traversal may allocate as before; style resolution aims
-  for allocation-free fixed-size work, which the spike measures rather than
-  promises.
+- One retained arena — no extra virtual tree or required subscriptions in
+  Rust-only core. Closure factories and app traversal may allocate as before;
+  style resolution aims for allocation-free fixed-size work, which the spike
+  measures rather than promises.
 
 ## Native editable text boundary
 
@@ -1041,7 +1068,7 @@ nothing in the native/identity/task/cancellation/resource baseline.
 
 ## Ergonomics and inspectability
 
-The model stays agent- and human-friendly without new machinery: reusable
+The Rust model stays agent- and human-friendly without new machinery: reusable
 custom controls are ordinary helper functions over `Ui<M>`; styles are finite
 named property/state structs rather than selector strings; one recipe source
 of truth (named Rust tables) covers built-ins and consumers; a patch never
@@ -1053,6 +1080,231 @@ invalid. No inspector, selector engine or recipe-registration system is
 required. No source-size or token-efficiency claims are made here — the
 A–F counter metrics in [ARCHITECTURE_OPTIONS.md](ARCHITECTURE_OPTIONS.md)
 are unchanged and unrelated to this vocabulary.
+
+## Future optional authoring frontends (reserved)
+
+### Core ownership and canonical typed inputs
+
+**Architecture requirement:** rust-ui core owns the typed deterministic
+styling model. Rust builders are its first authoring frontend. Future
+optional CSS, generated or design-tool frontends may parse/compile to the
+same typed style and layout inputs without replacing components, layout
+algorithms, the retained arena, the resolved-style family, renderer, damage
+rules or native-peer contracts. Additive integration interfaces may be needed;
+this is not a promise that no future core/API extension is necessary.
+
+Frontends are orthogonal to FAST/CUSTOM/SURGICAL, not a fourth UI layer:
+
+```text
+Rust builders / future CSS / future generated authoring
+                         |
+               FAST / CUSTOM / SURGICAL
+                         |
+             same typed style/layout inputs
+                         |
+           core ordered composition / validation
+                         |
+          same Resolved* family + typed layout inputs
+                         |
+                    layout / paint
+```
+
+`BoxStyle`, `TextStyle`, `VisualStyle`, their existing patch family
+(including `ButtonStylePatch`/`TextInputStylePatch`), `StateStyles`,
+`Shadow`/`ShadowPatch` and private `ResolvedBoxStyle`/`ResolvedTextStyle`/
+`ResolvedVisualStyle`/`ResolvedShadow` remain the canonical core vocabulary
+for the supported subset. No generic `StyleProperty`, `StyleValue`,
+`StyleRule` or dynamic property-bag IR is introduced. CSS may have its own
+AST, selectors, cascade data, variable environment and declaration ordering;
+those are frontend authoring machinery, not another core representation.
+
+Visual patches do not contain width/height/min/max. A future frontend may
+need a typed projection into the existing separate layout inputs, using the
+same validation and layout algorithms. No projection API is designed here;
+no browser sizing or box-sizing equivalence is assumed.
+
+### Ordered contributions and interaction state
+
+The reserved stylesheet slot in the resolution path above receives one
+effective typed patch for the **current** runtime state. The frontend
+finishes all supported selector/state matching and cascade first. It must
+not map CSS declarations directly into Rust's exclusive hover/pressed slots:
+`button:hover { color: red; }` and `button:active { background: blue; }` can
+both contribute while hovered and pressed. Rust `StateStyles` and its
+exclusive branch priority plus orthogonal focus overlay are unchanged.
+
+Predicate sources remain authoritative runtime state: `:hover` uses hover,
+`:active` pressed/activation, `:disabled` disabled, and `:focus-visible`
+focus-visible. The frontend owns no duplicate interaction-state tracking.
+Keyboard/capture, ancestor predicates and native disabled/focus behavior need
+explicit profile semantics; native policy wins and browser equivalence is
+not automatic. State changes that bypass app `view` must also notify the
+future opt-in style integration, without requiring app messages for hover.
+
+Primitive defaults untouched by the author live below stylesheet input.
+An explicitly supplied full `BoxStyle`/`TextStyle` is a complete inline
+authored value and overrides corresponding stylesheet fields; full primitive
+styles remain replacements, not sparse patches. This also applies to an
+explicit full `ActionStyle` base. Do not infer explicitness by comparing
+values with defaults: future source composition must distinguish absence
+from an explicit full value. A partial-inline primitive API may be considered
+later but is not required or specified now.
+
+### Optional dependency boundary
+
+```text
+optional development watcher -> optional CSS frontend -> rust-ui core
+```
+
+| Owner | Responsibilities |
+|---|---|
+| Core | typed styles/layout inputs, recipes, ordered resolution, validation, concrete resolved values, layout, paint, damage, native peers |
+| Optional CSS frontend | parsing, selectors, specificity/cascade, shorthand expansion, units, variables, declaration ordering, compiled matching, typed lowering |
+| Optional dev watcher | filesystem notifications, debounce/coalescing, compile requests, diagnostics |
+
+No crates, parser, matcher, watcher, metadata or integration APIs are created
+now. Core never depends on these frontends; neither renderer nor platform
+adapter interprets CSS. Future restricted style-target capability, ancestry
+and state access may be necessary, but frontend code cannot bypass validation
+by mutating the arena or injecting final `Resolved*` values directly.
+
+### Build-time and recoverable runtime authoring
+
+A future compiler may emit typed/generated/static rust-ui data. For explicit
+or static bindings, production may have no parser, source CSS, runtime
+CSS-value string parsing, filesystem access or general selector engine.
+Const-capable construction or one-time generated typed initialization is a
+future detail, not a new data representation. General selectors over dynamic
+nodes/classes/ancestry/states may still require compiled runtime matching;
+build-time parsing is **not** a promise of zero runtime authoring work.
+
+A future external stylesheet update follows this reserved transaction:
+
+```text
+parse/lower candidate -> validate candidate
+ -> UI-thread matching/resolution staging
+ -> layout/native-capability validation
+ -> atomic valid stylesheet + style-target publication
+ -> ordinary concrete-equality-driven damage
+```
+
+Parsing, lowering or candidate-validation failure keeps the previous valid
+stylesheet and current UI, reporting recoverable diagnostics. It is distinct
+from the fatal programmer-invalid Rust build transaction. No recoverable
+update machinery is implemented in v0.1. Atomicity describes logical
+publication after preflight, not guaranteed rollback of every OS/device or
+resource failure after side effects; existing typed platform failures remain.
+
+Stylesheet revisions fence stale compilation completion; generational node
+identity fences stale target updates. Workers handle CPU data, never native
+handles; matching uses current UI/state, not a stale worker snapshot.
+Filesystem events/coalesced wakeups replace polling redraw loops. Compare
+concrete resolved targets, not just stylesheet revisions: unchanged targets
+never restart motion. Changed targets follow existing motion/reduced-motion
+policy, and shadow parameters remain static as specified above.
+
+### Selector metadata semantics only
+
+No `.id()`/`.class()` APIs, metadata storage or indexes are added to v0.1
+solely for CSS. Reserved invariants:
+
+- Style IDs/classes are not reconciliation keys; changing them never remounts
+  a node or changes its generation.
+- Matching uses author-facing component/primitive identity, not private
+  renderer storage types. Private recipe decomposition is not automatically
+  selector-addressable.
+- Logical styling ancestry is separate from message/key scaffolding.
+- Future metadata/indexes may be opt-in generation-keyed sidecars over the
+  same arena, never a second retained style/virtual tree.
+
+Exact APIs, naming and selector vocabulary remain deferred.
+
+### Constrained future CSS profile, units and themes
+
+CSS syntax compatibility is not browser layout/rendering compatibility.
+Representable authoring may include these declarations:
+
+```css
+background: #171717;
+color: white;
+border-bottom-width: 2px;
+border-bottom-color: red;
+border-radius: 8px;
+padding: 8px 12px;
+box-shadow: 0 4px 8px rgba(0,0,0,.15);
+```
+
+This is a profile reservation, not a CSS conformance specification or v0.1
+feature. Supported shorthand expansion and declaration order must be correct;
+unsupported declarations/forms fail deterministically rather than silently
+approximating browser behavior. Initially exclude/defer browser Flexbox/Grid,
+percentage sizing, generated content, arbitrary stacking contexts, transforms,
+filters, group opacity, unsupported paint effects, elliptical/percentage
+radii, general CSS animations and unsupported native text styling.
+`display: none` is not `Visibility::Hidden`: the latter retains layout space
+and has existing focus/composition semantics. Inheritance, `currentColor`,
+`initial`/`unset`/`revert` require deliberate frontend semantics, not implicit
+core inheritance or cascade.
+
+Reserve `px -> logical Dp` and unitless zero where valid. Core retains DPI
+snapping and accessibility text scaling; lowering must not double-scale.
+Defer `rem`/`em` until reference metrics and scaling are specified; reject
+`%`/`vw`/`vh` from the initial profile. No browser-relative layout algorithms.
+
+No core CSS-variable system is needed. The frontend owns substitution,
+scope, fallbacks, cycle detection and dependency tracking. An intentionally
+imported `--foreground` binding may lower `color: var(--foreground)` to
+`Color::role(ColorRole::Foreground)`, preserving role resolution in core.
+Explicit CSS colors lower to explicit typed `Color`, with the existing
+channel representation. Generic custom properties do not silently rewrite
+core theme roles; actual theme customization needs explicit typed integration.
+
+CSS `box-shadow` blur-radius is **not** native `blur_sigma`: for the proposed
+profile, `sigma = blur-radius / 2` ([CSS shadow blur reference](https://www.w3.org/TR/css-backgrounds-3/#shadow-blur)).
+With `px -> Dp`, the example's offsets are `(0dp, 4dp)` and its sigma is
+`4dp`, not `8dp`. Accept initially one outer shadow with omitted or zero
+spread; reject nonzero spread, inset and multiple shadows. `none` may lower
+to `ShadowPatch::Remove`; an absent declaration remains untouched. The
+native finite-support bounds, cache/equality and peer limits are unchanged;
+browser pixel equivalence is not promised.
+
+### Retention, inspectability and Rust-only cost
+
+Retain authored/base inputs separately from stylesheet and inline
+contributions. Optional stylesheet dependencies/revisions exist only in the
+enabled integration. Removing a contribution recomputes from source layers,
+not yesterday's resolved result; ancestry/class/scoped-variable changes may
+require descendant re-resolution. Concrete `Resolved*` equality and old/new
+ink bounds/clipping remain authoritative. A revision alone causes no layout
+or repaint when concrete output is unchanged. Targeted damage does not
+promise sublinear reload, matching or layout. Reject features requiring
+unbounded style/layout fixed-point iteration.
+
+All frontends lower native editing through the capability-limited
+`TextInputStylePatch` path: opaque backing/foreground, rectangular islands,
+system editing/accessibility ownership and peer identity/generation are
+unchanged. Styles do not become text replacement or remounting; unsafe
+candidate geometry, colors or overlap are rejected before native mutation.
+
+CSS adds nonlocal selector/cascade reasoning, so local grepability is not
+identical to Rust builders. Reserve optional/on-demand frontend provenance:
+stylesheet revision, winning rule/declaration IDs, source span, matched
+target/state, resolution layer and subsequent OS/accessibility enforcement.
+Source maps remain frontend-owned; do not attach full provenance strings or
+histories to every production node. Readable/named generated data helps
+inspection; no token-efficiency or performance result is claimed.
+
+Rust-only builds retain essentially the current cost model **by design**:
+no parser, matcher, watcher, CSS AST, variable environment, selector
+metadata/index allocation, dynamic property map, mandatory per-property
+provenance or virtual dispatch solely for future CSS. Optional dependencies
+and integration storage/work must be absent when unused, not mandatory
+per-node overhead. CSS-enabled matching has its own costs; no zero-cost
+matching promise or benchmark is made.
+
+These are architectural reservations only. Future profile details and exact
+interfaces need separate approval; none expands the current Windows spike,
+adds CSS tests, or blocks approval of the typed-style/native-control spike.
 
 ## Recommended next step
 
@@ -1067,12 +1319,14 @@ is a later, separately approved phase — no platform work starts now.
 
 ## Decisions for the owner
 
-- The FAST/CUSTOM/SURGICAL model is accepted in principle per the task —
-  final approval rides with overall API approval.
-- Approve the v0.1 property set and the deferred list above: group/node
-  opacity stays deferred (offscreen/ink-bounds design needed); a basic outer
-  shadow is now *recommended for v0.1* with spread/inset/lists deferred —
-  confirm or narrow it.
+- FAST/CUSTOM/SURGICAL and the basic outer `Shadow` correction are accepted;
+  final overall architecture/spike approval remains with the owner. Group/node
+  opacity and shadow spread/inset/lists remain deferred.
+- The future optional-frontend boundary is now an explicit architecture
+  requirement. Exact CSS profile/interfaces and implementation need separate
+  approval, not implementation in or a blocker for the current Windows spike.
+  The corrected typed-style architecture is ready for Windows spike approval;
+  this document does not itself authorize starting that spike.
 - `TextSize::{Body, Exact(Dp)}` is recorded as a *recommended* shape —
   accepted as part of overall API approval, not an unresolved alternative:
   it makes the theme-resolved default explicit instead of storing a fake

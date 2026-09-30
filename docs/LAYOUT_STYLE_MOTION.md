@@ -71,9 +71,9 @@ Axis algorithm — a finite water-fill, deterministic and bounded:
    `.align(...)` remains cross-axis-only. Final physical-pixel rounding
    assigns residual pixels in stable child order so logical allocations do
    not exceed their budget through independent rounding.
-5. No wrapping container algorithm, percent sizing, CSS cascade or general
-   Flexbox/Grid is introduced. Label text wrapping is the separate
-   width-then-height process below.
+5. No wrapping container algorithm, percent sizing, CSS cascade in the layout
+   core or general browser Flexbox/Grid requirement is introduced. Label text
+   wrapping is the separate width-then-height process below.
 
 `Fill` on an unbounded main axis (e.g. inside a horizontally scrolled row) is
 a layout error reported to the consumer, never silently resolved.
@@ -158,18 +158,32 @@ The complete authored style and patch vocabulary — `Color`, `BoxStyle`
 `ui.action` primitives — is defined once in
 [STYLE_CUSTOMIZATION_MODEL.md](STYLE_CUSTOMIZATION_MODEL.md), which is the
 authoritative styling specification; its shadow contract (bounds, damage,
-cache, native-peer rules) applies unchanged here. There is no string
-property bag and no CSS runtime.
+cache, native-peer rules) applies unchanged here. There is no string/dynamic
+property bag or CSS runtime in core/v0.1. Future optional authoring frontends
+are reserved in that document, not additional layout/rendering engines.
+Width/height/min/max remain typed layout inputs; frontend declarations may
+need a separate typed projection, never dimensions inside `BoxStylePatch` or
+browser-relative sizing. No projection interface is implemented now.
 
-Resolution precedence is defined there; in short:
+Resolution precedence is defined there; the future-only stylesheet slot is
+absent in v0.1, preserving the existing Rust results:
 
 ```text
 theme tokens
   -> component defaults -> variant -> size
-  -> recipe interaction state
-  -> consumer base patch -> consumer active state patch
+  -> recipe interaction/focus overlays
+  -> effective stylesheet patch for current state (future optional)
+  -> inline Rust base patch -> inline Rust active/focus_visible patch
   -> accessibility / OS enforcement
 ```
+
+Selector/state cascade belongs to the frontend before its effective patch;
+Rust's exclusive interaction branch and orthogonal focus overlay stay
+unchanged. Inline Rust wins over stylesheet declarations (including any
+future CSS `!important`); OS enforcement remains last. Build-time compilation
+does not guarantee zero matching against dynamic nodes. Unit conversion and
+runtime publication are reserved only in the canonical model; core keeps
+DPI snapping, text scaling and the event-driven motion contract below.
 
 Surgical customization is a typed partial patch — the canonical case:
 
