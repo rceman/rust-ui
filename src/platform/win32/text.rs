@@ -27,7 +27,6 @@ use windows::Win32::Foundation::*;
 use windows::Win32::Graphics::Direct2D::ID2D1RenderTarget;
 use windows::Win32::Graphics::Gdi::*;
 use windows::Win32::System::LibraryLoader::*;
-use windows::Win32::System::Ole::OleInitialize;
 use windows::Win32::UI::Controls::EM_LIMITTEXT;
 use windows::Win32::UI::Controls::RichEdit::*;
 use windows::Win32::UI::Input::Ime::*;
@@ -616,6 +615,8 @@ pub(crate) struct WindowlessPeer {
     sink: std::sync::Arc<std::sync::Mutex<Vec<super::NativeSinkItem>>>,
     /// multiline vs single-line init
     multiline: bool,
+    /// OnTxInPlaceActivate once the peer has real (non-empty) bounds
+    activated: Cell<bool>,
 }
 
 impl WindowlessPeer {
@@ -752,14 +753,9 @@ impl WindowlessPeer {
 
             let _ = tx2.TxSendMessage(EM_AUTOURLDETECT, WPARAM(0), LPARAM(0), &mut res);
             let _ = tx2.TxSendMessage(EM_LIMITTEXT, WPARAM(4096), LPARAM(0), &mut res);
-            let rc = RECT {
-                left: 0,
-                top: 0,
-                right: 0,
-                bottom: 0,
-            };
-            let _ = tx2.OnTxInPlaceActivate(&rc as *const RECT as *mut RECT);
-            let _ = tx2.OnTxUIActivate();
+            // NOTE: no OnTxInPlaceActivate yet — activation latches the
+            // format space; peers mount before layout, so activation waits
+            // for the first non-empty bounds (see ensure_activated)
             Ok(WindowlessPeer {
                 tx: Some(tx2),
                 host,
@@ -772,6 +768,7 @@ impl WindowlessPeer {
                 binding: None,
                 sink,
                 multiline: cfg.multiline,
+                activated: Cell::new(false),
             })
         }
     }
@@ -847,6 +844,7 @@ impl WindowlessPeer {
         rt: &ID2D1RenderTarget,
         bounds: (f32, f32, f32, f32),
     ) -> UiResult<()> {
+        self.ensure_activated();
         let (l, t, r, b) = bounds;
         let rc = RECTL {
             left: l.round() as i32,
@@ -866,24 +864,61 @@ impl WindowlessPeer {
     }
 
     /// Natural content size in DIP at the given layout width (REQRESIZE).
+    /// msftedit formats in the client width, so the width must be current
+    /// before measuring; a tall scratch bottom gives it room to report.
     pub(crate) fn natural_size(&self, width_dip: f32) -> UiResult<(f32, f32)> {
         let w = width_dip.round() as i32;
         {
             let mut s = self.shared_mut();
-            if s.host.bounds.right - s.host.bounds.left != w {
+            let cur_w = s.host.bounds.right - s.host.bounds.left;
+            if cur_w != w {
                 s.host.bounds.right = s.host.bounds.left + w;
             }
+            if s.host.bounds.bottom - s.host.bounds.top <= 0 {
+                s.host.bounds.bottom = s.host.bounds.top + 4000;
+            }
         }
+        self.ensure_activated();
         self.send(EM_REQUESTRESIZE, 0, 0);
         let px = self.shared().host.natural;
         Ok((px.cx as f32, px.cy as f32))
     }
 
     /// Global bounds (window DIP) + DPI scale — updates without recreate.
+    /// The first non-empty bounds activate the text service (the format
+    /// space latches at activation, so activating at mount — before layout —
+    /// would latch a 0×0 space and draw nothing).
     pub(crate) fn apply_bounds(&self, bounds: RECT, scale: f32) {
-        let mut s = self.shared_mut();
-        s.host.bounds = bounds;
-        s.host.scale = scale;
+        {
+            let mut s = self.shared_mut();
+            s.host.bounds = bounds;
+            s.host.scale = scale;
+        }
+        self.ensure_activated();
+    }
+
+    /// Activate in-place + UI once bounds are non-empty. Idempotent.
+    fn ensure_activated(&self) {
+        if self.activated.get() || self.tx.is_none() {
+            return;
+        }
+        let b = self.shared().host.bounds;
+        let w = b.right - b.left;
+        let h = b.bottom - b.top;
+        if w <= 0 || h <= 0 {
+            return;
+        }
+        let mut local = RECT {
+            left: 0,
+            top: 0,
+            right: w,
+            bottom: h,
+        };
+        unsafe {
+            let _ = self.tx().OnTxInPlaceActivate(&mut local);
+            let _ = self.tx().OnTxUIActivate();
+        }
+        self.activated.set(true);
     }
 
     /// Theme colors — CFE_AUTOCOLOR resolves `COLOR_WINDOWTEXT` through

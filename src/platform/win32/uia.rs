@@ -10,7 +10,7 @@
 //! site→root can't form. A rebuilt snapshot bumps the live-generation set so
 //! a retired provider returns `UIA_E_ELEMENTNOTAVAILABLE` on next call.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::ffi::c_void;
 use std::sync::{Arc, Mutex};
 

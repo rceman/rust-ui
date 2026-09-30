@@ -11,7 +11,9 @@ use std::rc::Rc;
 use windows::Win32::Foundation::RECT;
 
 use crate::geom::{Align, Length, Point, Visibility};
-use crate::node::{KIND_COLUMN, KIND_ROW, KIND_STACK, KIND_SURFACE, NodeData};
+use crate::node::{
+    KIND_COLUMN, KIND_GROUP, KIND_ROW, KIND_SCOPE, KIND_STACK, KIND_SURFACE, NodeData,
+};
 use crate::runtime::UpdateCtx;
 use crate::theme::{ControlSize, Space};
 use crate::{NodeId, UiResult};
@@ -42,12 +44,7 @@ impl DipRect {
 }
 
 fn space_px(s: Space) -> f32 {
-    match s {
-        Space::Xs => 4.0,
-        Space::Sm => 8.0,
-        Space::Md => 16.0,
-        Space::Lg => 24.0,
-    }
+    s.dp().0
 }
 
 /// Access a node's peer through the backend routing registry.
@@ -107,17 +104,72 @@ where
                     .natural_size(avail_w)
                     .unwrap_or((avail_w, 22.0));
                 let line = 20.0;
+                // cap applies to CONTENT height; the chrome inset (12) sits
+                // on top — a single-line editor needs ~20+12 = 32 DIP or the
+                // inner strip is too short for the line and draws nothing
                 let cap = if *multiline {
                     max_lines.map(|n| n as f32 * line).unwrap_or(f32::MAX)
                 } else {
                     line
                 };
-                (avail_w, (h + 12.0).min(cap.max(line)))
+                (avail_w, h.min(cap) + 12.0)
             } else {
                 (avail_w, if *multiline { 96.0 } else { 32.0 })
             }
         }
-        NodeData::Custom { .. } => (0.0, 0.0),
+        NodeData::Custom { render, .. } => {
+            // intrinsic size from CustomRender::measure within the offered box
+            let want = render.measure(crate::geom::Constraints {
+                min: crate::geom::Size::default(),
+                max: crate::geom::Size {
+                    width: avail_w,
+                    height: f32::MAX,
+                },
+            });
+            (want.width.min(avail_w), want.height)
+        }
+        NodeData::Container { kind, props } => {
+            let pad = props.padding.map(space_px).unwrap_or(0.0);
+            let gap = props.gap.map(space_px).unwrap_or(0.0);
+            let inner_w = (avail_w - pad * 2.0).max(0.0);
+            let kids: Vec<(f32, f32)> = n
+                .children
+                .iter()
+                .filter_map(|slot| {
+                    let g = rt.arena.generation_of(*slot);
+                    let cid = NodeId {
+                        slot: *slot,
+                        generation: g,
+                    };
+                    rt.arena.get(cid)?;
+                    Some(natural(rt, ctx, cid, inner_w, measure))
+                })
+                .collect();
+            match *kind {
+                // Row: width sums children + gaps, height is the max
+                KIND_ROW => {
+                    let w = kids.iter().map(|k| k.0).sum::<f32>()
+                        + gap * kids.len().saturating_sub(1) as f32
+                        + pad * 2.0;
+                    let h = kids.iter().map(|k| k.1).fold(0.0f32, f32::max) + pad * 2.0;
+                    (w.min(avail_w.max(0.0)), h)
+                }
+                // Stack/Surface: children overlay — take the max box
+                KIND_STACK | KIND_SURFACE => {
+                    let w = kids.iter().map(|k| k.0).fold(0.0f32, f32::max) + pad * 2.0;
+                    let h = kids.iter().map(|k| k.1).fold(0.0f32, f32::max) + pad * 2.0;
+                    (w.min(avail_w.max(0.0)), h)
+                }
+                // Column, and transparent group/scope projecting onto the
+                // enclosing vertical axis: heights sum like a column
+                _ => {
+                    let h = kids.iter().map(|k| k.1).sum::<f32>()
+                        + gap * kids.len().saturating_sub(1) as f32
+                        + pad * 2.0;
+                    (avail_w, h)
+                }
+            }
+        }
         _ => (avail_w, 0.0),
     }
 }
@@ -254,6 +306,7 @@ impl LayoutCache {
                 },
                 &mut rects,
                 &mut order,
+                KIND_COLUMN,
             );
             y += *size + space_px(Space::Sm);
         }
@@ -261,7 +314,8 @@ impl LayoutCache {
     }
 
     /// Recursively place one node: layout containers split, transparent
-    /// kinds project children, leaves take the whole rect.
+    /// kinds project children onto the enclosing axis, leaves take the
+    /// whole rect.
     fn walk<S, M, U, V>(
         &self,
         rt: &mut crate::runtime::Runtime<S, M, U, V>,
@@ -270,6 +324,7 @@ impl LayoutCache {
         rect: DipRect,
         rects: &mut HashMap<NodeId, DipRect>,
         order: &mut Vec<NodeId>,
+        parent_axis: u8,
     ) where
         M: 'static,
         U: Fn(&mut S, M, &mut UpdateCtx<'_, M>),
@@ -319,7 +374,14 @@ impl LayoutCache {
                 rt.arena.get(cid).map(|_| cid)
             })
             .collect::<Vec<NodeId>>();
-        match kind {
+        // Group/scope are layout-transparent: children project onto the
+        // enclosing container's axis (default vertical) instead of
+        // overlapping on the group's rect.
+        let effective = match kind {
+            KIND_GROUP | KIND_SCOPE => parent_axis,
+            other => other,
+        };
+        match effective {
             KIND_COLUMN => {
                 let gap = props.gap.map(space_px).unwrap_or(0.0);
                 let items: Vec<Item> = ids
@@ -341,7 +403,7 @@ impl LayoutCache {
                         inner,
                         nw,
                     );
-                    self.walk(rt, ctx, it.id, DipRect { x, y, w, h: *sz }, rects, order);
+                    self.walk(rt, ctx, it.id, DipRect { x, y, w, h: *sz }, rects, order, kind);
                     y += *sz + gap;
                 }
             }
@@ -370,17 +432,16 @@ impl LayoutCache {
                         },
                         rects,
                         order,
+                        kind,
                     );
                     x += *sz + gap;
                 }
             }
-            // Stack/Surface/Group/Scope: children take the full inner rect
-            // (declaration order paints later siblings on top). Group/scope
-            // project children into the surrounding axis — for this flat
-            // backend they share the parent rect.
+            // Stack/Surface: children take the full inner rect (declaration
+            // order paints later siblings on top).
             _ => {
                 for cid in ids {
-                    self.walk(rt, ctx, cid, inner, rects, order);
+                    self.walk(rt, ctx, cid, inner, rects, order, kind);
                 }
             }
         }

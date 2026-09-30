@@ -9,8 +9,6 @@ use windows::Win32::Graphics::Gdi::*;
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Accessibility::*;
 use windows::Win32::UI::Controls::WM_MOUSELEAVE;
-use windows::Win32::UI::HiDpi::*;
-use windows::Win32::UI::Input::Ime::*;
 use windows::Win32::UI::Input::KeyboardAndMouse::*;
 use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::core::*;
@@ -71,10 +69,6 @@ pub(super) mod wndproc {
         U: Fn(&mut S, M, &mut UpdateCtx<'_, M>),
         V: Fn(&S, &mut Ui<'_, '_, M>),
     {
-        let dbg = std::env::var_os("RUSTUI_DEBUG").is_some();
-        if dbg {
-            eprintln!("[win] msg=0x{msg:04x} wp={} lp={}", wparam.0, lparam.0);
-        }
         Ok(match msg {
             WM_PUMP => {
                 be.turn()?;
@@ -118,7 +112,7 @@ pub(super) mod wndproc {
             }
             WM_LBUTTONUP => {
                 unsafe {
-                    ReleaseCapture();
+                    let _ = ReleaseCapture();
                 }
                 let pt = be.pt(lparam);
                 be.pointer(
@@ -206,7 +200,7 @@ pub(super) mod wndproc {
             WM_TIMER => {
                 if wparam.0 == DEADLINE_TIMER {
                     unsafe {
-                        KillTimer(Some(hwnd), DEADLINE_TIMER);
+                        let _ = KillTimer(Some(hwnd), DEADLINE_TIMER);
                     }
                     be.deadline_fire()?;
                 } else if wparam.0 >= NATIVE_TIMER_BASE {

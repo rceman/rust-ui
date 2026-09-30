@@ -7,8 +7,6 @@
 //! — live text is never scaled/animated/alpha-blended.
 
 use std::cell::RefCell;
-use std::ffi::c_void;
-use std::rc::Rc;
 use std::sync::OnceLock;
 
 use windows::Win32::Foundation::*;
@@ -24,14 +22,14 @@ use windows_numerics::Vector2;
 
 use crate::geom::Point;
 use crate::node::{
-    KIND_BUTTON, KIND_LABEL, KIND_SURFACE, KIND_TEXT_AREA, KIND_TEXT_INPUT, NodeData,
+    KIND_SURFACE, NodeData,
 };
 use crate::runtime::UpdateCtx;
 use crate::theme::{ButtonVariant, ControlSize};
-use crate::ui::{Canvas, Paint, PathOp, Semantics, TextRun};
-use crate::{NodeId, UiError, UiResult};
+use crate::ui::{Canvas, Paint, PathOp, TextRun};
+use crate::{UiError, UiResult};
 
-use super::{Backend, PeerCtx};
+use super::Backend;
 
 const FONT: &str = "Segoe UI";
 
@@ -241,13 +239,15 @@ impl Renderer {
     {
         self.hwnd = be.hwnd;
         self.dpi = be.peer_ctx.scale.get() * 96.0;
-        // target-loss -> recreate only the renderer (peers/model preserved)
+        // target-loss -> recreate only the renderer (peers/model preserved);
+        // retry only on a genuine device/target loss
         for attempt in 0..2 {
             match self.draw_frame(be) {
                 Ok(()) => return Ok(()),
                 Err(e) => {
                     self.target = None;
-                    if attempt == 1 {
+                    let lost = matches!(&e, UiError::Platform(m) if m.contains("RECREATE_TARGET"));
+                    if attempt == 1 || !lost {
                         return Err(e);
                     }
                 }
@@ -274,11 +274,7 @@ impl Renderer {
             target.BeginDraw();
             target.Clear(Some(&bg));
         }
-        let order = if std::env::var_os("RUSTUI_EMPTYPAINT").is_some() {
-            Vec::new()
-        } else {
-            be.order.clone()
-        };
+        let order = be.order.clone();
         for id in order {
             let Some(r) = be.rects.get(&id).copied() else {
                 continue;
@@ -294,12 +290,6 @@ impl Renderer {
             };
             match &n.data {
                 NodeData::Label {
-                    text: _t0,
-                    color_role: _c0,
-                    wrap: _w0,
-                    ..
-                } if std::env::var_os("RUSTUI_NOLABEL").is_some() => {}
-                NodeData::Label {
                     text,
                     color_role,
                     wrap,
@@ -307,15 +297,6 @@ impl Renderer {
                 } => {
                     let fmt = dwrite()?.formats[0].as_ref().unwrap();
                     let wide: Vec<u16> = text.as_ref().encode_utf16().collect();
-                    let lay = unsafe {
-                        target
-                            .GetFactory()?
-                            .cast::<IDWriteFactory>()
-                            .ok()
-                            // fallback below
-                            .map(|_| ())
-                    };
-                    let _ = lay;
                     if let Ok(layout) = unsafe {
                         dwrite()?.factory.CreateTextLayout(
                             &wide,
@@ -336,7 +317,6 @@ impl Renderer {
                         }
                     }
                 }
-                NodeData::Button { .. } if std::env::var_os("RUSTUI_NOBUTTON").is_some() => {}
                 NodeData::Button {
                     text,
                     variant,
@@ -451,7 +431,6 @@ impl Renderer {
                         );
                     }
                 }
-                NodeData::Editor { .. } if std::env::var_os("RUSTUI_NOEDITOR").is_some() => {}
                 NodeData::Editor { .. } => {
                     // border + content — the peer draws its own text/selection
                     unsafe {
@@ -475,30 +454,22 @@ impl Renderer {
                         } else {
                             target.DrawGeometry(&geo, &bc, 1.0, None);
                         }
-                        target.PushAxisAlignedClip(&clip, D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
                     }
-                    // a peer draw error must never strand the pushed clip —
-                    // an unbalanced clip breaks EVERY subsequent EndDraw
-                    let peer_err = if std::env::var_os("RUSTUI_NOPEERDRAW").is_none()
+                    // NOTE: no axis-aligned clip around the peer draw —
+                    // msftedit's D2D path does not honor a pushed clip
+                    // (text silently fails to land). The peer's own view
+                    // rect confines its output.
+                    if clip.right > clip.left
+                        && clip.bottom > clip.top
                         && let Some(peer) = be.peer_for(id)
                     {
                         peer.borrow()
                             .draw(
                                 target,
                                 (r.x + 6.0, r.y + 5.0, r.x + r.w - 6.0, r.y + r.h - 5.0),
-                            )
-                            .err()
-                    } else {
-                        None
-                    };
-                    unsafe {
-                        target.PopAxisAlignedClip();
-                    }
-                    if let Some(e) = peer_err {
-                        return Err(e);
+                            )?;
                     }
                 }
-                NodeData::Custom { .. } if std::env::var_os("RUSTUI_NOCUSTOM").is_some() => {}
                 NodeData::Custom { render, .. } => {
                     let mut canvas = D2dCanvas {
                         target,
@@ -516,8 +487,6 @@ impl Renderer {
                         },
                     );
                 }
-                NodeData::Container { kind, .. }
-                    if std::env::var_os("RUSTUI_NOSURFACE").is_some() => {}
                 NodeData::Container { kind, .. } => {
                     if *kind == KIND_SURFACE {
                         unsafe {
@@ -581,13 +550,13 @@ impl Renderer {
                 bottom: (ph * scale) as i32,
             };
             let _ = AdjustWindowRect(&mut tip_rc, WS_POPUP, false);
-            SetWindowPos(
+            let _ = SetWindowPos(
                 hwnd,
                 Some(HWND_TOPMOST),
                 x,
                 y,
-                ((pw * scale) as i32),
-                ((ph * scale) as i32),
+                (pw * scale) as i32,
+                (ph * scale) as i32,
                 SWP_NOACTIVATE | SWP_SHOWWINDOW,
             );
             let _ = InvalidateRect(Some(hwnd), None, false);
@@ -697,29 +666,43 @@ impl Canvas for D2dCanvas<'_> {
                 return;
             };
             sink.SetFillMode(D2D1_FILL_MODE_WINDING);
-            sink.BeginFigure(Vector2 { X: 0.0, Y: 0.0 }, D2D1_FIGURE_BEGIN_FILLED);
+            let mut fig_open = false;
             for op in &path.ops {
                 match op {
                     PathOp::MoveTo(p) => {
+                        if fig_open {
+                            sink.EndFigure(D2D1_FIGURE_END_OPEN);
+                        }
                         sink.BeginFigure(Vector2 { X: p.x, Y: p.y }, D2D1_FIGURE_BEGIN_FILLED);
+                        fig_open = true;
                     }
                     PathOp::LineTo(p) => {
-                        sink.AddLine(Vector2 { X: p.x, Y: p.y });
+                        if fig_open {
+                            sink.AddLine(Vector2 { X: p.x, Y: p.y });
+                        }
                     }
                     PathOp::QuadTo(c, p) => {
-                        sink.AddBezier(&D2D1_BEZIER_SEGMENT {
-                            point1: Vector2 { X: c.x, Y: c.y },
-                            point2: Vector2 { X: c.x, Y: c.y },
-                            point3: Vector2 { X: p.x, Y: p.y },
-                        });
+                        if fig_open {
+                            sink.AddQuadraticBezier(&D2D1_QUADRATIC_BEZIER_SEGMENT {
+                                point1: Vector2 { X: c.x, Y: c.y },
+                                point2: Vector2 { X: p.x, Y: p.y },
+                            });
+                        }
                     }
                     PathOp::Close => {
-                        sink.EndFigure(D2D1_FIGURE_END_CLOSED);
+                        if fig_open {
+                            sink.EndFigure(D2D1_FIGURE_END_CLOSED);
+                            fig_open = false;
+                        }
                     }
                 }
             }
-            sink.EndFigure(D2D1_FIGURE_END_OPEN);
-            sink.Close();
+            if fig_open {
+                sink.EndFigure(D2D1_FIGURE_END_OPEN);
+            }
+            if sink.Close().is_err() {
+                return;
+            }
             let color = match paint {
                 Paint::FillRole(r) => role_color(r, self.dark),
                 Paint::Rgba(r, g, b, a) => D2D1_COLOR_F {

@@ -1,8 +1,7 @@
-use std::any::Any;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll, Wake, Waker};
 use std::time::{Duration, Instant};
@@ -3064,4 +3063,202 @@ fn hidden_editor_still_receives_committed_edits() {
     // Blur still routes
     rig.push(node, NodeEvent::Focus(false));
     rig.pump().unwrap();
+}
+
+
+// ======================== native probes (Windows-only) =====================
+
+#[cfg(windows)]
+thread_local! {
+    static PROBE_HWND: std::cell::RefCell<windows::Win32::Foundation::HWND> =
+        std::cell::RefCell::new(windows::Win32::Foundation::HWND::default());
+}
+
+#[cfg(windows)]
+unsafe extern "system" fn probe_wndproc(
+    hwnd: windows::Win32::Foundation::HWND,
+    msg: u32,
+    wp: windows::Win32::Foundation::WPARAM,
+    lp: windows::Win32::Foundation::LPARAM,
+) -> windows::Win32::Foundation::LRESULT {
+    windows::Win32::UI::WindowsAndMessaging::DefWindowProcW(hwnd, msg, wp, lp)
+}
+
+/// Deterministic offscreen probe: does TxDrawD2D actually paint glyphs?
+/// Creates a real windowless RichEdit peer, initializes "Hello", draws into
+/// a D2D DC render target bound to an in-memory DIB, counts lit pixels.
+#[cfg(windows)]
+#[test]
+fn native_probe_richedit_paints_text() {
+    use windows::Win32::Graphics::Direct2D::Common::*;
+    use windows::Win32::Graphics::Direct2D::*;
+    use windows::Win32::Graphics::Dxgi::Common::*;
+    use windows::Win32::Graphics::Gdi::*;
+    use windows::Win32::System::Com::*;
+    use windows::Win32::System::Ole::OleInitialize;
+    use windows::Win32::Foundation::*;
+    use windows::core::*;
+
+    unsafe {
+        let _ = OleInitialize(None);
+        let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+    }
+    let lib = crate::platform::win32::Msftedit::load().expect("msftedit");
+    let sink = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    // real host hwnd BEFORE peer creation — matches the app
+    unsafe {
+        use windows::Win32::UI::WindowsAndMessaging::*;
+        let cls = w!("rustui_probe");
+        let wc = WNDCLASSEXW {
+            cbSize: std::mem::size_of::<WNDCLASSEXW>() as u32,
+            lpszClassName: cls,
+            hInstance: windows::Win32::System::LibraryLoader::GetModuleHandleW(None).unwrap().into(),
+            lpfnWndProc: Some(probe_wndproc),
+            ..Default::default()
+        };
+        RegisterClassExW(&wc);
+        PROBE_HWND.with(|h| *h.borrow_mut() = CreateWindowExW(
+            WINDOW_EX_STYLE(0), cls, w!("probe"), WS_OVERLAPPEDWINDOW | WS_VISIBLE,
+            0, 0, 800, 500, None, None, None, None,
+        ).expect("hwnd"));
+    }
+    let cfg = crate::platform::win32::PeerConfig {
+        multiline: false,
+        read_only: false,
+        face: "Segoe UI".into(),
+        size_twips: 280,
+        fg: [0.94, 0.94, 0.94, 1.0],
+        sel_bg: [0.2, 0.4, 0.8, 1.0],
+        sel_fg: [1.0, 1.0, 1.0, 1.0],
+    };
+    let mut peer = crate::platform::win32::WindowlessPeer::create(
+        1,
+        &lib,
+        PROBE_HWND.with(|h| *h.borrow()),
+        1.5625,
+        &cfg,
+        sink,
+    )
+    .expect("peer create");
+    let binding = crate::text::BindingToken::mint();
+    crate::node::TextPeer::initialize(
+        &mut peer,
+        "Hello",
+        crate::text::TextRevision::mint(),
+        binding,
+    )
+    .expect("initialize");
+    assert_eq!(peer.text().unwrap(), "Hello", "peer must hold the text");
+    // app order: measure first (activates with scratch bounds), then real bounds
+    let _ = peer.natural_size(400.0);
+    peer.apply_bounds(
+        RECT {
+            left: 28,
+            top: 160,
+            right: 428,
+            bottom: 192,
+        },
+        1.5625,
+    );
+
+    unsafe {
+        use windows::Win32::UI::WindowsAndMessaging::*;
+
+        let hwnd = PROBE_HWND.with(|h| *h.borrow());
+        // in-memory DIB + DC -> D2D DC render target
+        let screen = GetDC(None);
+        let memdc = CreateCompatibleDC(Some(screen));
+        let mut bits: *mut core::ffi::c_void = std::ptr::null_mut();
+        let mut bmi = BITMAPINFO::default();
+        bmi.bmiHeader.biSize = std::mem::size_of::<BITMAPINFOHEADER>() as u32;
+        bmi.bmiHeader.biWidth = 800;
+        bmi.bmiHeader.biHeight = -500; // top-down
+        bmi.bmiHeader.biPlanes = 1;
+        bmi.bmiHeader.biBitCount = 32;
+        bmi.bmiHeader.biCompression = BI_RGB.0;
+        let hbmp = CreateDIBSection(
+            Some(memdc),
+            &bmi,
+            DIB_RGB_COLORS,
+            &mut bits,
+            None,
+            0,
+        )
+        .expect("dib");
+        let old = SelectObject(memdc, HGDIOBJ(hbmp.0));
+
+        let d2d: ID2D1Factory =
+            D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, None).expect("d2d");
+        let props = D2D1_RENDER_TARGET_PROPERTIES {
+            r#type: D2D1_RENDER_TARGET_TYPE_SOFTWARE,
+            pixelFormat: D2D1_PIXEL_FORMAT {
+                format: DXGI_FORMAT_B8G8R8A8_UNORM,
+                alphaMode: D2D1_ALPHA_MODE_IGNORE,
+            },
+            dpiX: 150.0,
+            dpiY: 150.0,
+            ..Default::default()
+        };
+        let _ = (memdc, screen);
+        let hrt = d2d
+            .CreateHwndRenderTarget(
+                &props,
+                &D2D1_HWND_RENDER_TARGET_PROPERTIES {
+                    hwnd,
+                    pixelSize: windows::Win32::Graphics::Direct2D::Common::D2D_SIZE_U {
+                        width: 800,
+                        height: 500,
+                    },
+                    presentOptions: D2D1_PRESENT_OPTIONS_NONE,
+                },
+            )
+            .expect("hwnd rt");
+        let rt: ID2D1RenderTarget = hrt.cast().expect("cast");
+        rt.SetDpi(150.0, 150.0);
+        rt.BeginDraw();
+        rt.Clear(Some(&D2D1_COLOR_F {
+            r: 0.0,
+            g: 0.0,
+            b: 0.0,
+            a: 1.0,
+        }));
+        // NOTE: no PushAxisAlignedClip — msftedit's TxDrawD2D output is
+        // suppressed while an axis clip is pushed (observed on an
+        // ID2D1HwndRenderTarget); the peer's lprcBounds confines the view.
+        peer.draw(&rt, (34.0, 167.0, 735.0, 189.0)).expect("TxDrawD2D");
+        rt.EndDraw(None, None).expect("EndDraw");
+
+        // BitBlt the window's framebuffer into our DIB to inspect pixels
+        let wdc = GetDC(Some(hwnd));
+        let _ = BitBlt(memdc, 0, 0, 800, 500, Some(wdc), 0, 0, SRCCOPY);
+        GdiFlush();
+        let data = std::slice::from_raw_parts(bits as *const u8, 800 * 500 * 4);
+        let lit_at = |x0: i32, y0: i32, x1: i32, y1: i32| -> usize {
+            (y0..y1)
+                .flat_map(|y| (x0..x1).map(move |x| (x, y)))
+                .filter(|&(x, y)| {
+                    let o = (y * 800 + x) as usize * 4;
+                    data[o] > 16 || data[o + 1] > 16 || data[o + 2] > 16
+                })
+                .count()
+        };
+        // draw bounds are DIP; with dpi=150 the framebuffer is at scale
+        // 1.5625, so the text lands at DIP*1.5625 pixels
+        let s = 1.5625f32;
+        let inside = lit_at(
+            (34.0 * s) as i32,
+            (167.0 * s) as i32,
+            800,
+            (189.0 * s) as i32,
+        );
+        eprintln!("[probe] inside={inside}");
+        let lit = inside;
+        let _ = SelectObject(memdc, old);
+        let _ = DeleteObject(HGDIOBJ(hbmp.0));
+        let _ = DeleteDC(memdc);
+        ReleaseDC(None, screen);
+        ReleaseDC(Some(hwnd), wdc);
+        let _ = DestroyWindow(hwnd);
+        assert!(lit > 50, "peer text must paint visible pixels, got {lit}");
+    }
 }

@@ -32,18 +32,15 @@ use windows::Win32::UI::Input::KeyboardAndMouse::*;
 use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::core::*;
 
-use crate::arena::Arena;
-use crate::event::EventFactorySet;
 use crate::event::{Key, KeyEvent, Modifiers, PointerButton, PointerEvent};
-use crate::geom::{Constraints, Dp, Length, Point, Rect, Size, Visibility};
+use crate::geom::{Point, Visibility};
 use crate::node::{NodeData, NodeEvent, QueuedEvent};
 use crate::runtime::UpdateCtx;
 use crate::sched::SchedEvent;
-use crate::tasks::{Executor, Mailbox};
 use crate::text::{EditOrigin, TextEdit, TextSelection};
-use crate::theme::{Appearance, ButtonVariant, ColorRole, ReducedMotion, SubmitPolicy, Theme};
-use crate::ui::{Canvas, Paint, PathOp};
-use crate::{App, NodeId, UiDiagnostic, UiError, UiResult};
+use crate::theme::{Appearance, ReducedMotion, SubmitPolicy, Theme};
+
+use crate::{App, NodeId, UiError, UiResult};
 
 /// One routed native-to-runtime semantic event (bounded sink; the backend
 /// drains it before each pump, never synchronously inside COM/WndProc).
@@ -482,8 +479,6 @@ where
         };
         let s = self.peer_ctx.scale.get();
         unsafe {
-            use windows::Win32::Graphics::Gdi::*;
-            use windows::Win32::UI::Input::KeyboardAndMouse::*;
             use windows::Win32::UI::WindowsAndMessaging::*;
             let _ = CreateCaret(
                 self.hwnd,
@@ -693,9 +688,6 @@ where
         } else {
             self.hit_test(pos)
         };
-        if std::env::var_os("RUSTUI_DEBUG").is_some() {
-            eprintln!("[ptr] {phase:?} {pos:?} hit={hit:?}");
-        }
         self.mouse = pos;
         match phase {
             crate::node::PointerPhase::Enter => {}
@@ -1203,9 +1195,6 @@ where
     }
     /// WM_CHAR — focused peer sees the raw message (IME/text semantics)
     pub(crate) fn char(&mut self, _ch: u32) -> UiResult {
-        if std::env::var_os("RUSTUI_DEBUG").is_some() {
-            eprintln!("[char] 0x{_ch:x} focus={:?}", self.focus);
-        }
         if let Some(p) = self.focus_peer() {
             p.borrow().send(WM_CHAR, _ch as usize, 0);
             self.service_peer_events()?;
@@ -1221,9 +1210,6 @@ where
     }
     /// fatal (typed) error from inside a WndProc — surface on next turn
     pub(crate) fn mark_fatal(&mut self, e: crate::UiError) {
-        if std::env::var_os("RUSTUI_DEBUG").is_some() {
-            eprintln!("[fatal] {e:?}");
-        }
         self.fatal = Some(e);
         // wake the pump so the error surfaces on this thread — no post on a
         // create-time null HWND
