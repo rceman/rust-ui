@@ -1,6 +1,6 @@
 # Spike API review — composer contract v0.1
 
-**Candidate:** `89b39f1` on `agent/windows-native-composer-contract-spike-v0.1-swe2`
+**Candidate:** `0405a80` on `agent/windows-native-composer-contract-spike-v0.1-swe2`
 **Baseline:** Astra architecture `29c67025dc88221899a8ab1b381f08491d44b85b`
 
 How the approved architecture reads when compiled against a real native
@@ -69,30 +69,32 @@ The `send` button paints a red bottom border while every other
 resolved recipe field stays at the default — the patch is a fieldwise
 `Option` map over the recipe's resolved `VisualStyle`.
 
-## SURGICAL on an editor — `TextStylePatch`
+## SURGICAL on an editor — `TextInputStylePatch`
 
 ```rust
 ui.text_input(&self.draft)
     .placeholder("draft")
     .label("draft")
     .style(if self.draft_bold {
-        TextStylePatch::new()
-            .weight(TextWeight::Bold)
-            .size(dp(16.0))
+        TextInputStylePatch::new()
+            .foreground(Color::rgb(180, 60, 40))
+            .border_bottom_color(Color::rgb(180, 60, 40))
+            .border_bottom_width(dp(2.0))
     } else {
-        TextStylePatch::new()
+        TextInputStylePatch::new()
     })
     .on_edit(Msg::DraftEdited)
     .on_conflict(Msg::DraftConflict)
     .on_submit(|| Msg::Send);
 ```
 
-`NodeData::Editor` carries `patch`; the peer factory resolves it into
-`PeerConfig` (foreground, bold, size in twips) and the mounted
-`WindowlessPeer` applies it through `EM_SETCHARFORMAT`/`SCF_ALL`.
-The `bold`/`unbold` toggle flips `Msg::ToggleDraftBold` on a mounted
-editor — verified live, existing text re-renders 16pt bold without
-remount.
+The native-editor patch is deliberately capability-limited: `chrome`
+fields paint the retained frame around the peer; ONLY `foreground`
+reaches the native text service (resolved `Color` -> `EM_SETCHARFORMAT`
+/`SCF_ALL` — re-resolved on theme flips since the authored `Color` is
+what the peer stores). Font face/size/weight and selection colors stay
+OS-owned — this is the approved native-control boundary, not a gap.
+The `bold`/`unbold` toggle recolors + re-borders a mounted editor live.
 
 ## Keyed reconciliation
 
@@ -174,5 +176,5 @@ impl CustomRender for Tile {
 - theme toggle (dark/light/system)
 - reduced-motion toggle wired to `SetReduced`
 - disabled `send`/`stop` gating (no hover/press/focus/invoke)
-- live `TextStylePatch` re-application on a mounted editor
+- live `TextInputStylePatch` re-application on a mounted editor
 - keyed row removal through UIA Invoke → state mutation → relayout

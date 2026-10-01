@@ -37,12 +37,13 @@ by measurement before real layout bounds existed. Neither scroll messages
 (`EM_SETSCROLLPOS`, `EM_LINESCROLL`), `EM_SETRECTNP`, re-activation, nor
 `TxGetViewInset` reliably reset that anchor.
 
-**Resolution (implemented):** each peer renders into its own
-`ID2D1BitmapRenderTarget` at LOCAL `(0,0,w,h)` — anchoring inside a
-peer-owned surface is exact — and the frame blits the bitmap at the
-global content rect via `DrawBitmap`. `TxGetViewInset` stays zero; the
-padding between pill chrome and text lives in the blit destination rect
-(content rect = pill rect minus insets).
+**Resolution (current — supersedes the earlier peer-bitmap path):** the
+peer's format space is latched in HOST PHYSICAL PX (deviation 10) and
+`TxDrawD2D` draws directly into the shared frame target at the peer's
+physical-px bounds; the logical->px boundary crossing happens once via
+`PeerOrigin`. The earlier peer-local-bitmap compositor worked around the
+wrong unit, not the anchor; it is removed. `TxGetViewInset` stays zero;
+padding between pill chrome and text lives in the bounds inset.
 
 **Contract implication:** a native text peer is a *leaf surface*, not an
 inline draw — the compositor positions its rectangle; the peer's internal
