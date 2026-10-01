@@ -1,0 +1,2 @@
+draft_mid=typed text
+draft_after_undos=

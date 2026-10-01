@@ -2083,6 +2083,21 @@ where
             }
         }
     }
+    // evidence hook (RUI_PERF=<path>): dump the frame counters on clean
+    // shutdown — proves event-driven idle + native-drive accounting
+    if let Ok(path) = std::env::var("RUI_PERF") {
+        let c = &backend.counters;
+        let line = format!(
+            "uptime_ms={} requested_redraws={} animation_callbacks={} animation_timer_fires={} caret_redraws={} native_timer_fires={}\n",
+            c.start.elapsed().as_millis(),
+            c.requested_redraws.load(Ordering::Relaxed),
+            c.animation_callbacks.load(Ordering::Relaxed),
+            c.animation_timer_fires.load(Ordering::Relaxed),
+            c.native_caret_redraws.load(Ordering::Relaxed),
+            c.native_timer_fires.load(Ordering::Relaxed),
+        );
+        let _ = std::fs::write(path, line);
+    }
     Ok(())
 }
 

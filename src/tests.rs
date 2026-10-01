@@ -3148,8 +3148,8 @@ fn native_probe_richedit_paints_text() {
         read_only: false,
         face: "Segoe UI".into(),
         size_twips: 280,
-        fg: [0.94, 0.94, 0.94, 1.0],
-        fg_explicit: false,
+        fg: [0.0, 0.0, 0.0, 1.0], // dark glyphs on the white island
+        fg_explicit: true,
         sel_bg: [0.2, 0.4, 0.8, 1.0],
         sel_fg: [1.0, 1.0, 1.0, 1.0],
         bold: false,
@@ -3177,10 +3177,10 @@ fn native_probe_richedit_paints_text() {
     let _ = peer.natural_size(400.0);
     peer.apply_bounds(
         RECT {
-            left: 28,
-            top: 160,
-            right: 428,
-            bottom: 192,
+            left: 34,
+            top: 167,
+            right: 735,
+            bottom: 189,
         },
         1.5625,
     );
@@ -3271,6 +3271,68 @@ fn native_probe_richedit_paints_text() {
         );
         eprintln!("[probe] inside={inside}");
         let lit = inside;
+        // GEOMETRY PROBE — the island clears to white; TEXT ink is the dark
+        // pixels inside it. Report where glyph ink lands vertically vs the
+        // requested draw bounds.
+        // island region in px = draw bounds * scale
+        let (ix0, iy0) = ((34.0 * s) as i32, (167.0 * s) as i32);
+        let (ix1, iy1) = ((735.0 * s) as i32, (189.0 * s) as i32);
+        let (mut ink_top, mut ink_bot, mut ink_left) = (i32::MAX, i32::MIN, i32::MAX);
+        let mut dark = 0usize;
+        // sanity: island must be bright (opaque white peer surface)
+        let mut bright = 0usize;
+        for y in 0..500 {
+            for x in 0..800 {
+                let o = (y * 800 + x) as usize * 4;
+                let in_island = x >= ix0 && x < ix1 && y >= iy0 && y < iy1;
+                let px_lit = data[o] > 200 && data[o + 1] > 200 && data[o + 2] > 200;
+                let px_dark = data[o] < 60 && data[o + 1] < 60 && data[o + 2] < 60;
+                if in_island && px_lit {
+                    bright += 1;
+                }
+                if in_island && px_dark {
+                    dark += 1;
+                    ink_top = ink_top.min(y);
+                    ink_bot = ink_bot.max(y);
+                    ink_left = ink_left.min(x);
+                }
+            }
+        }
+        eprintln!(
+            "[probe] island={ix0},{iy0}-{ix1},{iy1} bright={bright} dark={dark} ink y={ink_top}..{ink_bot} x_from={ink_left}"
+        );
+        // dump the island strip as BMP for direct inspection
+        let pad = 6;
+        let (cx0, cy0) = ((ix0 - pad).max(0), (iy0 - pad * 4).max(0));
+        let (cw, ch) = (
+            ((ix1 - ix0) + pad * 2) as usize,
+            ((iy1 - iy0) + pad * 8) as usize,
+        );
+        let mut row_px = vec![0u8; cw * 4];
+        let mut bmp_bytes: Vec<u8> = Vec::with_capacity(cw * ch * 4 + 54);
+        let file_sz = (54 + cw * ch * 4) as u32;
+        bmp_bytes.extend_from_slice(b"BM");
+        bmp_bytes.extend_from_slice(&file_sz.to_le_bytes());
+        bmp_bytes.extend_from_slice(&0u32.to_le_bytes());
+        bmp_bytes.extend_from_slice(&54u32.to_le_bytes());
+        bmp_bytes.extend_from_slice(&40u32.to_le_bytes());
+        bmp_bytes.extend_from_slice(&(cw as i32).to_le_bytes());
+        bmp_bytes.extend_from_slice(&(ch as i32).to_le_bytes()); // bottom-up
+        bmp_bytes.extend_from_slice(&1u16.to_le_bytes());
+        bmp_bytes.extend_from_slice(&32u16.to_le_bytes());
+        bmp_bytes.extend_from_slice(&0u32.to_le_bytes());
+        bmp_bytes.extend_from_slice(&((cw * ch * 4) as u32).to_le_bytes());
+        bmp_bytes.extend_from_slice(&[0u8; 16]);
+        for row in 0..ch {
+            let sy = cy0 + (ch - 1 - row) as i32;
+            for col in 0..cw {
+                let sx = cx0 + col as i32;
+                let o = (sy as usize * 800 + sx as usize) * 4;
+                row_px[col * 4..col * 4 + 4].copy_from_slice(&data[o..o + 4]);
+            }
+            bmp_bytes.extend_from_slice(&row_px);
+        }
+        std::fs::write("probe-island.bmp", &bmp_bytes).unwrap();
         let _ = SelectObject(memdc, old);
         let _ = DeleteObject(HGDIOBJ(hbmp.0));
         let _ = DeleteDC(memdc);

@@ -39,7 +39,7 @@ use crate::text::{BindingToken, TextRevision};
 use crate::{NodeId, UiError, UiResult};
 
 /// missing from the windows bindings
-const EM_SETREADONLY: u32 = 0x40CF; // WM_USER + 31
+
 /// RichEdit notifications we route (missing from bindings).
 const EN_CHANGE_CODE: u32 = 0x0300;
 const EN_REQUESTRESIZE_CODE: u32 = 0x0701;
@@ -724,7 +724,8 @@ impl WindowlessPeer {
                     | TXTBIT_DISABLEDRAG
                     | TXTBIT_D2DDWRITE
                     | TXTBIT_D2DPIXELSNAPPED
-                    | if cfg.multiline { TXTBIT_MULTILINE } else { 0 },
+                    | if cfg.multiline { TXTBIT_MULTILINE } else { 0 }
+                    | if cfg.read_only { TXTBIT_READONLY } else { 0 },
                 natural: SIZE::default(),
                 cf: Box::new(CHARFORMATW {
                     cbSize: std::mem::size_of::<CHARFORMATW>() as u32,
@@ -1114,9 +1115,25 @@ impl WindowlessPeer {
     /// The host's read-only gate (separate from disabled input routing) —
     /// pushes ES_READONLY behavior into the service so native editing,
     /// selection changes through keys, and paste all stop.
+    /// Live read-only toggle — TXTBIT_READONLY is a host PROPERTY BIT in
+    /// the windowless contract (EM_SETREADONLY/EM_SETOPTIONS don't apply):
+    /// update the bits the host reports, then OnTxPropertyBitsChange makes
+    /// the service re-query. Editing, paste and IME are all dead inside
+    /// msftedit — not just gated in the input router.
     pub(crate) fn set_read_only(&self, ro: bool) {
-        self.shared_mut().host.read_only = ro;
-        let _ = self.send(EM_SETREADONLY, ro as usize, 0);
+        {
+            let mut s = self.shared_mut();
+            s.host.read_only = ro;
+            if ro {
+                s.host.bits |= TXTBIT_READONLY;
+            } else {
+                s.host.bits &= !TXTBIT_READONLY;
+            }
+        }
+        if let Some(tx) = &self.tx {
+            let bits = self.shared().host.bits;
+            let _ = unsafe { tx.OnTxPropertyBitsChange(TXTBIT_READONLY, bits) };
+        }
     }
 
     /// The peer's host hwnd (assigned when the window exists).

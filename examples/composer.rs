@@ -74,6 +74,10 @@ struct Entry {
 
 struct Spike {
     draft: TextValue,
+    /// multiline composer body — real `text_area` peer (max-lines bound)
+    body: TextValue,
+    /// draft read-only toggle — read-only vs disabled evidence surface
+    draft_ro: bool,
     rows: Vec<Entry>,
     response: String,
     busy: bool,
@@ -103,6 +107,8 @@ enum Msg {
     SetTheme(ThemeMode),
     SetReduced(ReducedMotion),
     ToggleDraftBold,
+    ToggleDraftReadOnly,
+    BodyEdited(TextEdit),
     RemoveB,
     RecreateB,
 }
@@ -114,22 +120,22 @@ const CHUNK_MAX: usize = 4096;
 
 impl Spike {
     fn new() -> Self {
+        // RUI_ROWS=<n> scales the keyed list for the 100/1000-node runs
+        let n: u64 = std::env::var("RUI_ROWS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(3)
+            .clamp(1, 4096);
         Spike {
             draft: TextValue::new(""),
-            rows: vec![
-                Entry {
-                    id: 1,
-                    name: TextValue::new("A"),
-                },
-                Entry {
-                    id: 2,
-                    name: TextValue::new("B"),
-                },
-                Entry {
-                    id: 3,
-                    name: TextValue::new("C"),
-                },
-            ],
+            body: TextValue::new(""),
+            draft_ro: false,
+            rows: (1..=n)
+                .map(|i| Entry {
+                    id: i,
+                    name: TextValue::new(format!("row-{i}")),
+                })
+                .collect(),
             response: String::new(),
             busy: false,
             notice: None,
@@ -231,6 +237,10 @@ impl Spike {
             Msg::SetTheme(m) => self.theme_mode = m,
             Msg::SetReduced(r) => self.reduced = r,
             Msg::ToggleDraftBold => self.draft_bold = !self.draft_bold,
+            Msg::ToggleDraftReadOnly => self.draft_ro = !self.draft_ro,
+            Msg::BodyEdited(e) => {
+                let _ = self.body.accept(e);
+            }
             Msg::RemoveB => self.rows.retain(|e| e.id != 2),
             Msg::RecreateB => {
                 if !self.rows.iter().any(|e| e.id == 2) {
@@ -264,9 +274,17 @@ impl Spike {
                     } else {
                         TextInputStylePatch::new()
                     })
+                    .read_only(self.draft_ro)
                     .on_edit(Msg::DraftEdited)
                     .on_conflict(Msg::DraftConflict)
                     .on_submit(|| Msg::Send);
+                // multiline editor — max_lines bounds the native peer's
+                // growth; read-only draft above is the inert-editor surface
+                ui.text_area(&self.body)
+                    .placeholder("body — multiline, 4-line cap")
+                    .label("body")
+                    .max_lines(4)
+                    .on_edit(Msg::BodyEdited);
             });
             // conditional group placed BEFORE the keyed rows — toggling
             // details never remounts the sibling editors
@@ -335,6 +353,8 @@ impl Spike {
                     .on_press(|| Msg::SetReduced(ReducedMotion::NoPreference));
                 ui.button(if self.draft_bold { "unbold" } else { "bold" })
                     .on_press(|| Msg::ToggleDraftBold);
+                ui.button(if self.draft_ro { "ro off" } else { "ro on" })
+                    .on_press(|| Msg::ToggleDraftReadOnly);
                 ui.button("rm B").on_press(|| Msg::RemoveB);
                 ui.button("mk B").on_press(|| Msg::RecreateB);
             });

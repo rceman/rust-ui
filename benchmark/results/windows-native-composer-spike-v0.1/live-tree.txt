@@ -1,0 +1,24 @@
+ControlType.Window name='rust-ui' enabled=True focusable=False rect=384,384-1364,1284
+  ControlType.Text name='composer spike' enabled=True focusable=False rect=428,457-549,480
+  ControlType.Edit name='draft' enabled=True focusable=True rect=428,490-1320,545
+  ControlType.Document name='body' enabled=True focusable=True rect=428,545-1320,575
+  ControlType.Button name='show details' enabled=True focusable=True rect=438,605-575,650
+  ControlType.Edit name='row 1' enabled=True focusable=True rect=428,670-1320,725
+  ControlType.Edit name='row 2' enabled=True focusable=True rect=428,725-1320,780
+  ControlType.Edit name='row 3' enabled=True focusable=True rect=428,780-1320,835
+  ControlType.Button name='send' enabled=True focusable=True rect=438,855-514,900
+  ControlType.Button name='stop' enabled=False focusable=False rect=524,855-597,900
+  ControlType.Button name='reorder' enabled=True focusable=True rect=608,855-705,900
+  ControlType.Button name='replace' enabled=True focusable=True rect=715,855-810,900
+  ControlType.Button name='dark' enabled=True focusable=True rect=438,930-514,975
+  ControlType.Button name='light' enabled=True focusable=True rect=524,930-601,975
+  ControlType.Button name='reduce' enabled=True focusable=True rect=611,930-706,975
+  ControlType.Button name='motion' enabled=True focusable=True rect=716,930-814,975
+  ControlType.Button name='bold' enabled=True focusable=True rect=824,930-899,975
+  ControlType.Button name='ro on' enabled=True focusable=True rect=910,930-991,975
+  ControlType.Button name='rm B' enabled=True focusable=True rect=1001,930-1076,975
+  ControlType.Button name='mk B' enabled=True focusable=True rect=1087,930-1165,975
+  ControlType.Text name='' enabled=True focusable=False rect=none
+  ControlType.Button name='custom tile action' enabled=True focusable=True rect=428,1028-711,1133
+  ControlType.Text name='custom action' enabled=True focusable=False rect=450,1051-558,1111
+  ControlType.Image name='decorative tile' enabled=True focusable=False rect=569,1051-689,1111
