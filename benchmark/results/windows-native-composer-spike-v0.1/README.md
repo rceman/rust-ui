@@ -1,6 +1,6 @@
 # Windows Native Composer Contract Spike v0.1 — evidence
 
-**Candidate:** `0405a80c51edeff2575f5a58ab22435b01fedc44` on `agent/windows-native-composer-contract-spike-v0.1-swe2` (post-`PLATFORM_FOUNDATION_REVIEW` rework — review artifact `1603547c`).
+**Candidate:** `0d0e020a788e918734ee1c7bdbb20e0d52e43ae9` on `agent/windows-native-composer-contract-spike-v0.1-swe2` (post-`PLATFORM_FOUNDATION_REVIEW` rework — review artifact `1603547c`).
 **Environment:** Windows 11, monitor at 125% scale (PerMonitorV2), native `cargo build --examples` debug build.
 **Identity receipt:** `identity.txt` — source SHA + composer.exe SHA256 + native_probe.exe SHA256 + run UTC, written per collection pass.
 **Capture method:** `PrintWindow` of the live composer window (window-level raster pipeline under evidence — does NOT exercise a separate presentation path); UIA through `UIAutomationClient`; ALL native semantics through `examples/native_probe.rs` (JSON-emitting Rust harness, non-zero exit on violated invariants). PowerShell (`native.ps1`, `collect.ps1`) is orchestration only — build/run/PID lifecycle/scenario sequencing/artifacts; no coordinate math, UIA interpretation, input packing, or DPI rules remain in `.ps1`.
