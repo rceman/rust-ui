@@ -200,7 +200,7 @@ fn bools(v: bool) -> BOOL {
 /// Allocate a collision-free win32 timer id — scans forward from the
 /// sequence and skips still-live ids; `None` when the namespace is full
 /// (capacity is honestly reported to msftedit, never silently dropped).
-fn alloc_native_timer(
+pub(crate) fn alloc_native_timer(
     pool: &std::sync::Arc<std::sync::Mutex<std::collections::HashMap<usize, (crate::NodeId, u32)>>>,
     seq: &std::sync::Arc<std::sync::atomic::AtomicUsize>,
 ) -> Option<usize> {

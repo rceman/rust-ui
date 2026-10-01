@@ -50,7 +50,7 @@ pub(crate) struct QueuedMsg {
 /// The reentrant-arrival classes whose wparam/lparam are pure scalars —
 /// everything else either carries a borrowed pointer (handled explicitly:
 /// WM_DPICHANGED) or needs a synchronous result (WM_GETOBJECT → default).
-fn deferrable_arrival(msg: u32) -> bool {
+pub(crate) fn deferrable_arrival(msg: u32) -> bool {
     matches!(
         msg,
         WM_PUMP

@@ -1,0 +1,1 @@
+dpi=120 window_px=625x588 expected=625x588

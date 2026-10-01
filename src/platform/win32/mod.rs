@@ -11,9 +11,9 @@
 pub(crate) mod layout;
 pub(crate) mod render;
 pub(crate) mod space;
-mod text;
+pub(crate) mod text;
 pub(crate) mod uia;
-mod window;
+pub(crate) mod window;
 
 pub(crate) use layout::LayoutCache;
 pub(crate) use render::Renderer;

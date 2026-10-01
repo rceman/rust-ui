@@ -4693,3 +4693,87 @@ fn geometry_contract_scale_change_is_pure() {
     assert_eq!(f.physical(ScaleFactor(1.0)).left, 13);
     assert_eq!(f.physical(ScaleFactor(2.0)).left, 25);
 }
+
+// ===========================================================================
+// F01/F06 regressions — native entry classes + the timer pool authority
+// ===========================================================================
+
+#[cfg(windows)]
+mod native_contract_tests {
+    use super::*;
+    use crate::platform::win32::text::alloc_native_timer;
+    use crate::platform::win32::window::{NATIVE_TIMER_BASE, NATIVE_TIMER_CAP, deferrable_arrival};
+    use windows::Win32::UI::WindowsAndMessaging::*;
+
+    /// Only scalar/copyable payloads may be deferred — a borrowed-pointer
+    /// or sync-result message must never reach the FIFO.
+    #[test]
+    fn reentrant_classes_are_owned_only() {
+        // scalar-deferrable classes
+        for m in [
+            WM_MOUSEMOVE,
+            WM_LBUTTONDOWN,
+            WM_KEYDOWN,
+            WM_CHAR,
+            WM_SETFOCUS,
+            WM_TIMER,
+            WM_SIZE,
+            WM_MOVE,
+        ] {
+            assert!(deferrable_arrival(m), "msg {m:#x} must be deferrable");
+        }
+        // sync-result / pointer-bearing / non-queued classes are NOT
+        for m in [
+            WM_GETOBJECT,   // needs a synchronous provider answer
+            WM_NCCREATE,    // carries CREATESTRUCT* — borrowed
+            WM_CREATE,      // borrowed create params
+            WM_NOTIFY,      // NMHDR* — borrowed
+            0x02E0,         // WM_DPICHANGED — borrowed RECT* (handled explicitly)
+            WM_NCDESTROY,   // teardown runs its own contract
+            WM_PAINT,       // coalesced, not queued
+        ] {
+            assert!(
+                !deferrable_arrival(m),
+                "msg {m:#x} must NOT be scalar-deferred"
+            );
+        }
+    }
+
+    /// The timer pool allocator: collision-free while live, honest None at
+    /// capacity, reuse only after free — and never modulo-wrap onto live.
+    #[test]
+    fn native_timer_alloc_is_collision_free_and_bounded() {
+        let pool = std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new()));
+        let seq = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let nid = crate::NodeId {
+            slot: 7,
+            generation: 1,
+        };
+
+        // sequential allocs are distinct and namespaced
+        let t1 = alloc_native_timer(&pool, &seq).unwrap();
+        pool.lock().unwrap().insert(t1, (nid, 1));
+        let t2 = alloc_native_timer(&pool, &seq).unwrap();
+        pool.lock().unwrap().insert(t2, (nid, 2));
+        assert_ne!(t1, t2);
+        assert!(t1 >= NATIVE_TIMER_BASE && t1 < NATIVE_TIMER_BASE + NATIVE_TIMER_CAP);
+
+        // freeing lets the allocator reuse — the sequence skips live ids
+        pool.lock().unwrap().remove(&t1);
+        let t3 = alloc_native_timer(&pool, &seq).unwrap();
+        assert_ne!(t3, t2, "allocator must not hand out a live id");
+
+        // capacity: fill the whole namespace -> None (honest exhaustion)
+        pool.lock().unwrap().clear();
+        let seq2 = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        for i in 0..NATIVE_TIMER_CAP {
+            let t = alloc_native_timer(&pool, &seq2).expect("fresh id");
+            pool.lock().unwrap().insert(t, (nid, i as u32));
+        }
+        assert_eq!(pool.lock().unwrap().len(), NATIVE_TIMER_CAP);
+        assert!(
+            alloc_native_timer(&pool, &seq2).is_none(),
+            "capacity exhaustion must be reported, not wrap onto a live id"
+        );
+    }
+}

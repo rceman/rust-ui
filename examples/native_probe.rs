@@ -34,6 +34,23 @@ mod probe {
         }
     }
 
+    /// Resolve a target window: `0x<hex>`/decimal digits = an explicit HWND;
+    /// anything else is a title-substring search (visible top-level only).
+    pub fn resolve_window(arg: &str) -> Result<HWND> {
+        let parsed = arg
+            .strip_prefix("0x")
+            .and_then(|h| isize::from_str_radix(h, 16).ok())
+            .or_else(|| arg.parse::<isize>().ok());
+        if let Some(v) = parsed {
+            let h = HWND(v as *mut c_void);
+            if unsafe { IsWindow(Some(h)).as_bool() } {
+                return Ok(h);
+            }
+            return Err(Error::new(E_FAIL.into(), "hwnd is not a live window"));
+        }
+        find_window(arg)
+    }
+
     /// Find a visible top-level window whose title contains `part`.
     pub fn find_window(part: &str) -> Result<HWND> {
         struct Ctx {
@@ -195,6 +212,180 @@ mod probe {
         }
     }
 
+    /// Posted WM_LBUTTON* at client-px (cx,cy) — deterministic regression
+    /// class: the REAL dispatch path, no foreground needed. The LPARAM is
+    /// packed HERE (i16 pair) — never in PowerShell.
+    pub fn click_post(hwnd: HWND, cx: i32, cy: i32) -> Result<()> {
+        unsafe {
+            let lp = LPARAM((((cy & 0xffff) << 16) | (cx & 0xffff)) as isize);
+            let _ = PostMessageW(Some(hwnd), WM_LBUTTONDOWN, WPARAM(0x0001), lp);
+            std::thread::sleep(std::time::Duration::from_millis(60));
+            let _ = PostMessageW(Some(hwnd), WM_LBUTTONUP, WPARAM(0), lp);
+            std::thread::sleep(std::time::Duration::from_millis(200));
+            Ok(())
+        }
+    }
+
+    /// Posted WM_CHAR per UTF-16 code unit — regression-class typing.
+    /// Surrogate pairs land as two messages (what a real IME produces);
+    /// WM_KEYDOWN is NOT posted (msftedit would double-insert).
+    pub fn type_post(hwnd: HWND, text: &str) -> Result<()> {
+        unsafe {
+            for ch in text.encode_utf16() {
+                let _ = PostMessageW(Some(hwnd), WM_CHAR, WPARAM(ch as usize), LPARAM(0));
+                std::thread::sleep(std::time::Duration::from_millis(25));
+            }
+            std::thread::sleep(std::time::Duration::from_millis(150));
+            Ok(())
+        }
+    }
+
+    /// Posted KEYDOWN/KEYUP with real modifier state — keybd_event pokes
+    /// the GLOBAL key state (msftedit reads GetKeyState, not the wparam),
+    /// so Ctrl/Shift must be physically down while the key arrives.
+    pub fn key_post(hwnd: HWND, vk: u32, ctrl: bool, shift: bool) -> Result<()> {
+        unsafe {
+            if ctrl {
+                keybd_event(VK_CONTROL.0 as u8, 0, KEYBD_EVENT_FLAGS(0), 0);
+            }
+            if shift {
+                keybd_event(VK_SHIFT.0 as u8, 0, KEYBD_EVENT_FLAGS(0), 0);
+            }
+            std::thread::sleep(std::time::Duration::from_millis(40));
+            let _ = PostMessageW(Some(hwnd), WM_KEYDOWN, WPARAM(vk as usize), LPARAM(0));
+            std::thread::sleep(std::time::Duration::from_millis(60));
+            let _ = PostMessageW(Some(hwnd), WM_KEYUP, WPARAM(vk as usize), LPARAM(0));
+            if shift {
+                keybd_event(VK_SHIFT.0 as u8, 0, KEYEVENTF_KEYUP, 0);
+            }
+            if ctrl {
+                keybd_event(VK_CONTROL.0 as u8, 0, KEYEVENTF_KEYUP, 0);
+            }
+            std::thread::sleep(std::time::Duration::from_millis(120));
+            Ok(())
+        }
+    }
+
+    unsafe fn uia_find(
+        uia: &IUIAutomation,
+        el: &IUIAutomationElement,
+        name: &str,
+    ) -> Option<IUIAutomationElement> {
+        let n = el.CurrentName().unwrap_or_default().to_string();
+        if n == name {
+            return Some(el.clone());
+        }
+        let walker = uia.RawViewWalker().ok()?;
+        let mut ch = walker.GetFirstChildElement(el).ok();
+        while let Some(c) = ch {
+            if let Some(f) = uia_find(uia, &c, name) {
+                return Some(f);
+            }
+            ch = walker.GetNextSiblingElement(&c).ok();
+        }
+        None
+    }
+
+    /// UIA bounding rect (screen px, physical) of a named element as JSON.
+    pub fn uia_rect(hwnd: HWND, name: &str) -> Result<String> {
+        unsafe {
+            let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
+            let uia: IUIAutomation = CoCreateInstance(&CUIAutomation, None, CLSCTX_ALL)?;
+            let root = uia.ElementFromHandle(hwnd)?;
+            let el = uia_find(&uia, &root, name)
+                .ok_or_else(|| Error::new(E_FAIL.into(), "uia element not found"))?;
+            let r = el.CurrentBoundingRectangle()?;
+            CoUninitialize();
+            Ok(format!(
+                "{{\"kind\":\"uia-rect\",\"name\":\"{name}\",\"rect_px\":[{},{},{},{}]}}",
+                r.left, r.top, r.right, r.bottom
+            ))
+        }
+    }
+
+    /// Enabled state of a named element as JSON — checked, not printed.
+    pub fn uia_enabled(hwnd: HWND, name: &str) -> Result<String> {
+        unsafe {
+            let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
+            let uia: IUIAutomation = CoCreateInstance(&CUIAutomation, None, CLSCTX_ALL)?;
+            let root = uia.ElementFromHandle(hwnd)?;
+            let el = uia_find(&uia, &root, name)
+                .ok_or_else(|| Error::new(E_FAIL.into(), "uia element not found"))?;
+            let en = el.CurrentIsEnabled()?.as_bool();
+            CoUninitialize();
+            Ok(format!(
+                "{{\"kind\":\"uia-enabled\",\"name\":\"{name}\",\"enabled\":{en}}}"
+            ))
+        }
+    }
+
+    /// First-level UIA child count — the scale scenario's settle check.
+    pub fn uia_count(hwnd: HWND) -> Result<String> {
+        unsafe {
+            let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
+            let uia: IUIAutomation = CoCreateInstance(&CUIAutomation, None, CLSCTX_ALL)?;
+            let root = uia.ElementFromHandle(hwnd)?;
+            let walker = uia.RawViewWalker()?;
+            let mut n = 0u32;
+            let mut ch = walker.GetFirstChildElement(&root).ok();
+            while let Some(c) = ch {
+                n += 1;
+                ch = walker.GetNextSiblingElement(&c).ok();
+            }
+            CoUninitialize();
+            Ok(format!("{{\"kind\":\"uia-count\",\"children\":{n}}}"))
+        }
+    }
+
+    /// UIA Invoke on a named element — the action path real clients take.
+    pub fn invoke(hwnd: HWND, name: &str) -> Result<String> {
+        unsafe {
+            let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
+            let uia: IUIAutomation = CoCreateInstance(&CUIAutomation, None, CLSCTX_ALL)?;
+            let root = uia.ElementFromHandle(hwnd)?;
+            let el = uia_find(&uia, &root, name)
+                .ok_or_else(|| Error::new(E_FAIL.into(), "uia element not found"))?;
+            let pat = el.GetCurrentPattern(UIA_InvokePatternId)?;
+            let inv: IUIAutomationInvokePattern = pat.cast()?;
+            inv.Invoke()?;
+            std::thread::sleep(std::time::Duration::from_millis(200));
+            CoUninitialize();
+            Ok(format!(
+                "{{\"kind\":\"invoke\",\"evidence\":\"acceptance\",\"name\":\"{name}\"}}"
+            ))
+        }
+    }
+
+    /// Click a NAMED element — UIA screen rect -> client px -> posted click.
+    /// All coordinate math lives here (the shared dev seam), not in PS.
+    pub fn click_named(hwnd: HWND, name: &str) -> Result<String> {
+        unsafe {
+            let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
+            let uia: IUIAutomation = CoCreateInstance(&CUIAutomation, None, CLSCTX_ALL)?;
+            let root = uia.ElementFromHandle(hwnd)?;
+            let el = uia_find(&uia, &root, name)
+                .ok_or_else(|| Error::new(E_FAIL.into(), "uia element not found"))?;
+            let r = el.CurrentBoundingRectangle()?;
+            CoUninitialize();
+            // screen px -> client px through THE shared adapter
+            let cx = (r.left + r.right) / 2;
+            let cy = (r.top + r.bottom) / 2;
+            let pt = rust_ui::dev::screen_to_client(
+                hwnd,
+                rust_ui::dev::ScreenPhysicalPoint(rust_ui::dev::PhysicalPoint {
+                    x: cx as i32,
+                    y: cy as i32,
+                }),
+            )
+            .ok_or_else(|| Error::new(E_FAIL.into(), "ScreenToClient failed"))?;
+            click_post(hwnd, pt.0.x, pt.0.y)?;
+            Ok(format!(
+                "{{\"kind\":\"click-named\",\"evidence\":\"regression\",\"name\":\"{name}\",\"client_px\":[{},{}]}}",
+                pt.0.x, pt.0.y
+            ))
+        }
+    }
+
     /// UIA tree dump with physical-px bounding rects as JSON.
     pub fn uia_tree(hwnd: HWND) -> Result<String> {
         unsafe {
@@ -281,7 +472,14 @@ mod probe {
     /// hiragana, sends REAL SendInput keys, then commits with Enter.
     /// This is acceptance-class evidence: the composition path runs through
     /// the OS input pipeline into real WM_IME_* delivery.
-    pub fn ime_japanese(hwnd: HWND, keys: &str) -> Result<String> {
+    pub fn ime_japanese(hwnd: HWND, editor: &str, keys: &str) -> Result<String> {
+        // record the BEFORE value — a commit must extend it, never replace
+        // or submit it (submit would route the value out of the draft)
+        let before = uia_value(hwnd, editor)?.unwrap_or_default();
+        ime_japanese_inner(hwnd, keys, &before)
+    }
+
+    pub fn ime_japanese_inner(hwnd: HWND, keys: &str, before: &str) -> Result<String> {
         // Microsoft Japanese IME — CLSID + keyboard profile GUID
         let clsid = GUID::from_u128(0x03b5835f_f03c_411b_9ce2_aa23e1171e36);
         let profile = GUID::from_u128(0xa76c93d9_5523_4e90_aafa_4db112f9ac76);
@@ -335,19 +533,33 @@ mod probe {
             let _ = mgr.ChangeCurrentLanguage(0x409);
             drop(mgr);
             CoUninitialize();
-            // verify: the peer's committed text gained non-ASCII kana —
-            // real composition+commit, not raw ASCII passthrough
-            let text = uia_value(hwnd, "draft")?.unwrap_or_default();
-            let kana = text.chars().any(|c| ('\u{3040}'..='\u{30ff}').contains(&c));
-            if !kana {
+            // ASSERT, don't print: the committed value must be
+            // `before` + new kana — no unintended submit (the draft keeps
+            // its text), no replacement, and real hiragana landed.
+            let after = uia_value(hwnd, "draft")?.unwrap_or_default();
+            let kana = after
+                .chars()
+                .filter(|c| ('\u{3040}'..='\u{30ff}').contains(c))
+                .count();
+            let gained = after.strip_prefix(before).unwrap_or(&after);
+            if after.is_empty() || !after.starts_with(before) {
                 return Err(Error::new(
                     E_FAIL.into(),
-                    "IME acceptance failed: no hiragana/katakana in committed text",
+                    format!(
+                        "IME commit broke the draft contract: before={before:?} after={after:?}"
+                    ),
+                ));
+            }
+            if kana == 0 {
+                return Err(Error::new(
+                    E_FAIL.into(),
+                    "IME acceptance failed: no hiragana/katakana committed",
                 ));
             }
             Ok(format!(
-                "{{\"kind\":\"ime\",\"evidence\":\"acceptance\",\"keys\":\"{keys}\",\"imc_open\":{},\"committed\":true}}",
-                opened.as_bool(),
+                "{{\"kind\":\"ime\",\"evidence\":\"acceptance\",\"keys\":\"{keys}\",\"before\":\"{}\",\"gained\":\"{}\",\"no_submit\":true}}",
+                before.replace('"', "\\\""),
+                gained.replace('"', "\\\""),
             ))
         }
     }
@@ -358,15 +570,25 @@ fn main() {
     use probe::*;
     set_pmv2();
     let args: Vec<String> = std::env::args().collect();
-    let usage = "usage: native_probe <geometry|uia|click|type|dpichange|ime|value> ...";
+    let usage = concat!(
+        "usage: native_probe <sub> <window> [args...]
+",
+        "  window = title substring | 0xHWND | decimal HWND
+",
+        "  subs: geometry uia uia-rect uia-enabled uia-count value invoke
+",
+        "        click click-post click-named type type-post key-post
+",
+        "        dpichange ime"
+    );
     if args.len() < 3 {
         eprintln!("{usage}");
         std::process::exit(2);
     }
-    let hwnd = match find_window(&args[2]) {
+    let hwnd = match resolve_window(&args[2]) {
         Ok(h) => h,
         Err(e) => {
-            eprintln!("{{\"error\":\"window '{ }' not found: {e}\"}}", args[2]);
+            eprintln!("{{\"error\":\"window '{}' not found: {e}\"}}", args[2]);
             std::process::exit(2);
         }
     };
@@ -388,6 +610,41 @@ fn main() {
                 args[3]
             )
         }),
+        "click-post" => {
+            let cx: i32 = args[3].parse().unwrap_or(0);
+            let cy: i32 = args[4].parse().unwrap_or(0);
+            click_post(hwnd, cx, cy).map(|_| {
+                format!(
+                    "{{\"kind\":\"click-post\",\"evidence\":\"regression\",\"client_px\":[{cx},{cy}]}}"
+                )
+            })
+        }
+        "type-post" => type_post(hwnd, &args[3]).map(|_| {
+            format!(
+                "{{\"kind\":\"type-post\",\"evidence\":\"regression\",\"text\":\"{}\"}}",
+                args[3]
+            )
+        }),
+        "key-post" => {
+            let vk: u32 = args[3]
+                .trim_start_matches("0x")
+                .parse()
+                .or_else(|_| u32::from_str_radix(args[3].trim_start_matches("0x"), 16))
+                .unwrap_or(0);
+            let ctrl = args.get(4).is_some_and(|a| a == "ctrl" || a == "1");
+            let shift = args.get(4).is_some_and(|a| a == "shift" || a == "2")
+                || args.get(5).is_some_and(|a| a == "shift");
+            key_post(hwnd, vk, ctrl, shift).map(|_| {
+                format!(
+                    "{{\"kind\":\"key-post\",\"evidence\":\"regression\",\"vk\":{vk}}}"
+                )
+            })
+        }
+        "uia-rect" => uia_rect(hwnd, &args[3]),
+        "uia-enabled" => uia_enabled(hwnd, &args[3]),
+        "uia-count" => uia_count(hwnd),
+        "invoke" => invoke(hwnd, &args[3]),
+        "click-named" => click_named(hwnd, &args[3]),
         "value" => uia_value(hwnd, &args[3]).map(|v| {
             format!(
                 "{{\"kind\":\"value\",\"evidence\":\"acceptance\",\"name\":\"{}\",\"value\":{}}}",
@@ -409,7 +666,7 @@ fn main() {
             dpi_changed(hwnd, pid, dpi)
                 .map(|_| "{\"kind\":\"dpichange\",\"evidence\":\"regression\"}".to_string())
         }
-        "ime" => ime_japanese(hwnd, &args[3]),
+        "ime" => ime_japanese(hwnd, &args[3], &args[4]),
         other => {
             eprintln!("unknown subcommand '{other}'\n{usage}");
             std::process::exit(2);

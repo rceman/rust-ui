@@ -1,0 +1,23 @@
+{
+    "kind":  "geometry",
+    "evidence":  "acceptance",
+    "awareness":  "pmv2",
+    "dpi":  120,
+    "scale":  1.250,
+    "window_px":  [
+                      384,
+                      384,
+                      1364,
+                      1284
+                  ],
+    "client_px":  [
+                      0,
+                      0,
+                      962,
+                      853
+                  ],
+    "client_origin_px":  [
+                             393,
+                             422
+                         ]
+}

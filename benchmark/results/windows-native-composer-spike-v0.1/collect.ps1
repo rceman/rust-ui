@@ -1,7 +1,8 @@
 param([string]$Scenario = "all")
 $ErrorActionPreference='Stop'
-# Scenario runner over the deterministic native helpers in native.ps1 —
-# PostMessage input, UIA actions, VirtualAllocEx WM_DPICHANGED.
+# Scenario runner — orchestration ONLY. Every native semantic (input
+# packing, coordinate conversion, UIA interpretation, DPI math, IME,
+# assertions) lives in native_probe.exe; this file sequences and stores.
 #
 #   .\collect.ps1 -Scenario all
 #   .\collect.ps1 -Scenario typing,undo,dpi
@@ -13,145 +14,162 @@ New-Item -ItemType Directory -Force -Path $script:OutDir | Out-Null
 
 function S-Smoke {
   $p = Launch-Composer
+  P-Geometry $p.MainWindowHandle | ConvertTo-Json | Set-Content "$($script:OutDir)\smoke.json"
   Shot-PrintWindow $p.MainWindowHandle "composer-dark.png"
-  $p | Stop-Process -Force
+  Stop-Composer $p
   "smoke ok" | Set-Content "$($script:OutDir)\smoke.txt"
 }
 
 function S-Typing {
   $p = Launch-Composer
-  $root = Uia-Root $p.MainWindowHandle
-  Click-Element $root $p.MainWindowHandle "draft" "ControlType.Edit"
-  Post-Text $p.MainWindowHandle "hello world"
+  P-ClickNamed $p.MainWindowHandle "draft" | Out-Null
+  P-Text $p.MainWindowHandle "hello world" | Out-Null
   Shot-PrintWindow $p.MainWindowHandle "typing.png"
-  "draft_value=$(Uia-Value $root 'draft')" | Set-Content "$($script:OutDir)\typing.txt"
-  $p | Stop-Process -Force
+  "draft_value=$(P-Value $p.MainWindowHandle 'draft')" | Set-Content "$($script:OutDir)\typing.txt"
+  Stop-Composer $p
 }
 
 function S-Unicode {
   $p = Launch-Composer
-  $root = Uia-Root $p.MainWindowHandle
-  Click-Element $root $p.MainWindowHandle "draft" "ControlType.Edit"
-  Post-Text $p.MainWindowHandle "héllo 世界🦀"   # accents + CJK + surrogate-pair emoji
+  P-ClickNamed $p.MainWindowHandle "draft" | Out-Null
+  P-Text $p.MainWindowHandle "héllo 世界🦀" | Out-Null
   Shot-PrintWindow $p.MainWindowHandle "unicode.png"
-  "draft_value=$(Uia-Value $root 'draft')" | Set-Content "$($script:OutDir)\unicode.txt"
-  $p | Stop-Process -Force
+  "draft_value=$(P-Value $p.MainWindowHandle 'draft')" | Set-Content "$($script:OutDir)\unicode.txt"
+  Stop-Composer $p
 }
 
 function S-Selection {
   $p = Launch-Composer
-  $root = Uia-Root $p.MainWindowHandle
-  Click-Element $root $p.MainWindowHandle "draft" "ControlType.Edit"
-  Post-Text $p.MainWindowHandle "first"
-  Post-Key $p.MainWindowHandle 0x41 -ctrl:$true   # Ctrl+A
-  Post-Text $p.MainWindowHandle "SECOND"    # replaces the selection
+  P-ClickNamed $p.MainWindowHandle "draft" | Out-Null
+  P-Text $p.MainWindowHandle "first" | Out-Null
+  P-KeyMod $p.MainWindowHandle 0x41 "ctrl"   # Ctrl+A
+  P-Text $p.MainWindowHandle "SECOND" | Out-Null   # replaces the selection
   Shot-PrintWindow $p.MainWindowHandle "selection.png"
-  "draft_value=$(Uia-Value $root 'draft')" | Set-Content "$($script:OutDir)\selection.txt"
-  $p | Stop-Process -Force
+  "draft_value=$(P-Value $p.MainWindowHandle 'draft')" | Set-Content "$($script:OutDir)\selection.txt"
+  Stop-Composer $p
 }
 
 function S-Undo {
   $p = Launch-Composer
-  $root = Uia-Root $p.MainWindowHandle
-  Click-Element $root $p.MainWindowHandle "draft" "ControlType.Edit"
-  Post-Text $p.MainWindowHandle "typed text"
-  $mid = Uia-Value $root 'draft'
+  P-ClickNamed $p.MainWindowHandle "draft" | Out-Null
+  P-Text $p.MainWindowHandle "typed text" | Out-Null
+  $mid = P-Value $p.MainWindowHandle 'draft'
   # native undo — repeat until empty (undo unit grouping is msftedit's)
   for ($u = 0; $u -lt 14; $u++) {
-    Post-Key $p.MainWindowHandle 0x5A -ctrl:$true  # Ctrl+Z
-    if ((Uia-Value $root 'draft') -eq '') { break }
+    P-KeyMod $p.MainWindowHandle 0x5A "ctrl"  # Ctrl+Z
+    if ((P-Value $p.MainWindowHandle 'draft') -eq '') { break }
   }
   Shot-PrintWindow $p.MainWindowHandle "undo.png"
-  "draft_mid=$mid`ndraft_after_undos=$(Uia-Value $root 'draft')" |
+  "draft_mid=$mid`ndraft_after_undos=$(P-Value $p.MainWindowHandle 'draft')" |
     Set-Content "$($script:OutDir)\undo.txt"
-  $p | Stop-Process -Force
+  Stop-Composer $p
 }
 
 function S-ReadOnly {
   $p = Launch-Composer
-  $root = Uia-Root $p.MainWindowHandle
-  Click-Element $root $p.MainWindowHandle "draft" "ControlType.Edit"
-  Post-Text $p.MainWindowHandle "before"
-  Uia-Invoke $root "ro on"                    # staged read_only -> ECO_READONLY
+  P-ClickNamed $p.MainWindowHandle "draft" | Out-Null
+  P-Text $p.MainWindowHandle "before" | Out-Null
+  P-Invoke $p.MainWindowHandle "ro on" | Out-Null   # staged read_only -> ECO_READONLY
   Start-Sleep -Milliseconds 400
-  Click-Element $root $p.MainWindowHandle "draft" "ControlType.Edit"
-  Post-Text $p.MainWindowHandle "REJECTED"    # must NOT land
+  P-ClickNamed $p.MainWindowHandle "draft" | Out-Null
+  P-Text $p.MainWindowHandle "REJECTED" | Out-Null  # must NOT land
   Shot-PrintWindow $p.MainWindowHandle "readonly.png"
-  "draft_value=$(Uia-Value $root 'draft')" | Set-Content "$($script:OutDir)\readonly.txt"
-  $p | Stop-Process -Force
+  "draft_value=$(P-Value $p.MainWindowHandle 'draft')" | Set-Content "$($script:OutDir)\readonly.txt"
+  Stop-Composer $p
 }
 
 function S-Disabled {
   $p = Launch-Composer
-  $root = Uia-Root $p.MainWindowHandle
-  Uia-Invoke $root "send"
+  P-Invoke $p.MainWindowHandle "send" | Out-Null
   Start-Sleep -Milliseconds 300               # mid-flight
-  $send = Uia-Find $root "send"; $stop = Uia-Find $root "stop"
-  "send_enabled_mid=$($send.Current.IsEnabled) stop_enabled_mid=$($stop.Current.IsEnabled)" |
+  $send = P-Enabled $p.MainWindowHandle "send"
+  $stop = P-Enabled $p.MainWindowHandle "stop"
+  "send_enabled_mid=$send stop_enabled_mid=$stop" |
     Set-Content "$($script:OutDir)\disabled.txt"
   Shot-PrintWindow $p.MainWindowHandle "disabled-mid.png"
-  $p | Stop-Process -Force
+  Stop-Composer $p
 }
 
 function S-Multiline {
   $p = Launch-Composer
-  $root = Uia-Root $p.MainWindowHandle
-  Click-Element $root $p.MainWindowHandle "body" "ControlType.Edit"
+  P-ClickNamed $p.MainWindowHandle "body" | Out-Null
   for ($i = 0; $i -lt 6; $i++) {
-    Post-Text $p.MainWindowHandle "line$i"
-    Post-Key $p.MainWindowHandle 0x0D -shift:$true  # Shift+Enter = soft newline
+    P-Text $p.MainWindowHandle "line$i" | Out-Null
+    P-KeyMod $p.MainWindowHandle 0x0D "shift"  # Shift+Enter = soft newline
   }
   Shot-PrintWindow $p.MainWindowHandle "multiline.png"
-  $r = Uia-Rect $root "body" "ControlType.Edit"
-  "body_rect=$r" | Set-Content "$($script:OutDir)\multiline.txt"
-  $p | Stop-Process -Force
+  $r = P-Rect $p.MainWindowHandle "body"
+  "body_rect=$($r.rect_px -join ',')" | Set-Content "$($script:OutDir)\multiline.txt"
+  Stop-Composer $p
 }
 
 function S-Reorder {
   $p = Launch-Composer
-  $root = Uia-Root $p.MainWindowHandle
-  Uia-Tree $root "$($script:OutDir)\reorder-before.txt"
-  Uia-Invoke $root "reorder"
+  (P-UiaTree $p.MainWindowHandle | ConvertTo-Json -Depth 6) | Set-Content "$($script:OutDir)\reorder-before.txt"
+  P-Invoke $p.MainWindowHandle "reorder" | Out-Null
   Start-Sleep -Milliseconds 400
-  Uia-Tree $root "$($script:OutDir)\reorder-after.txt"
-  Uia-Invoke $root "rm B"
+  (P-UiaTree $p.MainWindowHandle | ConvertTo-Json -Depth 6) | Set-Content "$($script:OutDir)\reorder-after.txt"
+  P-Invoke $p.MainWindowHandle "rm B" | Out-Null
   Start-Sleep -Milliseconds 300
-  Uia-Invoke $root "mk B"                     # recreate — new generation
+  P-Invoke $p.MainWindowHandle "mk B" | Out-Null   # recreate — new generation
   Start-Sleep -Milliseconds 300
   Shot-PrintWindow $p.MainWindowHandle "reorder.png"
-  Uia-Tree $root "$($script:OutDir)\reorder-final.txt"
-  $p | Stop-Process -Force
+  (P-UiaTree $p.MainWindowHandle | ConvertTo-Json -Depth 6) | Set-Content "$($script:OutDir)\reorder-final.txt"
+  Stop-Composer $p
 }
 
 function S-Send {
   $p = Launch-Composer
-  $root = Uia-Root $p.MainWindowHandle
-  Uia-Invoke $root "send"
+  P-Invoke $p.MainWindowHandle "send" | Out-Null
   Start-Sleep -Milliseconds 400
   Shot-PrintWindow $p.MainWindowHandle "send-mid.png"
-  Uia-Invoke $root "stop"
+  P-Invoke $p.MainWindowHandle "stop" | Out-Null
   Start-Sleep -Milliseconds 400
-  $send = Uia-Find $root "send"
-  "send_enabled_after_stop=$($send.Current.IsEnabled)" | Set-Content "$($script:OutDir)\send-stop.txt"
-  Uia-Invoke $root "send"                     # resend
+  "send_enabled_after_stop=$(P-Enabled $p.MainWindowHandle 'send')" |
+    Set-Content "$($script:OutDir)\send-stop.txt"
+  P-Invoke $p.MainWindowHandle "send" | Out-Null   # resend
   Start-Sleep -Milliseconds 2800
   Shot-PrintWindow $p.MainWindowHandle "send-done.png"
-  $p | Stop-Process -Force
+  Stop-Composer $p
+}
+
+function S-Ime {
+  $p = Launch-Composer
+  P-ClickNamed $p.MainWindowHandle "draft" | Out-Null
+  $r = P-Ime $p.MainWindowHandle "draft" "arigato"
+  $r | ConvertTo-Json | Set-Content "$($script:OutDir)\ime.json"
+  Shot-PrintWindow $p.MainWindowHandle "ime.png"
+  "draft_value=$(P-Value $p.MainWindowHandle 'draft')" | Set-Content "$($script:OutDir)\ime.txt"
+  Stop-Composer $p
 }
 
 function S-Uia {
   $p = Launch-Composer
-  Uia-Tree (Uia-Root $p.MainWindowHandle) "$($script:OutDir)\uia-tree.txt"
-  (cargo run --example uia_probe 2>&1 | Out-String) | Set-Content "$($script:OutDir)\uia-probe.txt"
-  $p | Stop-Process -Force
+  (P-UiaTree $p.MainWindowHandle | ConvertTo-Json -Depth 6) |
+    Set-Content "$($script:OutDir)\uia-tree.txt"
+  Stop-Composer $p
 }
 
 function S-Dpi {
   foreach ($dpi in 96, 120, 144, 192) {
     $p = Launch-Composer
-    Post-DpiChanged $p $dpi
+    P-Dpi $p.MainWindowHandle $dpi | Out-Null
+    $g = P-Geometry $p.MainWindowHandle
+    # READ-BACK ASSERTION — the suggested rect is what a synthetic
+    # WM_DPICHANGED can prove (the monitor's real DPI doesn't change):
+    # the window must have been sized to 500x470 Dp * (dpi/96).
+    $wantW = [int](500 * $dpi / 96)
+    $wantH = [int](470 * $dpi / 96)
+    $gotW = $g.window_px[2] - $g.window_px[0]
+    $gotH = $g.window_px[3] - $g.window_px[1]
+    if ([math]::Abs($gotW - $wantW) -gt 4 -or [math]::Abs($gotH - $wantH) -gt 4) {
+      Stop-Composer $p
+      throw "dpi injection failed: dpi=$dpi expected ~${wantW}x${wantH}px, got ${gotW}x${gotH}px"
+    }
+    "dpi=$dpi window_px=${gotW}x${gotH} expected=${wantW}x${wantH}" |
+      Set-Content "$($script:OutDir)\dpi-$dpi.txt"
     Shot-PrintWindow $p.MainWindowHandle "dpi-$dpi.png"
-    $p | Stop-Process -Force
+    Stop-Composer $p
   }
 }
 
@@ -165,45 +183,40 @@ function S-Idle {
   $idle = [math]::Round((($cpu1 - $cpu0) / 30) * 100, 3)
   "idle_cpu_pct_30s=$idle working_set_mb=$ws threads=$($p.Threads.Count)" |
     Set-Content "$($script:OutDir)\perf.txt"
-  $p | Stop-Process -Force
+  Stop-Composer $p   # graceful — perf-counters.txt arrives at clean shutdown
 }
 
 function S-Scale {
   foreach ($n in 100, 1000) {
     $p = Launch-Composer @{"RUI_ROWS" = "$n"}
     $t0 = Get-Date
-    $root = Uia-Root $p.MainWindowHandle
-    $kids = 0
-    $tw = [System.Windows.Automation.TreeWalker]::RawViewWalker
-    $ch = $tw.GetFirstChild($root)
-    while ($null -ne $ch) { $kids++; $ch = $tw.GetNextSibling($ch) }
+    $kids = P-Count $p.MainWindowHandle
     $ms = [math]::Round(((Get-Date) - $t0).TotalMilliseconds, 0)
     "rows=$n uia_children=$kids settle_query_ms=$ms" | Add-Content "$($script:OutDir)\scale.txt"
     Shot-PrintWindow $p.MainWindowHandle "scale-$n.png"
-    $p | Stop-Process -Force
+    Stop-Composer $p
   }
 }
 
 function S-Theme {
   $p = Launch-Composer
-  $root = Uia-Root $p.MainWindowHandle
-  Uia-Invoke $root "light"
+  P-Invoke $p.MainWindowHandle "light" | Out-Null
   Start-Sleep -Milliseconds 600
   Shot-PrintWindow $p.MainWindowHandle "composer-light.png"
-  Uia-Invoke $root "dark"
+  P-Invoke $p.MainWindowHandle "dark" | Out-Null
   Start-Sleep -Milliseconds 600
   Shot-PrintWindow $p.MainWindowHandle "theme-back-dark.png"
-  $p | Stop-Process -Force
+  Stop-Composer $p
 }
 
 # ---- driver ----------------------------------------------------------------
 
 $all = @("smoke","typing","unicode","selection","undo","readonly","disabled",
-         "multiline","reorder","send","uia","dpi","idle","scale","theme")
+         "multiline","reorder","send","ime","uia","dpi","idle","scale","theme")
 $run = if ($Scenario -eq "all") { $all } else { $Scenario.Split(",") }
 
 $sha = git rev-parse HEAD 2>$null
-"HEAD=$sha`nexe_sha256=$((Get-FileHash $script:ComposerExe -Algorithm SHA256).Hash)`nrun_utc=$((Get-Date).ToUniversalTime().ToString('o'))" |
+"HEAD=$sha`nexe_sha256=$((Get-FileHash $script:ComposerExe -Algorithm SHA256).Hash)`nprobe_sha256=$((Get-FileHash $script:ProbeExe -Algorithm SHA256).Hash)`nrun_utc=$((Get-Date).ToUniversalTime().ToString('o'))" |
   Set-Content "$($script:OutDir)\identity.txt"
 
 foreach ($s in $run) {
@@ -218,6 +231,7 @@ foreach ($s in $run) {
     "multiline" { S-Multiline }
     "reorder"   { S-Reorder }
     "send"      { S-Send }
+    "ime"       { S-Ime }
     "uia"       { S-Uia }
     "dpi"       { S-Dpi }
     "idle"      { S-Idle }

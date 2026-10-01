@@ -1,1 +1,1 @@
-idle_cpu_pct=0 working_set_mb=36.2 threads=22 scale=1.25
+idle_cpu_pct_30s=0 working_set_mb=34.6 threads=18
