@@ -1,7 +1,8 @@
 use std::fmt;
 
-/// Logical device-independent pixel (dp). Physical-pixel snapping happens at
-/// the backend boundary only.
+/// rust-ui logical layout/design unit. `Dp` is NOT a physical-size promise —
+/// how many physical pixels one logical unit occupies is the backend's
+/// `ScaleFactor`, which the display environment supplies.
 #[derive(Copy, Clone, Debug, Default, PartialEq, PartialOrd)]
 pub struct Dp(pub f32);
 
@@ -123,22 +124,27 @@ impl Point {
 // these methods is a contract violation.
 // ---------------------------------------------------------------------------
 
-/// px per logical unit — `dpi / 96` semantics, without naming the Windows
-/// constant: on any platform the logical unit is "one physical pixel at
-/// 96 dpi" (the OS-independent baseline).
+/// Physical pixels per rust-ui logical unit — platform-neutral meaning.
+/// A backend supplies the ratio its environment reports (e.g. an OS DPI
+/// mapping on Windows, a backing-store scale elsewhere); the shared
+/// semantics know nothing about dpi/96.
+///
+/// Invariant: positive and finite. Construct via `ScaleFactor::new` for
+/// checked creation; the raw field remains readable.
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct ScaleFactor(pub f32);
 
 impl ScaleFactor {
     pub const ONE: ScaleFactor = ScaleFactor(1.0);
 
-    /// `ScaleFactor::from_dpi(120)` = the 125% monitor.
-    pub fn from_dpi(dpi: u32) -> ScaleFactor {
-        ScaleFactor(dpi as f32 / 96.0)
+    /// Checked constructor — `None` on non-positive or non-finite input.
+    pub fn new(ratio: f32) -> Option<ScaleFactor> {
+        (ratio.is_finite() && ratio > 0.0).then_some(ScaleFactor(ratio))
     }
 
-    pub fn dpi(self) -> u32 {
-        (self.0 * 96.0).round() as u32
+    /// True for a usable ratio (positive + finite).
+    pub fn valid(self) -> bool {
+        self.0.is_finite() && self.0 > 0.0
     }
 
     /// logical -> physical px — THE rounding policy:
@@ -202,6 +208,50 @@ pub struct ClientPhysicalPoint(pub PhysicalPoint);
 /// Marker: a physical px point in *screen* space.
 #[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
 pub struct ScreenPhysicalPoint(pub PhysicalPoint);
+
+/// Marker: a physical px point in a peer's own surface space (origin =
+/// the peer's snapped client origin) — never confuse it with the
+/// window's client space.
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
+pub struct PeerLocalPoint(pub PhysicalPoint);
+
+/// THE window-client ↔ peer-local transform — one snapped physical origin,
+/// integer subtraction/addition only. Constructing the origin snaps the
+/// logical rect ONCE (`origin_from`); every consumer then shares exactly
+/// that snapped pixel, so pointer/caret/host-callback coordinates cannot
+/// drift by the half-px that a per-call logical re-rounding produces.
+///
+///   local  = client  - snapped_origin
+///   client = local   + snapped_origin
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub struct PeerOrigin(pub PhysicalPoint);
+
+impl PeerOrigin {
+    /// Snap `peer_logical_bounds` ONCE at `scale` — the shared origin.
+    pub fn from_logical(bounds: Rect, s: ScaleFactor) -> PeerOrigin {
+        let p = bounds.physical(s);
+        PeerOrigin(PhysicalPoint {
+            x: p.left,
+            y: p.top,
+        })
+    }
+
+    /// window/client px -> peer-local px.
+    pub fn to_local(self, p: ClientPhysicalPoint) -> PeerLocalPoint {
+        PeerLocalPoint(PhysicalPoint {
+            x: p.0.x - self.0.x,
+            y: p.0.y - self.0.y,
+        })
+    }
+
+    /// peer-local px -> window/client px.
+    pub fn to_client(self, p: PeerLocalPoint) -> ClientPhysicalPoint {
+        ClientPhysicalPoint(PhysicalPoint {
+            x: p.0.x + self.0.x,
+            y: p.0.y + self.0.y,
+        })
+    }
+}
 
 impl PhysicalPoint {
     /// physical px -> DIP point.

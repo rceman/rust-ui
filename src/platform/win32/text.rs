@@ -391,44 +391,36 @@ impl ITextHost_Impl for HostBox {
             let s = self.s();
             (s.host.scale, s.host.bounds, s.host.hwnd)
         };
-        bools(unsafe {
-            // screen px -> client px -> peer-local px (host space is px)
-            let c = super::space::screen_to_client(
+        unsafe {
+            // screen px -> window-client px -> peer-local px — the SHARED
+            // snapped-origin transform, not a re-rounded logical subtract
+            let Some(c) = super::space::screen_to_client(
                 hwnd,
                 super::space::ScreenPhysicalPoint((*lppt).into()),
-            );
-            let off = LogicalPoint {
-                x: bounds.x,
-                y: bounds.y,
-            }
-            .physical(scale);
-            (*lppt).x = c.0.x - off.x;
-            (*lppt).y = c.0.y - off.y;
-            true
-        })
+            ) else {
+                return BOOL(0); // failed conversion is failure, not identity
+            };
+            let origin = super::space::PeerOrigin::from_logical(bounds, scale);
+            let local = origin.to_local(c);
+            (*lppt).x = local.0.x;
+            (*lppt).y = local.0.y;
+            BOOL(1)
+        }
     }
     fn TxClientToScreen(&self, lppt: *mut POINT) -> BOOL {
         let (scale, bounds, hwnd) = {
             let s = self.s();
             (s.host.scale, s.host.bounds, s.host.hwnd)
         };
-        bools(unsafe {
-            // peer-local px -> window client px -> screen px
-            let off = LogicalPoint {
-                x: bounds.x,
-                y: bounds.y,
-            }
-            .physical(scale);
-            let s = super::space::client_to_screen(
-                hwnd,
-                super::space::ClientPhysicalPoint(PhysicalPoint {
-                    x: (*lppt).x + off.x,
-                    y: (*lppt).y + off.y,
-                }),
-            );
+        unsafe {
+            let origin = super::space::PeerOrigin::from_logical(bounds, scale);
+            let client = origin.to_client(super::space::PeerLocalPoint((*lppt).into()));
+            let Some(s) = super::space::client_to_screen(hwnd, client) else {
+                return BOOL(0);
+            };
             *lppt = s.0.into();
-            true
-        })
+            BOOL(1)
+        }
     }
     fn TxActivate(&self, _ploldstate: *mut i32) -> Result<()> {
         Ok(())

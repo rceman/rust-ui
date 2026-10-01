@@ -268,7 +268,7 @@ impl Renderer {
         }
         self.dpi = dpi;
         if let Some(t) = &self.target {
-            let d = dpi.dpi() as f32;
+            let d = super::space::dpi_of(dpi) as f32;
             unsafe { t.SetDpi(d, d) };
         }
         // peer surfaces + shadow rasters key on target DPI — a scale
@@ -311,8 +311,8 @@ impl Renderer {
                     format: DXGI_FORMAT_B8G8R8A8_UNORM,
                     alphaMode: D2D1_ALPHA_MODE_IGNORE,
                 },
-                dpiX: self.dpi.dpi() as f32,
-                dpiY: self.dpi.dpi() as f32,
+                dpiX: super::space::dpi_of(self.dpi) as f32,
+                dpiY: super::space::dpi_of(self.dpi) as f32,
                 ..Default::default()
             };
             let hp = D2D1_HWND_RENDER_TARGET_PROPERTIES {
@@ -381,7 +381,7 @@ impl Renderer {
             .map_err(|e| UiError::Platform(format!("target cast: {e}")))?;
         let _tgen = self.target_gen.get();
         unsafe {
-            let d = dpi.dpi() as f32;
+            let d = super::space::dpi_of(dpi) as f32;
             target.SetDpi(d, d);
         }
         let bg = role_color(crate::theme::ColorRole::Background, dark);

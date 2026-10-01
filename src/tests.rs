@@ -3183,7 +3183,7 @@ fn native_probe_richedit_paints_text() {
         ReleaseDC(Some(hwnd), dc);
         d
     };
-    let dc_scale = crate::geom::ScaleFactor::from_dpi(dc_dpi as u32).0;
+    let dc_scale = crate::platform::win32::space::scale_from_dpi(dc_dpi as u32).0;
     eprintln!("[probe] dc_dpi={dc_dpi} dc_scale={dc_scale}");
 
     // in-memory framebuffer: DIB + memory DC + D2D DC render target.
@@ -4442,12 +4442,29 @@ fn hundred_mount_remove_cycles_reclaim_all() {
 #[test]
 fn geometry_contract_scale_identity() {
     use crate::geom::ScaleFactor;
-    // the four canonical monitors
-    let cases = [(96u32, 1.0f32), (120, 1.25), (144, 1.5), (192, 2.0)];
-    for (dpi, want) in cases {
-        let s = ScaleFactor::from_dpi(dpi);
+    // shared semantics: positive finite px-per-Dp ratios — no OS baseline
+    for want in [1.0f32, 1.25, 1.5, 2.0] {
+        let s = ScaleFactor::new(want).expect("valid ratio");
+        assert!((s.0 - want).abs() < 1e-6);
+        assert!(s.valid());
+    }
+    // invalid ratios are refused — a zero/negative/NaN scale can never
+    // smuggle broken geometry into the shared model
+    for bad in [0.0f32, -1.25, f32::NAN, f32::INFINITY] {
+        assert!(ScaleFactor::new(bad).is_none());
+        assert!(!ScaleFactor(bad).valid());
+    }
+}
+
+/// Win32 adapter contract: monitor DPI <-> ratio mapping lives in
+/// `platform::win32::space` — the shared layer never sees `96`.
+#[test]
+fn win32_scale_from_dpi_mapping() {
+    use crate::platform::win32::space::{dpi_of, scale_from_dpi};
+    for (dpi, want) in [(96u32, 1.0f32), (120, 1.25), (144, 1.5), (192, 2.0)] {
+        let s = scale_from_dpi(dpi);
         assert!((s.0 - want).abs() < 1e-6, "dpi {dpi}");
-        assert_eq!(s.dpi(), dpi, "round-trip dpi {dpi}");
+        assert_eq!(dpi_of(s), dpi, "round-trip dpi {dpi}");
     }
 }
 
@@ -4455,9 +4472,9 @@ fn geometry_contract_scale_identity() {
 fn geometry_contract_logical_to_physical() {
     use crate::geom::ScaleFactor;
     // exactly-representable conversions are exact at every scale
-    for &dpi in &[96u32, 120, 144, 192] {
-        let s = ScaleFactor::from_dpi(dpi);
-        assert_eq!(s.to_physical(96.0), dpi as i32, "96dp@{dpi}dpi");
+    for &(ratio, px96) in &[(1.0f32, 96i32), (1.25, 120), (1.5, 144), (2.0, 192)] {
+        let s = ScaleFactor(ratio);
+        assert_eq!(s.to_physical(96.0), px96, "96dp@x{ratio}");
         assert_eq!(s.to_physical(0.0), 0);
         assert_eq!(s.to_physical(-8.0), -((8.0 * s.0).round()) as i32);
     }
@@ -4467,10 +4484,10 @@ fn geometry_contract_logical_to_physical() {
     assert_eq!(s.to_physical(0.5), 1);
     assert_eq!(s.to_physical(0.51), 1);
     assert_eq!(s.to_physical(-0.5), -1); // half-away, not half-even
-    // 125%: 0.4dp -> 0.5px -> rounds to 1 (not 0)
-    assert_eq!(ScaleFactor::from_dpi(120).to_physical(0.4), 1);
-    assert_eq!(ScaleFactor::from_dpi(120).to_physical(1.6), 2); // 2.0 exact
-    assert_eq!(ScaleFactor::from_dpi(144).to_physical(2.5), 4); // 3.75 -> 4
+    // 1.25x: 0.4dp -> 0.5px -> rounds to 1 (not 0)
+    assert_eq!(ScaleFactor(1.25).to_physical(0.4), 1);
+    assert_eq!(ScaleFactor(1.25).to_physical(1.6), 2); // 2.0 exact
+    assert_eq!(ScaleFactor(1.5).to_physical(2.5), 4); // 3.75 -> 4
 }
 
 #[test]
@@ -4478,15 +4495,15 @@ fn geometry_contract_round_trip() {
     use crate::geom::ScaleFactor;
     // logical -> px -> logical stays within half a physical pixel of the
     // source value (the maximum rounding error, by construction)
-    for &dpi in &[96u32, 120, 144, 192] {
-        let s = ScaleFactor::from_dpi(dpi);
+    for &ratio in &[1.0f32, 1.25, 1.5, 2.0] {
+        let s = ScaleFactor(ratio);
         let tol = 0.5 / s.0 + 1e-4;
         let mut v = -32.0f32;
         while v <= 1024.0 {
             let rt = s.to_logical(s.to_physical(v));
             assert!(
                 (rt - v).abs() <= tol,
-                "round-trip @{dpi}dpi: {v} -> {} -> {rt}",
+                "round-trip @x{ratio}: {v} -> {} -> {rt}",
                 s.to_physical(v)
             );
             v += 0.1;
@@ -4497,8 +4514,8 @@ fn geometry_contract_round_trip() {
 #[test]
 fn geometry_contract_rect_conversion() {
     use crate::geom::{Point, Rect, ScaleFactor};
-    for &dpi in &[96u32, 120, 144, 192] {
-        let s = ScaleFactor::from_dpi(dpi);
+    for &ratio in &[1.0f32, 1.25, 1.5, 2.0] {
+        let s = ScaleFactor(ratio);
         let r = Rect {
             x: 34.0,
             y: 167.0,
@@ -4517,7 +4534,7 @@ fn geometry_contract_rect_conversion() {
         assert!((back.right() - 370.0).abs() <= 2.0 * tol);
     }
     // zero-size and negative-origin rects survive
-    let z = Rect::local(0.0, 0.0).physical(ScaleFactor::from_dpi(120));
+    let z = Rect::local(0.0, 0.0).physical(ScaleFactor(1.25));
     assert_eq!(z.size().w, 0);
     let neg = Rect {
         x: -20.0,
@@ -4525,7 +4542,7 @@ fn geometry_contract_rect_conversion() {
         width: 10.0,
         height: 4.0,
     }
-    .physical(ScaleFactor::from_dpi(144));
+    .physical(ScaleFactor(1.5));
     assert!(neg.left < 0 && neg.top < 0, "screen px may be negative");
 
     // geometry helpers shared with the retained side
@@ -4558,10 +4575,10 @@ fn geometry_contract_scale_change_is_pure() {
         width: 100.0,
         height: 40.0,
     };
-    let at96 = r.physical(ScaleFactor::from_dpi(96));
-    let at192 = r.physical(ScaleFactor::from_dpi(192));
-    assert_eq!(at192.left, at96.left * 2);
-    assert_eq!(at96, r.physical(ScaleFactor::from_dpi(96)));
+    let at1 = r.physical(ScaleFactor(1.0));
+    let at2 = r.physical(ScaleFactor(2.0));
+    assert_eq!(at2.left, at1.left * 2);
+    assert_eq!(at1, r.physical(ScaleFactor(1.0)));
     // fractional coords round *after* scaling — deterministic, not
     // commutable: 12.5dp is 13px@96 but 25px@192 (not 26)
     let f = Rect {
@@ -4570,6 +4587,6 @@ fn geometry_contract_scale_change_is_pure() {
         width: 10.0,
         height: 10.0,
     };
-    assert_eq!(f.physical(ScaleFactor::from_dpi(96)).left, 13);
-    assert_eq!(f.physical(ScaleFactor::from_dpi(192)).left, 25);
+    assert_eq!(f.physical(ScaleFactor(1.0)).left, 13);
+    assert_eq!(f.physical(ScaleFactor(2.0)).left, 25);
 }

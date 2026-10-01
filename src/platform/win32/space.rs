@@ -26,9 +26,25 @@ use windows::Win32::Graphics::Gdi::{ClientToScreen, ScreenToClient};
 // re-export the shared spaces so win32 modules name one import root —
 // the types live in `crate::geom`; this module adds only the Win32 seams
 pub(crate) use crate::geom::{
-    ClientPhysicalPoint, PhysicalPoint, PhysicalRect, PhysicalSize, Point as LogicalPoint,
-    Rect as LogicalRect, ScaleFactor, ScreenPhysicalPoint,
+    ClientPhysicalPoint, PeerLocalPoint, PeerOrigin, PhysicalPoint, PhysicalRect, PhysicalSize,
+    Point as LogicalPoint, Rect as LogicalRect, ScaleFactor, ScreenPhysicalPoint,
 };
+
+// ---------------------------------------------------------------------------
+// Windows-specific scale mapping — the 96-DPI baseline is Win32/D2D's
+// convention, NOT shared rust-ui semantics (a future backend supplies its
+// own ratio and never sees `96`).
+// ---------------------------------------------------------------------------
+
+/// Win32 monitor DPI -> shared ratio (`dpi / 96` is Windows' own rule).
+pub fn scale_from_dpi(dpi: u32) -> ScaleFactor {
+    ScaleFactor(dpi as f32 / 96.0)
+}
+
+/// Shared ratio -> Win32/D2D DPI (SetDpi, WNDCLASS reasoning, etc.).
+pub fn dpi_of(s: ScaleFactor) -> u32 {
+    (s.0 * 96.0).round() as u32
+}
 
 impl LogicalRect {
     /// `RECTL` wants physical px — THE logical->RECTL conversion.
@@ -85,31 +101,36 @@ impl From<PhysicalSize> for SIZE {
 }
 
 /// `ClientToScreen` — physical px both sides under PMv2.
-pub(crate) fn client_to_screen(
+/// `None` on native failure (invalid hwnd / non-mappable point) — callers
+/// must not treat a failed conversion as identity.
+pub fn client_to_screen(
     hwnd: windows::Win32::Foundation::HWND,
     p: ClientPhysicalPoint,
-) -> ScreenPhysicalPoint {
+) -> Option<ScreenPhysicalPoint> {
     let mut pt: POINT = p.0.into();
-    unsafe {
-        let _ = ClientToScreen(hwnd, &mut pt);
-    }
-    ScreenPhysicalPoint(pt.into())
+    let ok = unsafe { ClientToScreen(hwnd, &mut pt) };
+    ok.as_bool().then_some(ScreenPhysicalPoint(pt.into()))
 }
 
-/// `ScreenToClient` — physical px both sides under PMv2.
-pub(crate) fn screen_to_client(
+/// `ScreenToClient` — physical px both sides under PMv2; `None` on failure.
+pub fn screen_to_client(
     hwnd: windows::Win32::Foundation::HWND,
     p: ScreenPhysicalPoint,
-) -> ClientPhysicalPoint {
+) -> Option<ClientPhysicalPoint> {
     let mut pt: POINT = p.0.into();
-    unsafe {
-        let _ = ScreenToClient(hwnd, &mut pt);
-    }
-    ClientPhysicalPoint(pt.into())
+    let ok = unsafe { ScreenToClient(hwnd, &mut pt) };
+    ok.as_bool().then_some(ClientPhysicalPoint(pt.into()))
 }
 
 /// Pack a client/peer-local px point into a Win32 `LPARAM`
-/// (MAKELPARAM convention — low i16 x, high i16 y).
-pub(crate) fn lparam_px(p: PhysicalPoint) -> isize {
-    ((p.y as isize) << 16) | (p.x as isize & 0xffff)
+/// (MAKELPARAM convention — signed i16 x in the low word, signed i16 y in
+/// the high word). `None` when a coordinate cannot be represented —
+/// callers must not silently truncate ±32768-range coordinates.
+pub fn try_lparam_px(p: PhysicalPoint) -> Option<isize> {
+    let ok = |v: i32| (i16::MIN as i32..=i16::MAX as i32).contains(&v);
+    if ok(p.x) && ok(p.y) {
+        Some(((p.y as u16 as usize) << 16 | (p.x as u16 as usize)) as isize)
+    } else {
+        None
+    }
 }

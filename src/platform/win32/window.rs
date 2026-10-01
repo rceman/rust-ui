@@ -199,7 +199,7 @@ pub(super) mod wndproc {
                     });
                 }
                 be.update_cursor();
-                be.hover(be.pt(lparam))?;
+                be.hover(be.pt_px(lparam), wparam.0)?;
                 LRESULT(0)
             }
             WM_MOUSELEAVE => {
@@ -210,7 +210,7 @@ pub(super) mod wndproc {
                 unsafe {
                     SetCapture(hwnd);
                 }
-                let pt = be.pt(lparam);
+                let pt = be.pt_px(lparam);
                 be.pointer(
                     crate::node::PointerPhase::Down,
                     pt,
@@ -223,7 +223,7 @@ pub(super) mod wndproc {
                 unsafe {
                     let _ = ReleaseCapture();
                 }
-                let pt = be.pt(lparam);
+                let pt = be.pt_px(lparam);
                 be.pointer(
                     crate::node::PointerPhase::Up,
                     pt,
@@ -246,36 +246,36 @@ pub(super) mod wndproc {
                 // runtime boundary first (EN_CHANGE routing keys off it),
                 // then the peer sees the real composition start
                 be.ime_start();
-                be.send_focused(msg, wparam.0, lparam.0);
+                be.send_focused(msg, wparam.0, lparam.0)?;
                 be.service_peer_events()?;
                 LRESULT(0)
             }
             WM_IME_ENDCOMPOSITION => {
                 // peer commits first, its events drain, THEN queued
                 // proposals resolve against the final text
-                be.send_focused(msg, wparam.0, lparam.0);
+                be.send_focused(msg, wparam.0, lparam.0)?;
                 be.service_peer_events()?;
                 be.ime_end()?;
                 LRESULT(0)
             }
             WM_IME_COMPOSITION | WM_IME_NOTIFY => {
                 // richedit sees the raw message; preedit never becomes an edit
-                be.send_focused(msg, wparam.0, lparam.0);
+                be.send_focused(msg, wparam.0, lparam.0)?;
                 be.service_peer_events()?;
                 LRESULT(0)
             }
             WM_SETFOCUS => {
-                be.send_focused(msg, wparam.0, lparam.0);
+                be.send_focused(msg, wparam.0, lparam.0)?;
                 be.turn()?;
                 LRESULT(0)
             }
             WM_KILLFOCUS => {
-                be.send_focused(msg, wparam.0, lparam.0);
+                be.send_focused(msg, wparam.0, lparam.0)?;
                 be.turn()?;
                 LRESULT(0)
             }
             WM_MOUSEWHEEL => {
-                be.send_focused(msg, wparam.0, lparam.0);
+                be.send_focused(msg, wparam.0, lparam.0)?;
                 be.service_peer_events()?;
                 LRESULT(0)
             }

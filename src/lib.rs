@@ -8,6 +8,7 @@ mod arena;
 mod event;
 mod geom;
 mod key;
+mod layout;
 mod node;
 mod runtime;
 mod sched;
@@ -152,6 +153,20 @@ impl From<windows::core::Error> for UiError {
 }
 
 mod platform;
+
+/// Dev-harness seam — re-exports of the Win32 geometry adapter so the
+/// repository's native probe/tests consume the SAME authority instead of
+/// re-implementing Win32 semantics. Not application API.
+#[cfg(windows)]
+#[doc(hidden)]
+pub mod dev {
+    pub use crate::geom::{
+        ClientPhysicalPoint, PeerLocalPoint, PhysicalPoint, ScreenPhysicalPoint,
+    };
+    pub use crate::platform::win32::space::{
+        client_to_screen, dpi_of, scale_from_dpi, screen_to_client,
+    };
+}
 
 #[cfg(test)]
 mod tests;

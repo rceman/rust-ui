@@ -75,15 +75,27 @@ mod probe {
             GetWindowRect(hwnd, &mut wr)?;
             let mut cr = RECT::default();
             GetClientRect(hwnd, &mut cr)?;
-            let mut org = POINT::default();
-            let _ = windows::Win32::Graphics::Gdi::ClientToScreen(hwnd, &mut org);
+            let org = rust_ui::dev::client_to_screen(
+                hwnd,
+                rust_ui::dev::ClientPhysicalPoint(rust_ui::dev::PhysicalPoint { x: 0, y: 0 }),
+            )
+            .ok_or_else(|| Error::new(E_FAIL.into(), "ClientToScreen failed"))?;
             let dpi = GetDpiForWindow(hwnd);
-            let thread_dpi = GetThreadDpiAwarenessContext();
-            let _ = thread_dpi;
-            let scale = rust_ui::ScaleFactor::from_dpi(dpi).0;
+            let scale = rust_ui::dev::scale_from_dpi(dpi).0;
+            // record the awareness the probe ACTUALLY runs under — Gate 16
+            let aware = GetThreadDpiAwarenessContext();
+            let pmv2 =
+                AreDpiAwarenessContextsEqual(aware, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)
+                    .as_bool();
+            if !pmv2 {
+                return Err(Error::new(
+                    E_FAIL.into(),
+                    "probe is not PerMonitorV2-aware — evidence invalid",
+                ));
+            }
             Ok(format!(
-                "{{\"kind\":\"geometry\",\"evidence\":\"acceptance\",\"dpi\":{dpi},\"scale\":{scale:.3},\"window_px\":[{},{},{},{}],\"client_px\":[0,0,{},{}],\"client_origin_px\":[{},{}]}}",
-                wr.left, wr.top, wr.right, wr.bottom, cr.right, cr.bottom, org.x, org.y,
+                "{{\"kind\":\"geometry\",\"evidence\":\"acceptance\",\"awareness\":\"pmv2\",\"dpi\":{dpi},\"scale\":{scale:.3},\"window_px\":[{},{},{},{}],\"client_px\":[0,0,{},{}],\"client_origin_px\":[{},{}]}}",
+                wr.left, wr.top, wr.right, wr.bottom, cr.right, cr.bottom, org.0.x, org.0.y,
             ))
         }
     }
@@ -91,9 +103,12 @@ mod probe {
     /// Real physical-px click via SendInput at client coords (cx,cy).
     pub fn click(hwnd: HWND, cx: i32, cy: i32) -> Result<()> {
         unsafe {
-            let mut org = POINT::default();
-            let _ = windows::Win32::Graphics::Gdi::ClientToScreen(hwnd, &mut org);
-            let (sx, sy) = (org.x + cx, org.y + cy);
+            let org = rust_ui::dev::client_to_screen(
+                hwnd,
+                rust_ui::dev::ClientPhysicalPoint(rust_ui::dev::PhysicalPoint { x: 0, y: 0 }),
+            )
+            .ok_or_else(|| Error::new(E_FAIL.into(), "ClientToScreen failed"))?;
+            let (sx, sy) = (org.0.x + cx, org.0.y + cy);
             foreground(hwnd);
             std::thread::sleep(std::time::Duration::from_millis(120));
             SetCursorPos(sx, sy)?;
@@ -162,7 +177,7 @@ mod probe {
     /// lparams — the prior VirtualAllocEx path silently no-opped).
     pub fn dpi_changed(hwnd: HWND, _pid: u32, dpi: u32) -> Result<()> {
         unsafe {
-            let s = rust_ui::ScaleFactor::from_dpi(dpi);
+            let s = rust_ui::dev::scale_from_dpi(dpi);
             let rect = RECT {
                 left: 0,
                 top: 0,

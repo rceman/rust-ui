@@ -631,10 +631,13 @@ where
     }
 
     /// Raw window message to the focused peer (IME, focus, wheel routing).
-    pub(crate) fn send_focused(&mut self, msg: u32, wparam: usize, lparam: isize) {
+    /// Delivery failures (queue overflow, contract violation) propagate —
+    /// callers must not silently drop them.
+    pub(crate) fn send_focused(&mut self, msg: u32, wparam: usize, lparam: isize) -> UiResult {
         if let Some(id) = self.focus {
-            let _ = self.deliver_native(id, msg, wparam, lparam);
+            self.deliver_native(id, msg, wparam, lparam)?;
         }
+        Ok(())
     }
 
     /// Drain every live peer's host-event queue: caret/capture/timer/change
@@ -855,9 +858,12 @@ where
         let s = self.peer_ctx.scale.get();
         unsafe {
             use windows::Win32::UI::WindowsAndMessaging::*;
-            let org = space::LogicalPoint { x: r.x, y: r.y }.physical(s);
+            // snapped origin once — caret px + origin lands where the
+            // glyph is; identical to pointer/host-callback math
+            let org = space::PeerOrigin::from_logical(r, s);
+            let at = org.to_client(space::PeerLocalPoint(pos.into()));
             let _ = CreateCaret(self.hwnd, None, size.cx, size.cy);
-            let _ = SetCaretPos(org.x + pos.x, org.y + pos.y);
+            let _ = SetCaretPos(at.0.x, at.0.y);
             if shown {
                 let _ = ShowCaret(Some(self.hwnd));
             }
@@ -1126,10 +1132,14 @@ where
     pub(crate) fn pointer(
         &mut self,
         phase: crate::node::PointerPhase,
-        pos: Point,
+        pos_px: space::ClientPhysicalPoint,
         button: Option<PointerButton>,
         wparam: usize,
     ) -> UiResult {
+        let pos: Point = {
+            let s = self.peer_ctx.scale.get();
+            pos_px.0.logical(s)
+        };
         let hit = if self.native_capture.is_some() {
             self.native_capture
         } else {
@@ -1176,18 +1186,17 @@ where
         if let Some(id) = hit {
             // native peer? forward the raw message + focus on down
             if self.peer_for(id).is_some() {
-                // peer-local = content-local — THE shared transform,
-                // converted to the host's px units at the seam
+                // peer-local = content-local — THE shared transform:
+                // snapped physical origin, integer subtraction only
+                // (fractional-origin re-rounding disagreement resolved by
+                // geom::PeerOrigin — Gate 6/20)
                 let r = layout::editor_content_rect(
                     self.rects.get(&id).copied().unwrap_or_default(),
                     &self.editor_chrome_of(id),
                 );
                 let sc = self.peer_ctx.scale.get();
-                let lp_px = space::LogicalPoint {
-                    x: pos.x - r.x,
-                    y: pos.y - r.y,
-                }
-                .physical(sc);
+                let origin = space::PeerOrigin::from_logical(r, sc);
+                let lp_px = origin.to_local(pos_px).0;
                 let msg = match (phase, button) {
                     (crate::node::PointerPhase::Down, Some(PointerButton::Primary)) => {
                         self.set_focus(Some(id));
@@ -1196,9 +1205,15 @@ where
                     (crate::node::PointerPhase::Up, Some(PointerButton::Primary)) => WM_LBUTTONUP,
                     _ => WM_MOUSEMOVE,
                 };
-                let lp = space::lparam_px(lp_px);
+                // out-of-MAKELPARAM-range px coordinates cannot reach the
+                // peer — a contract failure, surfaced not truncated
+                let Some(lp) = space::try_lparam_px(lp_px) else {
+                    return Err(crate::UiError::Platform(
+                        "peer-local coordinate outside LPARAM range".into(),
+                    ));
+                };
                 // wparam is the caller's MK_* flags — preserved metadata
-                let _ = self.deliver_native(id, msg, wparam, lp);
+                self.deliver_native(id, msg, wparam, lp)?;
                 self.service_peer_events()?;
                 return self.turn();
             }
@@ -1483,7 +1498,11 @@ where
     }
 
     /// WM_MOUSEMOVE: hot tracking (Enter/Leave) + raw move to hovered peer.
-    pub(crate) fn hover(&mut self, pos: Point) -> UiResult {
+    pub(crate) fn hover(&mut self, pos_px: space::ClientPhysicalPoint, wparam: usize) -> UiResult {
+        let pos: Point = {
+            let s = self.peer_ctx.scale.get();
+            pos_px.0.logical(s)
+        };
         self.mouse = pos;
         let hit = if self.native_capture.is_some() {
             self.native_capture
@@ -1538,14 +1557,14 @@ where
                 &self.editor_chrome_of(id),
             );
             let sc = self.peer_ctx.scale.get();
-            let lp = space::lparam_px(
-                space::LogicalPoint {
-                    x: pos.x - r.x,
-                    y: pos.y - r.y,
-                }
-                .physical(sc),
-            );
-            let _ = self.deliver_native(id, WM_MOUSEMOVE, 0, lp);
+            let origin = space::PeerOrigin::from_logical(r, sc);
+            let Some(lp) = space::try_lparam_px(origin.to_local(pos_px).0) else {
+                return Err(crate::UiError::Platform(
+                    "peer-local coordinate outside LPARAM range".into(),
+                ));
+            };
+            // wparam carries the real MK_* flags (drag-select needs MK_LBUTTON)
+            self.deliver_native(id, WM_MOUSEMOVE, wparam, lp)?;
             self.service_peer_events()?;
         }
         self.turn()
@@ -1603,11 +1622,18 @@ where
             };
             let scale = self.peer_ctx.scale.get();
             let pr = r.physical(scale); // DIP -> client px (UIA wants px)
-            let mut pt = POINT {
-                x: pr.left,
-                y: pr.top,
+            // checked conversion — a failed ClientToScreen skips the node
+            // rather than publishing unsound coordinates
+            let Some(sp) = space::client_to_screen(
+                self.hwnd,
+                space::ClientPhysicalPoint(space::PhysicalPoint {
+                    x: pr.left,
+                    y: pr.top,
+                }),
+            ) else {
+                continue;
             };
-            let _ = unsafe { ClientToScreen(self.hwnd, &mut pt) };
+            let pt = sp.0;
             let rect = UiaRect {
                 left: pt.x as f64,
                 top: pt.y as f64,
@@ -1752,10 +1778,18 @@ where
     }
 
     /// physical-window-px -> window-client DIP
+    /// client px point from an LPARAM — the ONLY packed-coords decoder;
+    /// logical conversion happens inside pointer/hover through ScaleFactor
+    pub(crate) fn pt_px(&self, lp: LPARAM) -> space::ClientPhysicalPoint {
+        space::ClientPhysicalPoint(space::PhysicalPoint {
+            x: lp.0 as i16 as i32,
+            y: ((lp.0 >> 16) as i16) as i32,
+        })
+    }
+    /// client px -> window DIP via the shared ScaleFactor
     pub(crate) fn pt(&self, lp: LPARAM) -> Point {
-        let (x, y) = (lp.0 as i16 as i32, ((lp.0 >> 16) as i16) as i32);
         let s = self.peer_ctx.scale.get();
-        let d = space::PhysicalPoint { x, y }.logical(s); // client px -> DIP
+        let d = self.pt_px(lp).0.logical(s);
         Point { x: d.x, y: d.y }
     }
     /// peer holding focus (if any)
@@ -1774,7 +1808,7 @@ where
     }
     /// DPI changed — scale update + full damage, no recreate
     pub(crate) fn dpi_changed(&mut self, dpi: u32) -> UiResult {
-        let scale = space::ScaleFactor::from_dpi(dpi);
+        let scale = space::scale_from_dpi(dpi);
         self.peer_ctx.scale.set(scale);
         self.renderer.borrow_mut().set_dpi(scale);
         self.relayout()
@@ -2026,8 +2060,7 @@ where
     {
         p.borrow().set_hwnd(hwnd);
     }
-    let scale =
-        unsafe { space::ScaleFactor::from_dpi(windows::Win32::UI::HiDpi::GetDpiForWindow(hwnd)) };
+    let scale = unsafe { space::scale_from_dpi(windows::Win32::UI::HiDpi::GetDpiForWindow(hwnd)) };
     backend
         .peer_ctx
         .scale
