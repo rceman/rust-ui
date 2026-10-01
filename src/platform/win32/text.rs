@@ -979,8 +979,20 @@ impl WindowlessPeer {
     /// property (`TxGetClientRect` reads `host.bounds`) — never relatched,
     /// matching the proven mascot contract.
     pub(crate) fn apply_bounds(&self, bounds: LogicalRect, scale: ScaleFactor) {
+        let prev = self.shared().host.scale;
         self.shared_mut().host.bounds = bounds;
         self.shared_mut().host.scale = scale;
+        if self.activated.get() && prev != scale {
+            // the service latches its view in *physical px* at activation —
+            // a scale change re-interprets the same DIP bounds as different
+            // px, so the peer must deactivate+reactivate or every draw
+            // lands at the stale scale's coordinates (the row-1 defect).
+            unsafe {
+                let _ = self.tx().OnTxUIDeactivate();
+                let _ = self.tx().OnTxInPlaceDeactivate();
+            }
+            self.activated.set(false);
+        }
         self.ensure_activated();
     }
 

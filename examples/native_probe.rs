@@ -322,8 +322,7 @@ mod probe {
             CoUninitialize();
             // verify: the peer's committed text gained non-ASCII kana —
             // real composition+commit, not raw ASCII passthrough
-            let text = uia_value(hwnd, "draft")?
-                .unwrap_or_default();
+            let text = uia_value(hwnd, "draft")?.unwrap_or_default();
             let kana = text.chars().any(|c| ('\u{3040}'..='\u{30ff}').contains(&c));
             if !kana {
                 return Err(Error::new(
