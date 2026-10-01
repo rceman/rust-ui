@@ -127,7 +127,7 @@ impl Spike {
             .unwrap_or(3)
             .clamp(1, 4096);
         Spike {
-            draft: TextValue::new(""),
+            draft: TextValue::new("draft-prefill"),
             body: TextValue::new(""),
             draft_ro: false,
             rows: (1..=n)

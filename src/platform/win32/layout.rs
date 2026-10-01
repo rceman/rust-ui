@@ -20,40 +20,11 @@ use crate::style::Insets;
 use crate::theme::{ControlSize, Space};
 use crate::{NodeId, UiResult};
 
+use super::space::{DipRect, Scale};
 use super::{PeerCtx, WindowlessPeer};
 
-/// A laid-out rect in DIP units.
-#[derive(Copy, Clone, Debug, Default)]
-pub(crate) struct DipRect {
-    pub x: f32,
-    pub y: f32,
-    pub w: f32,
-    pub h: f32,
-}
-
-impl DipRect {
-    pub(crate) fn contains(&self, p: Point) -> bool {
-        p.x >= self.x && p.x < self.x + self.w && p.y >= self.y && p.y < self.y + self.h
-    }
-    pub(crate) fn win(&self) -> RECT {
-        RECT {
-            left: self.x.round() as i32,
-            top: self.y.round() as i32,
-            right: (self.x + self.w).round() as i32,
-            bottom: (self.y + self.h).round() as i32,
-        }
-    }
-    /// smallest rect covering both — the ink-damage union primitive
-    pub(crate) fn union(&self, o: DipRect) -> DipRect {
-        let (x0, y0) = (self.x.min(o.x), self.y.min(o.y));
-        DipRect {
-            x: x0,
-            y: y0,
-            w: (self.x + self.w).max(o.x + o.w) - x0,
-            h: (self.y + self.h).max(o.y + o.h) - y0,
-        }
-    }
-}
+// THE laid-out rect type is `space::DipRect` — the canonical layer owns
+// DIP geometry and px conversion; nothing here may invent units.
 
 /// THE editor content transform — the ONE place the pill-chrome →
 /// content-surface inset is defined. Shared by layout (peer host bounds),
@@ -261,14 +232,17 @@ where
             let ins = editor_inset(&chrome);
             let inset_v = ins.top.0 + ins.bottom.0;
             if let Some(peer) = peer_of(ctx, id) {
+                let peer = peer.borrow();
                 let (_, h) = peer
-                    .borrow()
                     .natural_size((avail_w - ins.left.0 - ins.right.0).max(0.0))
                     .unwrap_or((avail_w, 22.0));
-                let line = 20.0;
-                // cap applies to CONTENT height; the safety inset sits on
-                // top — a single-line editor needs ~line+inset DIP or the
-                // inner strip is too short for the line and draws nothing
+                // the cap is msftedit's MEASURED line height — a hardcoded
+                // guess clipped every line's descenders (P0). Falls back
+                // to 25 until a natural_size pass latches the real metric.
+                let line = {
+                    let m = peer.line_height();
+                    if m > 0.0 { m } else { 25.0 }
+                };
                 let cap = if *multiline {
                     max_lines.map(|n| n as f32 * line).unwrap_or(f32::MAX)
                 } else {
@@ -427,11 +401,11 @@ fn waterfill(avail: f32, items: &[Item]) -> Vec<f32> {
 /// The whole layout pass — consumes the retained arena, produces DIP rects
 /// for VISIBLE nodes and the depth-first paint/hit order.
 pub(crate) struct LayoutCache {
-    scale: f32,
+    scale: Scale,
 }
 
 impl LayoutCache {
-    pub(crate) fn new(scale: f32) -> Self {
+    pub(crate) fn new(scale: Scale) -> Self {
         LayoutCache { scale }
     }
 
@@ -538,10 +512,8 @@ impl LayoutCache {
         if let Some(peer) = peer_of(ctx, id)
             && let NodeData::Editor { patch, .. } = &n.data
         {
-            peer.borrow().apply_bounds(
-                editor_content_rect(rect, &editor_chrome(patch)).win(),
-                self.scale,
-            );
+            peer.borrow()
+                .apply_bounds(editor_content_rect(rect, &editor_chrome(patch)), self.scale);
         }
         rects.insert(id, rect);
         order.push(id);
@@ -687,15 +659,15 @@ fn cross(align: Align, len: Length, inner: DipRect, natural_w: f32) -> (f32, f32
     }
 }
 
-/// Window client size in DIP.
-fn client_dip(hwnd: windows::Win32::Foundation::HWND, scale: f32) -> UiResult<(f32, f32)> {
+/// Window client size in DIP — GetClientRect returns physical px.
+fn client_dip(hwnd: windows::Win32::Foundation::HWND, scale: Scale) -> UiResult<(f32, f32)> {
     unsafe {
         let mut rc = RECT::default();
         windows::Win32::UI::WindowsAndMessaging::GetClientRect(hwnd, &mut rc)
             .map_err(|e| crate::UiError::Platform(format!("GetClientRect: {e}")))?;
         Ok((
-            (rc.right - rc.left) as f32 / scale,
-            (rc.bottom - rc.top) as f32 / scale,
+            scale.px_to_dip(rc.right - rc.left),
+            scale.px_to_dip(rc.bottom - rc.top),
         ))
     }
 }

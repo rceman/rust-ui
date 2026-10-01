@@ -46,9 +46,6 @@ struct PeerLog {
 }
 
 impl PeerLog {
-    fn rec(&self, id: u64) -> std::sync::MutexGuard<'_, HashMap<u64, PeerRec>> {
-        self.recs.lock().unwrap_or_else(|e| e.into_inner())
-    }
     /// poison-tolerant — a panicked test still cleans up its peers
     fn map(&self) -> std::sync::MutexGuard<'_, HashMap<u64, PeerRec>> {
         self.recs.lock().unwrap_or_else(|e| e.into_inner())
@@ -3108,9 +3105,22 @@ unsafe extern "system" fn probe_wndproc(
     windows::Win32::UI::WindowsAndMessaging::DefWindowProcW(hwnd, msg, wp, lp)
 }
 
-/// Deterministic offscreen probe: does TxDrawD2D actually paint glyphs?
-/// Creates a real windowless RichEdit peer, initializes "Hello", draws into
-/// a D2D DC render target bound to an in-memory DIB, counts lit pixels.
+/// Deterministic offscreen regression for the windowless-RichEdit
+/// coordinate contract. msftedit's `TxDrawD2D` host space is PHYSICAL
+/// PIXELS at the host DC's dpi — the service divides `lprcBounds` by
+/// `dcDpi/96` to reach the target's logical units. A DPI-UNAWARE host
+/// makes px==DIP numerically, which is exactly how the translate-up
+/// defect shipped: this probe therefore runs under per-monitor-v2 thread
+/// awareness (the production model) and measures the real DC dpi instead
+/// of assuming 96.
+///
+/// Per peer scale in {1.0, 1.25, 1.5, 2.0} the probe mounts text at
+/// create time (the pre-mount path that regressed), applies DIP bounds,
+/// and draws onto a DC render target bound to an in-memory DIB. The DIB
+/// framebuffer is px-exact: ink must land at `DIP * scale` and only there.
+/// Asserts: ink inside the requested island, zero glyph pixels outside it
+/// (no duplicate/offset copy), and scale-invariant natural height at the
+/// host's real DC scale.
 #[cfg(windows)]
 #[test]
 fn native_probe_richedit_paints_text() {
@@ -3126,13 +3136,20 @@ fn native_probe_richedit_paints_text() {
     unsafe {
         let _ = OleInitialize(None);
         let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+        // production runs PMv2 — the probe MUST match or the px contract
+        // degenerates to px==DIP and the regression stays invisible
+        let _ = windows::Win32::UI::HiDpi::SetThreadDpiAwarenessContext(
+            windows::Win32::UI::HiDpi::DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
+        );
     }
+
     let lib = crate::platform::win32::Msftedit::load().expect("msftedit");
-    let sink = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
-    // real host hwnd BEFORE peer creation — matches the app
-    unsafe {
+
+    // real host hwnd — TxGetDC returns its DC, which is where the service
+    // reads its dpi; created AFTER the thread is PMv2-aware
+    let hwnd = unsafe {
         use windows::Win32::UI::WindowsAndMessaging::*;
-        let cls = w!("rustui_probe");
+        let cls = w!("rustui_probe_px");
         let wc = WNDCLASSEXW {
             cbSize: std::mem::size_of::<WNDCLASSEXW>() as u32,
             lpszClassName: cls,
@@ -3142,86 +3159,52 @@ fn native_probe_richedit_paints_text() {
             lpfnWndProc: Some(probe_wndproc),
             ..Default::default()
         };
-        RegisterClassExW(&wc);
-        PROBE_HWND.with(|h| {
-            *h.borrow_mut() = CreateWindowExW(
-                WINDOW_EX_STYLE(0),
-                cls,
-                w!("probe"),
-                WS_OVERLAPPEDWINDOW | WS_VISIBLE,
-                0,
-                0,
-                800,
-                500,
-                None,
-                None,
-                None,
-                None,
-            )
-            .expect("hwnd")
-        });
-    }
-    let cfg = crate::platform::win32::PeerConfig {
-        multiline: true,
-        read_only: false,
-        face: "Segoe UI".into(),
-        size_twips: 280,
-        fg: [0.0, 0.0, 0.0, 1.0], // dark glyphs on the white island
-        fg_explicit: true,
-        sel_bg: [0.2, 0.4, 0.8, 1.0],
-        sel_fg: [1.0, 1.0, 1.0, 1.0],
-        bold: false,
+        let _ = RegisterClassExW(&wc);
+        CreateWindowExW(
+            WINDOW_EX_STYLE(0),
+            cls,
+            w!("probe"),
+            WS_OVERLAPPEDWINDOW | WS_VISIBLE,
+            0,
+            0,
+            800,
+            500,
+            None,
+            None,
+            None,
+            None,
+        )
+        .expect("hwnd")
     };
-    let mut peer = crate::platform::win32::WindowlessPeer::create(
-        1,
-        &lib,
-        PROBE_HWND.with(|h| *h.borrow()),
-        1.25,
-        &cfg,
-        sink,
-        std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)),
-    )
-    .expect("peer create");
-    let binding = crate::text::BindingToken::mint();
-    crate::node::TextPeer::initialize(
-        &mut peer,
-        "Hello",
-        crate::text::TextRevision::mint(),
-        binding,
-    )
-    .expect("initialize");
-    assert_eq!(peer.text().unwrap(), "Hello", "peer must hold the text");
-    // app order: measure first (activates with scratch bounds), then real bounds
-    let _ = peer.natural_size(400.0);
-    peer.apply_bounds(
-        RECT {
-            left: 34,
-            top: 167,
-            right: 735,
-            bottom: 189,
-        },
-        1.5625,
-    );
 
-    unsafe {
-        use windows::Win32::UI::WindowsAndMessaging::*;
+    let dc_dpi = unsafe {
+        let dc = GetDC(Some(hwnd));
+        let d = GetDeviceCaps(Some(dc), LOGPIXELSY);
+        ReleaseDC(Some(hwnd), dc);
+        d
+    };
+    let dc_scale = dc_dpi as f32 / 96.0;
+    eprintln!("[probe] dc_dpi={dc_dpi} dc_scale={dc_scale}");
 
-        let hwnd = PROBE_HWND.with(|h| *h.borrow());
-        // in-memory DIB + DC -> D2D DC render target
+    // in-memory framebuffer: DIB + memory DC + D2D DC render target.
+    // target dpi = the real DC dpi so framebuffer px == host px ==
+    // DIP * scale — positions land exactly, no window-frame bleed.
+    const FBW: i32 = 800;
+    const FBH: i32 = 600;
+    let (memdc, bits, dcrt) = unsafe {
         let screen = GetDC(None);
         let memdc = CreateCompatibleDC(Some(screen));
         let mut bits: *mut core::ffi::c_void = std::ptr::null_mut();
         let mut bmi = BITMAPINFO::default();
         bmi.bmiHeader.biSize = std::mem::size_of::<BITMAPINFOHEADER>() as u32;
-        bmi.bmiHeader.biWidth = 800;
-        bmi.bmiHeader.biHeight = -500; // top-down
+        bmi.bmiHeader.biWidth = FBW;
+        bmi.bmiHeader.biHeight = -FBH; // top-down
         bmi.bmiHeader.biPlanes = 1;
         bmi.bmiHeader.biBitCount = 32;
         bmi.bmiHeader.biCompression = BI_RGB.0;
         let hbmp =
             CreateDIBSection(Some(memdc), &bmi, DIB_RGB_COLORS, &mut bits, None, 0).expect("dib");
-        let old = SelectObject(memdc, HGDIOBJ(hbmp.0));
-
+        SelectObject(memdc, HGDIOBJ(hbmp.0));
         let d2d: ID2D1Factory =
             D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, None).expect("d2d");
         let props = D2D1_RENDER_TARGET_PROPERTIES {
@@ -3230,134 +3213,139 @@ fn native_probe_richedit_paints_text() {
                 format: DXGI_FORMAT_B8G8R8A8_UNORM,
                 alphaMode: D2D1_ALPHA_MODE_IGNORE,
             },
-            dpiX: 120.0,
-            dpiY: 120.0,
+            dpiX: dc_dpi as f32,
+            dpiY: dc_dpi as f32,
             ..Default::default()
         };
-        let _ = (memdc, screen);
-        let hrt = d2d
-            .CreateHwndRenderTarget(
-                &props,
-                &D2D1_HWND_RENDER_TARGET_PROPERTIES {
-                    hwnd,
-                    pixelSize: windows::Win32::Graphics::Direct2D::Common::D2D_SIZE_U {
-                        width: 800,
-                        height: 500,
-                    },
-                    presentOptions: D2D1_PRESENT_OPTIONS_NONE,
-                },
-            )
-            .expect("hwnd rt");
-        let rt: ID2D1RenderTarget = hrt.cast().expect("cast");
-        rt.SetDpi(120.0, 120.0);
-        rt.BeginDraw();
-        rt.Clear(Some(&D2D1_COLOR_F {
-            r: 0.0,
-            g: 0.0,
-            b: 0.0,
-            a: 1.0,
-        }));
-        // NOTE: no PushAxisAlignedClip — msftedit's TxDrawD2D output is
-        // suppressed while an axis clip is pushed (observed on an
-        // ID2D1HwndRenderTarget); the peer's lprcBounds confines the view.
-        peer.draw(&rt, (34.0, 167.0, 735.0, 189.0), 0, [1.0, 1.0, 1.0, 1.0])
-            .expect("TxDrawD2D");
-        rt.EndDraw(None, None).expect("EndDraw");
+        let dcrt = d2d.CreateDCRenderTarget(&props).expect("dc rt");
+        dcrt.BindDC(
+            memdc,
+            &RECT {
+                left: 0,
+                top: 0,
+                right: FBW,
+                bottom: FBH,
+            },
+        )
+        .expect("BindDC");
+        (memdc, bits, dcrt)
+    };
+    let rt: ID2D1RenderTarget = dcrt.cast().expect("cast");
+    let data = unsafe { std::slice::from_raw_parts(bits as *const u8, (FBW * FBH * 4) as usize) };
 
-        // BitBlt the window's framebuffer into our DIB to inspect pixels
-        let wdc = GetDC(Some(hwnd));
-        let _ = BitBlt(memdc, 0, 0, 800, 500, Some(wdc), 0, 0, SRCCOPY);
-        GdiFlush();
-        let data = std::slice::from_raw_parts(bits as *const u8, 800 * 500 * 4);
-        let lit_at = |x0: i32, y0: i32, x1: i32, y1: i32| -> usize {
-            (y0..y1)
-                .flat_map(|y| (x0..x1).map(move |x| (x, y)))
-                .filter(|&(x, y)| {
-                    let o = (y * 800 + x) as usize * 4;
-                    data[o] > 16 || data[o + 1] > 16 || data[o + 2] > 16
-                })
-                .count()
-        };
-        // draw bounds are DIP; with dpi=150 the framebuffer is at scale
-        // 1.5625, so the text lands at DIP*1.5625 pixels
-        let s = 1.25f32;
-        let inside = lit_at(
-            (34.0 * s) as i32,
-            (167.0 * s) as i32,
-            800,
-            (189.0 * s) as i32,
-        );
-        eprintln!("[probe] inside={inside}");
-        let lit = inside;
-        // GEOMETRY PROBE — the island clears to white; TEXT ink is the dark
-        // pixels inside it. Report where glyph ink lands vertically vs the
-        // requested draw bounds.
-        // island region in px = draw bounds * scale
-        let (ix0, iy0) = ((34.0 * s) as i32, (167.0 * s) as i32);
-        let (ix1, iy1) = ((735.0 * s) as i32, (189.0 * s) as i32);
-        let (mut ink_top, mut ink_bot, mut ink_left) = (i32::MAX, i32::MIN, i32::MAX);
-        let mut dark = 0usize;
-        // sanity: island must be bright (opaque white peer surface)
-        let mut bright = 0usize;
-        for y in 0..500 {
-            for x in 0..800 {
-                let o = (y * 800 + x) as usize * 4;
-                let in_island = x >= ix0 && x < ix1 && y >= iy0 && y < iy1;
-                let px_lit = data[o] > 200 && data[o + 1] > 200 && data[o + 2] > 200;
-                let px_dark = data[o] < 60 && data[o + 1] < 60 && data[o + 2] < 60;
-                if in_island && px_lit {
-                    bright += 1;
+    let cfg = || crate::platform::win32::PeerConfig {
+        multiline: true,
+        read_only: false,
+        face: "Segoe UI".into(),
+        size_twips: 280,
+        fg: [1.0, 1.0, 1.0, 1.0],
+        fg_explicit: true,
+        sel_bg: [0.2, 0.4, 0.8, 1.0],
+        sel_fg: [1.0, 1.0, 1.0, 1.0],
+        bold: false,
+    };
+    use crate::platform::win32::space::{DipRect, Scale};
+    let island_dip = DipRect {
+        x: 34.0,
+        y: 167.0,
+        w: 336.0,
+        h: 22.0,
+    };
+
+    // ---- draw-position matrix across all four canonical scales ---------
+    let mut nat_dip_at_dc = None;
+    for scale in [1.0f32, 1.25, 1.5, 2.0] {
+        let sink = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let mut peer = crate::platform::win32::WindowlessPeer::create(
+            1, &lib, hwnd, Scale(scale), &cfg(), sink,
+        )
+        .expect("peer create");
+        let binding = crate::text::BindingToken::mint();
+        crate::node::TextPeer::initialize(
+            &mut peer,
+            "Hello",
+            crate::text::TextRevision::mint(),
+            binding,
+        )
+        .expect("initialize");
+        // app order: measure (scratch extent, activates), then real bounds
+        let (_, h_dip) = peer.natural_size(400.0).expect("natural_size");
+        peer.apply_bounds(island_dip, Scale(scale));
+        // typed-after-mount must land identically to mount-time text
+        let _ = peer.send(0x0007 /*WM_SETFOCUS*/, 0, 0);
+        for c in " xy".encode_utf16() {
+            let _ = peer.send(0x0102 /*WM_CHAR*/, c as usize, 0);
+        }
+        let _ = peer.drain();
+
+        unsafe {
+            rt.BeginDraw();
+            rt.Clear(Some(&D2D1_COLOR_F {
+                r: 0.0,
+                g: 0.0,
+                b: 0.0,
+                a: 1.0,
+            }));
+        }
+        peer.draw(&rt, island_dip).expect("TxDrawD2D");
+        unsafe {
+            rt.EndDraw(None, None).expect("EndDraw");
+        }
+
+        // island in framebuffer px — ink must sit inside it; THE layer
+        // performs the same conversion the peer applied
+        let island_px = island_dip.px(Scale(scale));
+        let (ix0, iy0) = (island_px.left, island_px.top);
+        let (ix1, iy1) = (island_px.right, island_px.bottom);
+        let mut inside = 0usize;
+        let mut outside = 0usize;
+        for y in 0..FBH {
+            for x in 0..FBW {
+                let o = (y * FBW + x) as usize * 4;
+                let white = data[o] > 180 && data[o + 1] > 180 && data[o + 2] > 180;
+                if !white {
+                    continue;
                 }
-                if in_island && px_dark {
-                    dark += 1;
-                    ink_top = ink_top.min(y);
-                    ink_bot = ink_bot.max(y);
-                    ink_left = ink_left.min(x);
+                if x >= ix0 && x < ix1 && y >= iy0 && y < iy1 {
+                    inside += 1;
+                } else {
+                    outside += 1;
                 }
             }
         }
         eprintln!(
-            "[probe] island={ix0},{iy0}-{ix1},{iy1} bright={bright} dark={dark} ink y={ink_top}..{ink_bot} x_from={ink_left}"
+            "[probe] scale={scale} island={ix0},{iy0}-{ix1},{iy1} inside={inside} outside={outside} nat_h={h_dip:.1}"
         );
-        // dump the island strip as BMP for direct inspection
-        let pad = 6;
-        let (cx0, cy0) = ((ix0 - pad).max(0), (iy0 - pad * 4).max(0));
-        let (cw, ch) = (
-            ((ix1 - ix0) + pad * 2) as usize,
-            ((iy1 - iy0) + pad * 8) as usize,
+        assert!(
+            inside > 50,
+            "scale {scale}: text must render ink inside the bounds, got {inside}"
         );
-        let mut row_px = vec![0u8; cw * 4];
-        let mut bmp_bytes: Vec<u8> = Vec::with_capacity(cw * ch * 4 + 54);
-        let file_sz = (54 + cw * ch * 4) as u32;
-        bmp_bytes.extend_from_slice(b"BM");
-        bmp_bytes.extend_from_slice(&file_sz.to_le_bytes());
-        bmp_bytes.extend_from_slice(&0u32.to_le_bytes());
-        bmp_bytes.extend_from_slice(&54u32.to_le_bytes());
-        bmp_bytes.extend_from_slice(&40u32.to_le_bytes());
-        bmp_bytes.extend_from_slice(&(cw as i32).to_le_bytes());
-        bmp_bytes.extend_from_slice(&(ch as i32).to_le_bytes()); // bottom-up
-        bmp_bytes.extend_from_slice(&1u16.to_le_bytes());
-        bmp_bytes.extend_from_slice(&32u16.to_le_bytes());
-        bmp_bytes.extend_from_slice(&0u32.to_le_bytes());
-        bmp_bytes.extend_from_slice(&((cw * ch * 4) as u32).to_le_bytes());
-        bmp_bytes.extend_from_slice(&[0u8; 16]);
-        for row in 0..ch {
-            let sy = cy0 + (ch - 1 - row) as i32;
-            for col in 0..cw {
-                let sx = cx0 + col as i32;
-                let o = (sy as usize * 800 + sx as usize) * 4;
-                row_px[col * 4..col * 4 + 4].copy_from_slice(&data[o..o + 4]);
-            }
-            bmp_bytes.extend_from_slice(&row_px);
+        assert_eq!(
+            outside, 0,
+            "scale {scale}: glyph ink outside the island — duplicate/offset copy"
+        );
+        if (scale - dc_scale).abs() < 0.01 {
+            // natural size is only meaningful when the claimed scale equals
+            // the host DC's real scale — the service's px space IS the DC's
+            nat_dip_at_dc = Some(h_dip);
         }
-        std::fs::write("probe-island.bmp", &bmp_bytes).unwrap();
-        let _ = SelectObject(memdc, old);
-        let _ = DeleteObject(HGDIOBJ(hbmp.0));
+    }
+
+    // ---- round-trip: DIP -> px -> DIP --------------------------------
+    // at the DC's real scale a DIP measurement survives the px seam:
+    // natural height of one 14pt line with view insets is ~25 DIP at the
+    // Segoe UI default — assert the sane band, not the magic number.
+    if let Some(h) = nat_dip_at_dc {
+        assert!(
+            (20.0..=32.0).contains(&h),
+            "single-line natural height ~25 DIP at dc scale, got {h}"
+        );
+    }
+
+    unsafe {
+        use windows::Win32::UI::WindowsAndMessaging::*;
         let _ = DeleteDC(memdc);
-        ReleaseDC(None, screen);
-        ReleaseDC(Some(hwnd), wdc);
         let _ = DestroyWindow(hwnd);
-        assert!(lit > 50, "peer text must paint visible pixels, got {lit}");
     }
 }
 
@@ -3972,7 +3960,6 @@ fn button_style_of(n: &crate::node::Node) -> NodeDataLike {
 #[cfg(windows)]
 #[test]
 fn rid_safearray_roundtrip() {
-    use windows::Win32::System::Com::SAFEARRAY;
     use windows::Win32::System::Ole::*;
     use windows::Win32::System::Variant::VT_I4;
     use windows::Win32::UI::Accessibility::UiaAppendRuntimeId;

@@ -18,6 +18,7 @@ public class NW {
   [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr h, ref POINT p);
   [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int c);
   [DllImport("user32.dll")] public static extern uint GetDpiForWindow(IntPtr h);
+  [DllImport("user32.dll")] public static extern IntPtr SetThreadDpiAwarenessContext(IntPtr ctx);
   [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint flags, IntPtr extra);
   [DllImport("kernel32.dll")] public static extern IntPtr OpenProcess(uint a, bool i, int pid);
   [DllImport("kernel32.dll")] public static extern IntPtr VirtualAllocEx(IntPtr h, IntPtr a, uint n, uint t, uint p);
@@ -28,6 +29,12 @@ public class NW {
   public struct POINT { public int x, y; }
 }
 "@
+
+# Gate 16 environment equivalence: the composer is Per-Monitor-V2 — this
+# harness must be too, or GetWindowRect/UIA/ClientToScreen return VIRTUALIZED
+# logical coords that disagree with the target's physical-px client space
+# (98 vs 96-DPI virtualization silently corrupts every posted coordinate).
+[NW]::SetThreadDpiAwarenessContext([IntPtr]-4) | Out-Null
 
 $script:OutDir = "W:\devin_folder\rust-ui\benchmark\results\windows-native-composer-spike-v0.1"
 $script:ComposerExe = "W:\devin_folder\rust-ui\target\debug\examples\composer.exe"

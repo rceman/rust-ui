@@ -191,6 +191,22 @@ blocks activation entirely. They are independent.
 - Rectangular clip only; dp→physical conversion happens at the backend.
   Min/max line measurement, keyboard focus and IME candidate-window positions
   follow layout.
+- Coordinate units — verified Win32/RichEdit contract:
+
+      rust-ui retained/layout boundary:   logical DIP
+      Win32/RichEdit COM boundary where
+      required by the native contract:    physical pixels
+      conversion:                         explicit at the platform boundary
+
+  msftedit's windowless host space (`TxGetClientRect`, `TxDrawD2D`'s
+  `lprcBounds`, caret/set-caret positions, pointer lparams, REQRESIZE
+  extents) is physical px at the host DC's dpi — `ITextServices` divides
+  host px by `dcDpi/96` to reach the render target's logical units. Under
+  a DPI-unaware process px==DIP numerically, which hides the contract;
+  rust-ui runs Per-Monitor-V2 aware so the spaces differ at scale>1.
+  `TxGetExtent`/`TxGetNaturalSize` are HIMETRIC (`himetric = dip * 2540/96`;
+  the scale cancels through px). Tests must not silently blur these spaces —
+  see the Gate 16 environment-equivalence rule in `QUALITY_GATES.md`.
 - Portable layer rule: painted content may not arbitrarily overlap native
   controls. Tooltips and future popups live in top-level platform overlay
   surfaces where clip, hit-test and accessibility agree — there are no

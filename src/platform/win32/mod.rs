@@ -10,11 +10,13 @@
 
 pub(crate) mod layout;
 pub(crate) mod render;
+pub(crate) mod space;
 mod text;
 pub(crate) mod uia;
 mod window;
 
-pub(crate) use layout::{DipRect, LayoutCache};
+pub(crate) use layout::LayoutCache;
+pub(crate) use space::DipRect;
 pub(crate) use render::Renderer;
 pub(crate) use text::{HostEvent, Msftedit, PeerConfig, WindowlessPeer};
 
@@ -81,7 +83,7 @@ pub(crate) struct PeerCtx {
     pub lib: Arc<Msftedit>,
     /// owning window — assigned on WM_CREATE (peers may mount before it)
     pub hwnd: std::cell::Cell<HWND>,
-    pub scale: std::cell::Cell<f32>,
+    pub scale: std::cell::Cell<space::Scale>,
     /// interaction state at layout-run time — state style branches can
     /// consume content insets, so layout resolves the live state
     pub hot: std::cell::Cell<Option<NodeId>>,
@@ -92,9 +94,6 @@ pub(crate) struct PeerCtx {
     next_id: AtomicU64,
     /// live theme colors for peer creation (updated on theme switch)
     pub colors: std::cell::RefCell<(Appearance, Theme)>,
-    /// aggregate peer-surface byte budget — every peer's bitmap surface
-    /// accounts into this; capped in `WindowlessPeer::draw`
-    pub byte_budget: Arc<AtomicU64>,
 }
 
 impl PeerCtx {
@@ -138,7 +137,6 @@ impl PeerCtx {
                 ctx.scale.get(),
                 &cfg,
                 ctx.sink.clone(),
-                ctx.byte_budget.clone(),
             )?;
             let handle = Rc::new(RefCell::new(peer));
             Ok(Box::new(PeerHandle {
@@ -302,7 +300,7 @@ where
     /// accumulated ink damage since the last committed paint — union of
     /// every paint-dirty node's rect (+ shadow footprint). Cleared by
     /// paint(); reserved for fine-grained invalidation.
-    damage: std::cell::Cell<Option<layout::DipRect>>,
+    damage: std::cell::Cell<Option<DipRect>>,
 }
 
 /// The deferred-native-delivery contract (private to this backend).
@@ -755,14 +753,14 @@ where
             .find(|id| id.slot == slot)
             .and_then(|id| self.rects.get(id))
         {
-            let (x, y, w, h) = (r.x, r.y, r.w, r.h);
             let s = self.peer_ctx.scale.get();
-            let rc = RECT {
-                left: (x * s) as i32,
-                top: (y * s) as i32,
-                right: ((x + w) * s) as i32 + 1,
-                bottom: ((y + h) * s) as i32 + 1,
-            };
+            let mut p = r.px(s);
+            // invalidation must never under-cover — +1 keeps the bottom/
+            // right edge inside the damage rect (conservative clip, not a
+            // unit conversion)
+            p.right += 1;
+            p.bottom += 1;
+            let rc: RECT = p.into();
             unsafe {
                 let _ = windows::Win32::Graphics::Gdi::InvalidateRect(
                     Some(self.hwnd),
@@ -843,8 +841,8 @@ where
         if !created {
             return;
         }
-        // the caret reports peer-local DIP — same content transform as
-        // draw/pointer so the caret lands where the glyph is
+        // the caret reports peer-local px — the content rect converted to
+        // the same px space, so the caret lands where the glyph is
         let chrome = self.editor_chrome_of(node);
         let Some(r) = self
             .rects
@@ -857,16 +855,9 @@ where
         let s = self.peer_ctx.scale.get();
         unsafe {
             use windows::Win32::UI::WindowsAndMessaging::*;
-            let _ = CreateCaret(
-                self.hwnd,
-                None,
-                (size.cx as f32 * s) as i32,
-                (size.cy as f32 * s) as i32,
-            );
-            let _ = SetCaretPos(
-                ((r.x + pos.x as f32) * s) as i32,
-                ((r.y + pos.y as f32) * s) as i32,
-            );
+            let org = space::DipPoint { x: r.x, y: r.y }.px(s);
+            let _ = CreateCaret(self.hwnd, None, size.cx, size.cy);
+            let _ = SetCaretPos(org.x + pos.x, org.y + pos.y);
             if shown {
                 let _ = ShowCaret(Some(self.hwnd));
             }
@@ -1185,15 +1176,18 @@ where
         if let Some(id) = hit {
             // native peer? forward the raw message + focus on down
             if self.peer_for(id).is_some() {
-                // peer-local = content-local — THE shared transform
+                // peer-local = content-local — THE shared transform,
+                // converted to the host's px units at the seam
                 let r = layout::editor_content_rect(
                     self.rects.get(&id).copied().unwrap_or_default(),
                     &self.editor_chrome_of(id),
                 );
-                let local = Point {
+                let sc = self.peer_ctx.scale.get();
+                let lp_px = space::DipPoint {
                     x: pos.x - r.x,
                     y: pos.y - r.y,
-                };
+                }
+                .px(sc);
                 let msg = match (phase, button) {
                     (crate::node::PointerPhase::Down, Some(PointerButton::Primary)) => {
                         self.set_focus(Some(id));
@@ -1202,7 +1196,7 @@ where
                     (crate::node::PointerPhase::Up, Some(PointerButton::Primary)) => WM_LBUTTONUP,
                     _ => WM_MOUSEMOVE,
                 };
-                let lp = ((local.y as isize) << 16) | (local.x as isize & 0xffff);
+                let lp = space::lparam_px(lp_px);
                 // wparam is the caller's MK_* flags — preserved metadata
                 let _ = self.deliver_native(id, msg, wparam, lp);
                 self.service_peer_events()?;
@@ -1535,7 +1529,7 @@ where
             }
         }
         // hovered editor receives the raw move (hover states, drag select)
-        // — peer-local = content-local via the shared transform
+        // — peer-local = content-local via the shared transform, in px
         if let Some(id) = hit
             && self.peer_for(id).is_some()
         {
@@ -1543,7 +1537,14 @@ where
                 self.rects.get(&id).copied().unwrap_or_default(),
                 &self.editor_chrome_of(id),
             );
-            let lp = (((pos.y - r.y) as isize) << 16) | ((pos.x - r.x) as isize & 0xffff);
+            let sc = self.peer_ctx.scale.get();
+            let lp = space::lparam_px(
+                space::DipPoint {
+                    x: pos.x - r.x,
+                    y: pos.y - r.y,
+                }
+                .px(sc),
+            );
             let _ = self.deliver_native(id, WM_MOUSEMOVE, 0, lp);
             self.service_peer_events()?;
         }
@@ -1601,16 +1602,17 @@ where
                 continue;
             };
             let scale = self.peer_ctx.scale.get();
+            let pr = r.px(scale); // DIP -> client px (UIA wants px)
             let mut pt = POINT {
-                x: (r.x * scale) as i32,
-                y: (r.y * scale) as i32,
+                x: pr.left,
+                y: pr.top,
             };
             let _ = unsafe { ClientToScreen(self.hwnd, &mut pt) };
             let rect = UiaRect {
                 left: pt.x as f64,
                 top: pt.y as f64,
-                width: (r.w * scale) as f64,
-                height: (r.h * scale) as f64,
+                width: (pr.right - pr.left) as f64,
+                height: (pr.bottom - pr.top) as f64,
             };
             let (name, ct, loc) = match &n.data {
                 NodeData::Button { text, .. } => {
@@ -1753,10 +1755,8 @@ where
     pub(crate) fn pt(&self, lp: LPARAM) -> Point {
         let (x, y) = (lp.0 as i16 as i32, ((lp.0 >> 16) as i16) as i32);
         let s = self.peer_ctx.scale.get();
-        Point {
-            x: x as f32 / s,
-            y: y as f32 / s,
-        }
+        let d = space::PxPoint { x, y }.dip(s); // client px -> DIP
+        Point { x: d.x, y: d.y }
     }
     /// peer holding focus (if any)
     pub(crate) fn focus_peer(&self) -> Option<Rc<RefCell<WindowlessPeer>>> {
@@ -1774,9 +1774,9 @@ where
     }
     /// DPI changed — scale update + full damage, no recreate
     pub(crate) fn dpi_changed(&mut self, dpi: u32) -> UiResult {
-        let scale = dpi as f32 / 96.0;
+        let scale = space::Scale::from_dpi(dpi);
         self.peer_ctx.scale.set(scale);
-        self.renderer.borrow_mut().set_dpi(dpi as f32);
+        self.renderer.borrow_mut().set_dpi(scale);
         self.relayout()
     }
     /// fatal (typed) error from inside a WndProc — surface on next turn
@@ -1941,7 +1941,7 @@ where
     let peer_ctx = Rc::new(PeerCtx {
         lib: msft.clone(),
         hwnd: std::cell::Cell::new(HWND::default()),
-        scale: std::cell::Cell::new(1.0),
+        scale: std::cell::Cell::new(space::Scale::ONE),
         hot: std::cell::Cell::new(None),
         pressed: std::cell::Cell::new(None),
         focus: std::cell::Cell::new(None),
@@ -1949,7 +1949,6 @@ where
         registry: Arc::new(Mutex::new(HashMap::new())),
         next_id: AtomicU64::new(1),
         colors: std::cell::RefCell::new((appearance, Theme::dark())),
-        byte_budget: Arc::new(AtomicU64::new(0)),
     });
     let factory_ctx = peer_ctx.clone();
     let factory = factory_ctx.make_factory();
@@ -2027,8 +2026,13 @@ where
     {
         p.borrow().set_hwnd(hwnd);
     }
-    let scale = unsafe { windows::Win32::UI::HiDpi::GetDpiForWindow(hwnd) as f32 / 96.0 };
-    backend.peer_ctx.scale.set(scale.max(0.5));
+    let scale = unsafe {
+        space::Scale::from_dpi(windows::Win32::UI::HiDpi::GetDpiForWindow(hwnd))
+    };
+    backend
+        .peer_ctx
+        .scale
+        .set(space::Scale(scale.0.max(0.5)));
 
     // mailbox -> posted pump (no polling)
     let closed = backend.closed.clone();

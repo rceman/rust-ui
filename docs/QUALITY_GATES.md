@@ -411,6 +411,48 @@ merely to obtain green.
 
 A passing alpha guard alone does not prove visual quality.
 
+### Environment equivalence for platform-dependent verification
+
+A test or probe that validates platform-dependent behavior must reproduce every platform/environment property that is semantically relevant to the behavior being tested. A PASS obtained under materially different process, DPI, locale, input, timing, graphics, accessibility, or OS semantics is not sufficient evidence for the production contract.
+
+For DPI-sensitive/native UI behavior specifically:
+
+    production process DPI-awareness
+    ==
+    native validation/probe DPI-awareness
+
+unless the test intentionally exercises a different awareness mode and states that explicitly.
+
+For geometry/rendering tests, the harness must explicitly establish and record:
+
+    process DPI-awareness mode
+    logical coordinate unit
+    native coordinate unit
+    effective DPI / scale
+    expected conversion boundary
+
+Do not rely on accidental equivalence such as:
+
+    96 DPI
+    -> 1 DIP == 1 physical px
+
+because this can mask unit/scale defects that appear at:
+
+    125%
+    150%
+    200%
+
+A geometry probe that passes only because it runs DPI-unaware at 96 DPI must not be treated as evidence for a Per-Monitor-V2 production process.
+
+Where applicable, deterministic coverage should include representative scales such as:
+
+    96 DPI   / 100%
+    120 DPI  / 125%
+    144 DPI  / 150%
+    192 DPI  / 200%
+
+The exact matrix may be reduced only when the tested contract is mathematically proven scale-independent and the reduction is documented.
+
 ## GATE 17 — Recovery Proportionality / Sunk-Cost Containment
 
 Repair of stale, rejected, obsolete, contaminated or ambiguous execution state MUST NOT cost/risk more than bounded salvage into a clean lane plus cleanup.
@@ -516,6 +558,34 @@ Before completion:
 
 After the second finding of the same architectural defect class in one implementation/review cycle, STOP whack-a-mole correction and perform this systemic audit before further local fixes.
 
+### Test-environment divergence is a systemic defect class
+
+When a defect reveals that a test environment differed materially from production, do not fix only the single failing test.
+
+Audit all validation paths for the same hidden assumption.
+
+For this class of issue, check all native probes/scenarios that depend on:
+
+    DPI
+    coordinate transforms
+    device pixels vs logical units
+    font/text metrics
+    surface dimensions
+    pointer coordinates
+    caret/selection geometry
+    IME/candidate positioning
+    UIA bounds
+
+If one harness had an incorrect DPI-awareness assumption, verify the others instead of assuming the problem is local.
+
+The corrective action is complete only when:
+
+    production invariant
+    test-harness invariant
+    evidence metadata
+
+agree.
+
 Current examples that trigger Gate 20:
 
 - "0.2 compatibility is completely removed";
@@ -525,7 +595,8 @@ Current examples that trigger Gate 20:
 - "no recurring authoring workflow remains scratch-only";
 - "static runtime has no continuous frame loop";
 - "every required animation is checked frame-by-frame";
-- "no routine authoring command exceeds the performance policy without explanation".
+- "no routine authoring command exceeds the performance policy without explanation";
+- "no native geometry probe relies on implicit 96-DPI/DPI-unaware equivalence to production".
 
 ---
 
@@ -573,6 +644,18 @@ For tasks whose handoff requires native Windows validation:
 - when Windows Git/SSH is available and the task designates Windows authority, clone/fetch/commit/push directly on Windows;
 - no CI substitution;
 - avoid unnecessary cross-environment source-copy/sync pipelines.
+
+#### DPI-awareness equivalence (Gate 16 specialization)
+
+The production application runs Per-Monitor-V2 DPI-aware. Any native probe or scenario intended to validate production geometry/input/rendering must establish equivalent DPI-awareness before exercising the contract — for a test binary, `SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)` is sufficient. A probe that runs DPI-unaware at 96 DPI sees `px == DIP` numerically and cannot detect physical-pixel contract defects.
+
+#### Regression rationale — why this rule exists
+
+A RichEdit `TxDrawD2D` geometry defect was hidden because the offline probe ran DPI-unaware at 96 DPI, where px and DIP were numerically equal.
+
+The real Per-Monitor-V2 application at 125% exposed the incorrect DIP/physical-pixel COM-boundary assumption: msftedit's host coordinate space is physical pixels at the host DC's dpi, so DIP bounds rendered ~one row above their intended position (each `lprcBounds` value divided by `dcDpi/96`).
+
+This is a reusable engineering rule, not merely historical evidence: match the harness's environment to the production contract before trusting a geometry PASS.
 
 ### Executable gate mapping
 

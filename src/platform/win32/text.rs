@@ -8,10 +8,14 @@
 //! msftedit never sees `ITextHost2` and the D2D path stays off.
 //!
 //! Units: the entire host coordinate space is **DIP**. `TxGetClientRect`/
-//! caret/invalidation coords are DIPs; `TxGetViewExtent` is fixed 96-DPI
-//! HIMETRIC (`himetric = dip * 2540/96`), making the format space
-//! scale-independent. `TxScreenToClient`/`TxClientToScreen` convert screen
-//! px <-> DIP through the stored origin+scale.
+//! Host units are PHYSICAL PIXELS at the host DC's DPI — verified
+//! empirically: under a DPI-aware process msftedit divides `lprcBounds`
+//! by `dcDpi/96` to get target-logical units (at 125% DIP bounds rendered
+//! at arg/1.25); under an unaware process dcDpi=96 makes px==DIP. The
+//! peer's local space (`TxGetClientRect`, `lprcBounds`, caret, lparams)
+//! is therefore px; `host.bounds`/`draw`/`natural_size` keep DIP at the
+//! Rust boundary and convert at the seam. `TxGetExtent` is HIMETRIC
+//! (`himetric = px * 2540/dcDpi = dip * 2540/96`).
 //!
 //! Object layout: msftedit assumes a C++ single-inheritance host — it calls
 //! `ITextHost2` methods through the `ITextHost` pointer. The host carries ONE
@@ -22,7 +26,6 @@ use std::cell::{Cell, RefCell};
 use std::collections::BTreeSet;
 use std::ffi::c_void;
 use std::sync::Arc;
-use std::sync::atomic::Ordering;
 
 use windows::Win32::Foundation::*;
 use windows::Win32::Graphics::Direct2D::ID2D1RenderTarget;
@@ -36,10 +39,13 @@ use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::core::*;
 
 use crate::text::{BindingToken, TextRevision};
+use super::space::{DipPoint, DipRect, PxPoint, Scale};
 use crate::{NodeId, UiError, UiResult};
 
 /// missing from the windows bindings
 
+/// missing from the windows bindings
+const EM_GETLINECOUNT: u32 = 0x00BA; // standard edit message
 /// RichEdit notifications we route (missing from bindings).
 const EN_CHANGE_CODE: u32 = 0x0300;
 const EN_REQUESTRESIZE_CODE: u32 = 0x0701;
@@ -137,12 +143,13 @@ pub(crate) struct HostShared {
     /// owning window (IME context, timers, capture)
     pub hwnd: HWND,
     /// global bounds in window DIP (for ScreenToClient conversions)
-    pub bounds: RECT,
-    /// DPI scale (px per DIP)
-    pub scale: f32,
+    pub bounds: DipRect,
+    /// px-per-DIP — the ONLY scale authority (see space.rs)
+    pub scale: Scale,
     /// property bits advertised via TxGetPropertyBits
     pub bits: u32,
-    /// latest EN_REQUESTRESIZE size (client units = DIP)
+    /// latest EN_REQUESTRESIZE size — client units are PHYSICAL px
+    /// (the host space; see space.rs); divide by scale for DIP
     pub natural: SIZE,
     pub cf: Box<CHARFORMATW>,
     pub pf: Box<PARAFORMAT>,
@@ -385,13 +392,12 @@ impl ITextHost_Impl for HostBox {
             (s.host.scale, s.host.bounds, s.host.hwnd)
         };
         bools(unsafe {
-            let ok = ScreenToClient(hwnd, lppt).as_bool();
-            if ok {
-                // screen px -> window client DIP, then peer-local DIP
-                (*lppt).x = ((*lppt).x as f32 / scale).round() as i32 - bounds.left;
-                (*lppt).y = ((*lppt).y as f32 / scale).round() as i32 - bounds.top;
-            }
-            ok
+            // screen px -> client px -> peer-local px (host space is px)
+            let c = super::space::screen_to_client(hwnd, super::space::ScreenPxPoint((*lppt).into()));
+            let off = DipPoint { x: bounds.x, y: bounds.y }.px(scale);
+            (*lppt).x = c.0.x - off.x;
+            (*lppt).y = c.0.y - off.y;
+            true
         })
     }
     fn TxClientToScreen(&self, lppt: *mut POINT) -> BOOL {
@@ -400,10 +406,17 @@ impl ITextHost_Impl for HostBox {
             (s.host.scale, s.host.bounds, s.host.hwnd)
         };
         bools(unsafe {
-            // peer-local DIP -> screen px
-            (*lppt).x = (((*lppt).x + bounds.left) as f32 * scale).round() as i32;
-            (*lppt).y = (((*lppt).y + bounds.top) as f32 * scale).round() as i32;
-            ClientToScreen(hwnd, lppt).as_bool()
+            // peer-local px -> window client px -> screen px
+            let off = DipPoint { x: bounds.x, y: bounds.y }.px(scale);
+            let s = super::space::client_to_screen(
+                hwnd,
+                super::space::ClientPxPoint(PxPoint {
+                    x: (*lppt).x + off.x,
+                    y: (*lppt).y + off.y,
+                }),
+            );
+            *lppt = s.0.into();
+            true
         })
     }
     fn TxActivate(&self, _ploldstate: *mut i32) -> Result<()> {
@@ -414,14 +427,13 @@ impl ITextHost_Impl for HostBox {
     }
     fn TxGetClientRect(&self, prc: *mut RECT) -> Result<()> {
         unsafe {
-            // local DIP rect — the peer's own coordinate space is (0,0,w,h)
-            let b = self.s().host.bounds;
-            *prc = RECT {
-                left: 0,
-                top: 0,
-                right: b.right - b.left,
-                bottom: b.bottom - b.top,
+            // local PX rect — host units are physical px under the host
+            // DC's dpi (DIP-only when the process is DPI-unaware at 96)
+            let (sc, b) = {
+                let s = self.s();
+                (s.host.scale, s.host.bounds)
             };
+            *prc = DipRect::local(b.w, b.h).px(sc).into();
         }
         Ok(())
     }
@@ -485,12 +497,14 @@ impl ITextHost_Impl for HostBox {
     }
     fn TxGetExtent(&self, lpextent: *mut SIZE) -> Result<()> {
         let b = self.s().host.bounds;
-        // view extent is HIMETRIC at a fixed 96 DPI — scale-independent
+        // unit exception, local and documented: the extent is HIMETRIC
+        // (1/100 mm — neither DIP nor px). dip*2540/96 is exact because
+        // host-px * 2540/dcDpi cancels the scale factor.
         let hm = 2540.0 / 96.0;
         unsafe {
             *lpextent = SIZE {
-                cx: ((b.right - b.left) as f32 * hm).round() as i32,
-                cy: ((b.bottom - b.top) as f32 * hm).round() as i32,
+                cx: (b.w * hm).round() as i32,
+                cy: (b.h * hm).round() as i32,
             };
         }
         Ok(())
@@ -630,20 +644,10 @@ pub(crate) struct WindowlessPeer {
     multiline: bool,
     /// OnTxInPlaceActivate once the peer has real (non-empty) bounds
     activated: Cell<bool>,
-    /// peer-local compatible bitmap target — TxDrawD2D renders into this
-    /// local space and we blit it into the window target at the global
-    /// rect. Reuse key = (pixel w, pixel h, frame-target generation) —
-    /// DPI moves and device recreation force re-rasterization.
-    bmp_target: std::cell::RefCell<
-        Option<(
-            windows::Win32::Graphics::Direct2D::ID2D1BitmapRenderTarget,
-            (u32, u32, u64),
-        )>,
-    >,
-    /// this peer's current surface footprint in bytes (BGRA8)
-    bmp_bytes: Cell<u64>,
-    /// aggregate peer-surface byte budget shared via PeerCtx
-    byte_budget: std::sync::Arc<std::sync::atomic::AtomicU64>,
+    /// msftedit-derived single-line height in DIP — `natural_size` reports
+    /// cy = line_count × line; dividing by EM_GETLINECOUNT gives the real
+    /// metric regardless of content. 0 = unmeasured.
+    line_h: Cell<f32>,
 }
 
 impl WindowlessPeer {
@@ -704,10 +708,9 @@ impl WindowlessPeer {
         id: u64,
         lib: &Arc<Msftedit>,
         hwnd: HWND,
-        scale: f32,
+        scale: Scale,
         cfg: &PeerConfig,
         sink: std::sync::Arc<std::sync::Mutex<Vec<super::NativeSinkItem>>>,
-        byte_budget: std::sync::Arc<std::sync::atomic::AtomicU64>,
     ) -> UiResult<WindowlessPeer> {
         let mut face = [0u16; 32];
         for (i, c) in cfg.face.encode_utf16().take(31).enumerate() {
@@ -717,7 +720,7 @@ impl WindowlessPeer {
             lib: lib.clone(),
             host: HostShared {
                 hwnd,
-                bounds: RECT::default(),
+                bounds: DipRect::default(),
                 scale,
                 bits: TXTBIT_WORDWRAP
                     | TXTBIT_AUTOWORDSEL
@@ -805,7 +808,7 @@ impl WindowlessPeer {
             // NOTE: no OnTxInPlaceActivate yet — activation latches the
             // format space; peers mount before layout, so activation waits
             // for the first non-empty bounds (see ensure_activated)
-            Ok(WindowlessPeer {
+            let peer = WindowlessPeer {
                 tx: Some(tx2),
                 host,
                 id,
@@ -818,10 +821,9 @@ impl WindowlessPeer {
                 sink,
                 multiline: cfg.multiline,
                 activated: Cell::new(false),
-                bmp_target: std::cell::RefCell::new(None),
-                bmp_bytes: Cell::new(0),
-                byte_budget,
-            })
+                line_h: Cell::new(0.0),
+            };
+            Ok(peer)
         }
     }
 
@@ -899,165 +901,59 @@ impl WindowlessPeer {
         }
     }
 
-    /// Per-peer pixel ceiling: rejects absurd surfaces before arithmetic
-    /// can overflow — a fullscreen 8K editor at 200% stays under this.
-    const MAX_PEER_PX: u32 = 64 * 1024 * 1024;
-    /// Aggregate ceiling across all peer surfaces (256 MB of BGRA).
-    const MAX_PEER_BYTES_TOTAL: u64 = 256 * 1024 * 1024;
-
-    /// Draw the peer's content into the window's D2D target. `bounds` is
-    /// the peer's CONTENT rect in window DIP (`editor_content_rect` is the
-    /// single shared transform). The peer paints into a per-peer
-    /// compatible bitmap at LOCAL coords and we blit at the global rect —
-    /// TxDrawD2D's anchoring into a shared hwnd target is unreliable.
-    ///
-    /// Surface identity = (pixel size, target generation). The generation
-    /// bumps on DPI change and device/target recreation — both invalidate
-    /// every cached bitmap deterministically. Pixel arithmetic is checked;
-    /// per-peer and aggregate byte budgets bound retained surfaces.
-    ///
-    /// `clear` is the resolved opaque background — the island is OPAQUE,
-    /// never dependent on transparent alpha compositing.
-    pub(crate) fn draw(
-        &self,
-        rt: &ID2D1RenderTarget,
-        bounds: (f32, f32, f32, f32),
-        target_gen: u64,
-        clear: [f32; 4],
-    ) -> UiResult<()> {
+    /// Draw the peer's content directly into the window's D2D target.
+    /// `bounds` is the peer's CONTENT rect in window DIP
+    /// (`editor_content_rect` is the single shared transform). `lprcBounds`
+    /// for `TxDrawD2D` is in the host's PHYSICAL-PIXEL space — msftedit
+    /// divides by `dcDpi/96` internally, so `DipRect::rectl` performs THE
+    /// conversion at this seam. The format space stays the peer's LOCAL
+    /// client rect (px); one transform at the seam, nothing to cache.
+    pub(crate) fn draw(&self, rt: &ID2D1RenderTarget, bounds: DipRect) -> UiResult<()> {
         self.ensure_activated();
-        let (l, t, r, b) = bounds;
-        let (w, h) = (r - l, b - t);
-        if !(w.is_finite() && h.is_finite() && w > 0.0 && h > 0.0) {
+        if !(bounds.w > 0.0 && bounds.h > 0.0 && bounds.x.is_finite() && bounds.y.is_finite()) {
             return Ok(());
         }
-        let scale = self.shared().host.scale;
-        // checked device-pixel conversion — no silent wrap
-        let (w_px, h_px) = {
-            let wp = (w as f64 * scale as f64).ceil();
-            let hp = (h as f64 * scale as f64).ceil();
-            if wp < 1.0 || hp < 1.0 || wp > u32::MAX as f64 || hp > u32::MAX as f64 {
-                return Err(UiError::Platform("peer surface size out of range".into()));
-            }
-            (wp as u32, hp as u32)
-        };
-        let pixels = w_px
-            .checked_mul(h_px)
-            .filter(|p| *p <= Self::MAX_PEER_PX)
-            .ok_or_else(|| UiError::Platform("peer surface pixel cap".into()))?;
-        let bytes = (pixels as u64)
-            .checked_mul(4)
-            .ok_or_else(|| UiError::Platform("peer surface byte overflow".into()))?;
-
-        let mut bmp_target = self.bmp_target.borrow_mut();
-        let key = (w_px, h_px, target_gen);
-        let bt = match &*bmp_target {
-            Some((bt, k)) if *k == key => Some(bt.clone()),
-            _ => None,
-        };
-        let bt = match bt {
-            Some(bt) => bt,
-            None => {
-                // aggregate budget check BEFORE the allocation
-                let old = self.bmp_bytes.get();
-                let after = self
-                    .byte_budget
-                    .load(Ordering::Relaxed)
-                    .checked_sub(old)
-                    .and_then(|b| b.checked_add(bytes))
-                    .filter(|b| *b <= Self::MAX_PEER_BYTES_TOTAL)
-                    .ok_or_else(|| UiError::Platform("peer surface byte budget".into()))?;
-                let nbt = unsafe {
-                    let t = rt
-                        .CreateCompatibleRenderTarget(
-                            None,
-                            Some(&windows::Win32::Graphics::Direct2D::Common::D2D_SIZE_U {
-                                width: w_px,
-                                height: h_px,
-                            }),
-                            None,
-                            windows::Win32::Graphics::Direct2D::D2D1_COMPATIBLE_RENDER_TARGET_OPTIONS_NONE,
-                        )
-                        .map_err(|e| UiError::Platform(format!("compat target: {e}")))?;
-                    let bt: windows::Win32::Graphics::Direct2D::ID2D1BitmapRenderTarget = t
-                        .cast()
-                        .map_err(|e| UiError::Platform(format!("compat target cast: {e}")))?;
-                    bt.SetDpi(scale * 96.0, scale * 96.0);
-                    bt
-                };
-                self.byte_budget.store(after, Ordering::Relaxed);
-                self.bmp_bytes.set(bytes);
-                *bmp_target = Some((nbt.clone(), key));
-                nbt
-            }
-        };
-        // render the peer into its own surface at LOCAL (0,0,w,h) —
-        // OPAQUE clear: the island carries its own background
+        let sc = self.shared().host.scale;
+        let mut rc = bounds.rectl(sc);
         unsafe {
-            use windows::Win32::Graphics::Direct2D::Common::D2D1_COLOR_F;
-            bt.BeginDraw();
-            bt.Clear(Some(&D2D1_COLOR_F {
-                r: clear[0],
-                g: clear[1],
-                b: clear[2],
-                a: 1.0,
-            }));
-            let rc = RECTL {
-                left: 0,
-                top: 0,
-                right: w.round() as i32,
-                bottom: h.round() as i32,
-            };
-            let rt2: ID2D1RenderTarget = bt
-                .cast()
-                .map_err(|e| UiError::Platform(format!("bt cast: {e}")))?;
-            let draw_r = self.tx().TxDrawD2D(
-                &rt2,
-                &rc as *const RECTL as *mut RECTL,
-                std::ptr::null_mut(),
-                0,
-            );
-            let end_r = bt.EndDraw(None, None);
-            if let Err(e) = draw_r.and(end_r) {
-                return Err(UiError::Platform(format!("TxDrawD2D(peer): {e}")));
-            }
-            let bmp = bt.GetBitmap()?;
-            let dest = windows::Win32::Graphics::Direct2D::Common::D2D_RECT_F {
-                left: l,
-                top: t,
-                right: r,
-                bottom: b,
-            };
-            rt.DrawBitmap(
-                &bmp,
-                Some(&dest),
-                1.0,
-                windows::Win32::Graphics::Direct2D::D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR,
-                None,
-            );
+            self.tx()
+                .TxDrawD2D(rt, &mut rc, std::ptr::null_mut(), 0)
+                .map_err(|e| UiError::Platform(format!("TxDrawD2D(peer): {e}")))
         }
-        Ok(())
     }
 
     /// Natural content size in DIP at the given layout width (REQRESIZE).
     /// msftedit formats in the client width, so the width must be current
     /// before measuring; a tall scratch bottom gives it room to report.
     pub(crate) fn natural_size(&self, width_dip: f32) -> UiResult<(f32, f32)> {
-        let w = width_dip.round() as i32;
         {
             let mut s = self.shared_mut();
-            let cur_w = s.host.bounds.right - s.host.bounds.left;
-            if cur_w != w {
-                s.host.bounds.right = s.host.bounds.left + w;
-            }
-            if s.host.bounds.bottom - s.host.bounds.top <= 0 {
-                s.host.bounds.bottom = s.host.bounds.top + 4000;
+            s.host.bounds.w = width_dip;
+            if s.host.bounds.h <= 0.0 {
+                // scratch height — the service reports natural extent via
+                // REQRESIZE regardless of clip height
+                s.host.bounds.h = 4000.0;
             }
         }
         self.ensure_activated();
         let _ = self.send(EM_REQUESTRESIZE, 0, 0);
+        let sc = self.shared().host.scale;
         let px = self.shared().host.natural;
-        Ok((px.cx as f32, px.cy as f32))
+        // per-line metric from msftedit itself — cy / EM_GETLINECOUNT is
+        // content-independent; layout's cap uses this, not a magic DIP.
+        // Client units are px — `px_to_dip` is THE seam.
+        if px.cy > 0
+            && let Ok(ns) = self.send(EM_GETLINECOUNT, 0, 0)
+        {
+            self.line_h.set(sc.px_to_dip(px.cy) / (ns.lr.max(1) as f32));
+        }
+        Ok((sc.px_to_dip(px.cx), sc.px_to_dip(px.cy)))
+    }
+
+    /// measured single-line height (DIP); 0.0 until a `natural_size` pass
+    /// latches it — layout falls back to its constant until then
+    pub(crate) fn line_height(&self) -> f32 {
+        self.line_h.get()
     }
 
     /// Global bounds (window DIP) + DPI scale — updates without recreate.
@@ -1066,7 +962,7 @@ impl WindowlessPeer {
     /// would latch a 0×0 space and draw nothing). The client rect is a live
     /// property (`TxGetClientRect` reads `host.bounds`) — never relatched,
     /// matching the proven mascot contract.
-    pub(crate) fn apply_bounds(&self, bounds: RECT, scale: f32) {
+    pub(crate) fn apply_bounds(&self, bounds: DipRect, scale: Scale) {
         self.shared_mut().host.bounds = bounds;
         self.shared_mut().host.scale = scale;
         self.ensure_activated();
@@ -1078,17 +974,13 @@ impl WindowlessPeer {
             return;
         }
         let b = self.shared().host.bounds;
-        let w = b.right - b.left;
-        let h = b.bottom - b.top;
-        if w <= 0 || h <= 0 {
+        if b.w <= 0.0 || b.h <= 0.0 {
             return;
         }
-        let mut local = RECT {
-            left: 0,
-            top: 0,
-            right: w,
-            bottom: h,
-        };
+        let sc = self.shared().host.scale;
+        // activation rect in the host's px units (see the unit contract at
+        // the top of the file / space.rs)
+        let mut local: RECT = DipRect::local(b.w, b.h).px(sc).into();
         unsafe {
             let _ = self.tx().OnTxInPlaceActivate(&mut local);
             let _ = self.tx().OnTxUIActivate();
@@ -1160,12 +1052,15 @@ impl WindowlessPeer {
 
     /// Drain host events queued while a text-services call ran.
     pub(crate) fn drain(&self) -> UiResult<Vec<HostEvent>> {
-        let mut s = self.shared_mut();
-        if s.host.overflow {
-            s.host.overflow = false;
+        let (overflow, events) = {
+            let mut s = self.shared_mut();
+            let ov = std::mem::replace(&mut s.host.overflow, false);
+            (ov, std::mem::take(&mut s.host.events))
+        };
+        if overflow {
             return Err(UiError::QueueOverflow);
         }
-        Ok(std::mem::take(&mut s.host.events))
+        Ok(events)
     }
 
     /// Queue a semantic event for the backend to route into the runtime.
@@ -1278,10 +1173,6 @@ impl crate::node::TextPeer for WindowlessPeer {
         // text services release first (may call back into the host)
         // return the surface's bytes to the aggregate budget before the
         // native objects go — accounting mirrors allocation
-        self.byte_budget
-            .fetch_sub(self.bmp_bytes.get(), Ordering::Relaxed);
-        self.bmp_bytes.set(0);
-        self.bmp_target.borrow_mut().take();
         drop(self.tx.take());
         unsafe {
             HostBox::Release(self.host);
@@ -1296,9 +1187,6 @@ impl crate::node::TextPeer for WindowlessPeer {
 
 impl Drop for WindowlessPeer {
     fn drop(&mut self) {
-        self.byte_budget
-            .fetch_sub(self.bmp_bytes.get(), Ordering::Relaxed);
-        self.bmp_bytes.set(0);
         if !self.host.is_null() {
             drop(self.tx.take());
             unsafe {

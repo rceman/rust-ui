@@ -12,6 +12,12 @@ fn main() {
 
     unsafe {
         let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
+        // production is Per-Monitor-V2 — the probe matches so UIA bounds and
+        // screen coordinates arrive in physical px, not virtualized units
+        // (Gate 16 environment equivalence)
+        let _ = windows::Win32::UI::HiDpi::SetThreadDpiAwarenessContext(
+            windows::Win32::UI::HiDpi::DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
+        );
         let mut hwnd = HWND::default();
         extern "system" fn enum_cb(h: HWND, l: LPARAM) -> BOOL {
             let mut buf = [0u16; 256];
