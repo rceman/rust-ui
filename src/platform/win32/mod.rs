@@ -262,7 +262,9 @@ enum SubmitDecision {
 /// place `GetKeyState` is consulted for semantic events.
 fn modifiers_now() -> Modifiers {
     unsafe {
-        use windows::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, VK_CONTROL, VK_LWIN, VK_MENU, VK_SHIFT};
+        use windows::Win32::UI::Input::KeyboardAndMouse::{
+            GetKeyState, VK_CONTROL, VK_LWIN, VK_MENU, VK_SHIFT,
+        };
         let down = |vk: u16| GetKeyState(vk as i32) < 0;
         Modifiers {
             shift: down(VK_SHIFT.0),
@@ -536,7 +538,7 @@ where
         // live UIA state follows the committed tree — external clients see
         // name/enabled/bounds/order changes without a fresh WM_GETOBJECT
         if updated || needs_layout || needs_paint {
-            self.uia_refresh();
+            self.uia_refresh()?;
         }
         if needs_paint {
             self.paint()?;
@@ -1101,9 +1103,7 @@ where
                 match &n.data {
                     // disabled/non-interactive nodes are inert chrome — no
                     // hover, pressed, focus, or activation state attaches
-                    NodeData::Button { .. }
-                    | NodeData::Editor { .. }
-                    | NodeData::Action { .. }
+                    NodeData::Button { .. } | NodeData::Editor { .. } | NodeData::Action { .. }
                         if n.interactive() =>
                     {
                         return Some(id);
@@ -1358,9 +1358,7 @@ where
                 // unconsumed → policy decides; a consumed key is editing
                 // alone (the Enter/submit fork happened BEFORE delivery —
                 // a consumed Enter was never a submit candidate)
-                if !consumed
-                    && let Some(sub) = self.check_submit(focus, ev)
-                {
+                if !consumed && let Some(sub) = self.check_submit(focus, ev) {
                     self.push_input(focus, sub)?;
                 }
             }
@@ -1403,9 +1401,9 @@ where
         else {
             return SubmitDecision::Edit;
         };
-        let shift = unsafe {
-            windows::Win32::UI::Input::KeyboardAndMouse::GetKeyState(VK_SHIFT.0 as i32)
-        } < 0;
+        let shift =
+            unsafe { windows::Win32::UI::Input::KeyboardAndMouse::GetKeyState(VK_SHIFT.0 as i32) }
+                < 0;
         let ctrl = unsafe {
             windows::Win32::UI::Input::KeyboardAndMouse::GetKeyState(VK_CONTROL.0 as i32)
         } < 0;
@@ -1603,6 +1601,9 @@ where
         if self.uia.is_none() {
             let root = uia::UiaRoot::new(self.hwnd, "rust-ui")
                 .map_err(|e| UiError::Platform(format!("UiaRoot: {e}")))?;
+            // a late-created root starts with the backend's CURRENT focus —
+            // a provider built after focus was taken must not lie
+            root.set_focus(self.focus);
             self.uia = Some(root);
         }
         let Some(u) = self.uia.as_ref() else {
@@ -1727,11 +1728,12 @@ where
     /// asked for them — called at each commit boundary so external clients
     /// see live name/enabled/bounds/order WITHOUT needing a fresh
     /// WM_GETOBJECT. No-op until the root exists.
-    pub(crate) fn uia_refresh(&mut self) {
+    pub(crate) fn uia_refresh(&mut self) -> UiResult {
         if self.uia.is_none() {
-            return;
+            return Ok(());
         }
-        let _ = self.uia_provider();
+        self.uia_provider()?;
+        Ok(())
     }
 
     /// UIA press/focus post landed — the generation check happens HERE so a

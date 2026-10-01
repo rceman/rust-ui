@@ -75,6 +75,7 @@ fn deferrable_arrival(msg: u32) -> bool {
             | WM_KILLFOCUS
             | WM_MOUSEWHEEL
             | WM_SIZE
+            | WM_MOVE
             | WM_SETTINGCHANGE
             | WM_TIMER
             | WM_UIA_PRESS
@@ -350,7 +351,14 @@ pub(crate) mod wndproc {
                 // layout so paint never draws into a stale surface
                 be.renderer.borrow_mut().resize();
                 be.relayout()?;
+                be.uia_refresh()?;
                 be.paint()?;
+                LRESULT(0)
+            }
+            WM_MOVE => {
+                // client-space geometry is unchanged but SCREEN rects move —
+                // UIA's cached bounds must refresh or clients hit-test stale
+                be.uia_refresh()?;
                 LRESULT(0)
             }
             WM_DPICHANGED => {
@@ -372,6 +380,7 @@ pub(crate) mod wndproc {
                 }
                 // the resize above may be a no-op — guarantee the repaint
                 be.relayout()?;
+                be.uia_refresh()?;
                 be.paint()?;
                 LRESULT(0)
             }

@@ -95,6 +95,21 @@ struct VARIANT_MANUAL {
     _pad: usize,
 }
 
+/// UiaRect -> VT_R8|VT_ARRAY VARIANT (the UIA BoundingRectangle shape).
+fn bounding_variant(r: UiaRect) -> VARIANT {
+    unsafe {
+        let sa = SafeArrayCreateVector(VT_R8, 0, 4);
+        for (i, v) in [r.left, r.top, r.width, r.height].iter().enumerate() {
+            let _ = SafeArrayPutElement(sa, &(i as i32), v as *const f64 as *const c_void);
+        }
+        let mut var = VARIANT::default();
+        let m = &mut *(&mut var as *mut VARIANT as *mut VARIANT_MANUAL);
+        m.parray = sa;
+        m.vt = (VT_ARRAY | VT_R8).0 as u16;
+        var
+    }
+}
+
 impl Snapshot {
     fn live_ok(&self, slot: u32, generation: u64) -> bool {
         if self.closed.load(std::sync::atomic::Ordering::SeqCst) {
@@ -128,6 +143,13 @@ impl IRawElementProviderWindowlessSite_Impl for WindowlessSite_Impl {
     ) -> Result<IRawElementProviderFragment> {
         match direction {
             NavigateDirection_Parent => {
+                // parent traversal needs a LIVE node — a removed editor's
+                // site stops answering rather than reporting stale parents
+                if !self.snap.live_ok(self.node.slot, self.node.generation) {
+                    return Err(Error::from_hresult(HRESULT(
+                        UIA_E_ELEMENTNOTAVAILABLE as i32,
+                    )));
+                }
                 if let Some(r) = self.root.lock().unwrap().upgrade() {
                     return Ok(r);
                 }
@@ -384,11 +406,36 @@ impl IRawElementProviderSimple_Impl for EditorFragment_Impl {
         // proxy mid-enumeration
         Ok(ProviderOptions_ServerSideProvider | ProviderOptions_UseComThreading)
     }
+    /// Patterns a client can retain must stay behind the generation
+    /// fence — a cached native pattern that outlives its node would act on
+    /// dead state. The wrapper forwards only while `live_ok` passes and
+    /// re-fences every range/pattern it hands out.
     fn GetPatternProvider(&self, patternid: UIA_PATTERN_ID) -> Result<IUnknown> {
         if !self.this.live() {
             return Err(EditorFragment::unavailable());
         }
-        unsafe { self.this.inner_simple.GetPatternProvider(patternid) }
+        let raw = unsafe { self.this.inner_simple.GetPatternProvider(patternid) }?;
+        if patternid == UIA_TextPatternId {
+            let inner: ITextProvider = raw.cast()?;
+            let co = windows_core::ComObject::new(FencedText {
+                inner,
+                snap: self.this.snap.clone(),
+                node: self.this.node,
+            });
+            return Ok(co.to_interface::<IUnknown>());
+        }
+        if patternid == UIA_ValuePatternId {
+            let inner: IValueProvider = raw.cast()?;
+            let co = windows_core::ComObject::new(FencedValue {
+                inner,
+                snap: self.this.snap.clone(),
+                node: self.this.node,
+            });
+            return Ok(co.to_interface::<IUnknown>());
+        }
+        // any other pattern msftedit serves would escape the fence — the
+        // contract is fence-or-nothing, not "pass through and hope"
+        Err(E_NOTIMPL.into())
     }
     fn GetPropertyValue(&self, propertyid: UIA_PROPERTY_ID) -> Result<VARIANT> {
         if !self.this.live() {
@@ -503,6 +550,332 @@ impl IRawElementProviderFragment_Impl for EditorFragment_Impl {
     }
     fn FragmentRoot(&self) -> Result<IRawElementProviderFragmentRoot> {
         unsafe { self.this.inner.FragmentRoot() }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// fenced native patterns — every COM reference that escapes to a client
+// carries the SAME generation/liveness check as the fragment itself
+// ---------------------------------------------------------------------------
+
+#[inline]
+fn fence_live(snap: &Arc<Snapshot>, node: NodeId) -> bool {
+    snap.live_ok(node.slot, node.generation)
+}
+
+fn unavailable() -> Error {
+    Error::from_hresult(HRESULT(UIA_E_ELEMENTNOTAVAILABLE as i32))
+}
+
+/// Wrap a range in the generation fence; a cached range on a dead node
+/// returns UIA_E_ELEMENTNOTAVAILABLE instead of reaching stale msftedit
+/// state.
+fn fence_range(
+    inner: ITextRangeProvider,
+    snap: &Arc<Snapshot>,
+    node: NodeId,
+) -> Result<ITextRangeProvider> {
+    let co = windows_core::ComObject::new(FencedRange {
+        inner,
+        snap: snap.clone(),
+        node,
+    });
+    Ok(co.to_interface())
+}
+
+/// SAFEARRAY of ITextRangeProvider -> same shape, each element fenced.
+/// Preserves array identity semantics (count/order); the elements gain
+/// the liveness contract.
+unsafe fn fence_range_array(
+    sa: *mut SAFEARRAY,
+    snap: &Arc<Snapshot>,
+    node: NodeId,
+) -> Result<*mut SAFEARRAY> {
+    if sa.is_null() {
+        return Ok(std::ptr::null_mut());
+    }
+    let lo = SafeArrayGetLBound(sa, 1)?;
+    let hi = SafeArrayGetUBound(sa, 1)?;
+    let n = (hi - lo + 1).max(0) as u32;
+    let out = SafeArrayCreateVector(VT_UNKNOWN, 0, n);
+    if out.is_null() {
+        return Err(E_OUTOFMEMORY.into());
+    }
+    for i in 0..n {
+        let idx = lo + i as i32;
+        let mut raw: *mut c_void = std::ptr::null_mut();
+        // VT_UNKNOWN elements: GetElement hands an AddRef'd IUnknown
+        SafeArrayGetElement(sa, &idx, &mut raw as *mut _ as *mut c_void)?;
+        if raw.is_null() {
+            continue;
+        }
+        let inner = ITextRangeProvider::from_raw(raw);
+        if let Ok(fenced) = fence_range(inner, snap, node) {
+            // PutElement AddRefs — our owned ref is consumed by `fenced`
+            let ptr = windows_core::Interface::as_raw(&fenced);
+            SafeArrayPutElement(out, &idx, &ptr as *const _ as *const c_void)?;
+        }
+    }
+    Ok(out)
+}
+
+/// Text-pattern fence — all range-returning calls wrap their results;
+/// GetEnclosingElement's provider is msftedit's OWN (escapes the fence
+/// through the fragment's parenting anyway).
+#[implement(ITextProvider)]
+struct FencedText {
+    inner: ITextProvider,
+    snap: Arc<Snapshot>,
+    node: NodeId,
+}
+impl ITextProvider_Impl for FencedText_Impl {
+    fn GetSelection(&self) -> Result<*mut SAFEARRAY> {
+        if !fence_live(&self.this.snap, self.this.node) {
+            return Err(unavailable());
+        }
+        unsafe {
+            let sa = self.this.inner.GetSelection()?;
+            fence_range_array(sa, &self.this.snap, self.this.node)
+        }
+    }
+    fn GetVisibleRanges(&self) -> Result<*mut SAFEARRAY> {
+        if !fence_live(&self.this.snap, self.this.node) {
+            return Err(unavailable());
+        }
+        unsafe {
+            let sa = self.this.inner.GetVisibleRanges()?;
+            fence_range_array(sa, &self.this.snap, self.this.node)
+        }
+    }
+    fn RangeFromChild(
+        &self,
+        childelement: windows_core::Ref<IRawElementProviderSimple>,
+    ) -> Result<ITextRangeProvider> {
+        if !fence_live(&self.this.snap, self.this.node) {
+            return Err(unavailable());
+        }
+        let r = unsafe { self.this.inner.RangeFromChild(childelement.ok()?) }?;
+        fence_range(r, &self.this.snap, self.this.node)
+    }
+    fn RangeFromPoint(&self, point: &UiaPoint) -> Result<ITextRangeProvider> {
+        if !fence_live(&self.this.snap, self.this.node) {
+            return Err(unavailable());
+        }
+        let r = unsafe { self.this.inner.RangeFromPoint(*point) }?;
+        fence_range(r, &self.this.snap, self.this.node)
+    }
+    fn DocumentRange(&self) -> Result<ITextRangeProvider> {
+        if !fence_live(&self.this.snap, self.this.node) {
+            return Err(unavailable());
+        }
+        let r = unsafe { self.this.inner.DocumentRange() }?;
+        fence_range(r, &self.this.snap, self.this.node)
+    }
+    fn SupportedTextSelection(&self) -> Result<SupportedTextSelection> {
+        if !fence_live(&self.this.snap, self.this.node) {
+            return Err(unavailable());
+        }
+        unsafe { self.this.inner.SupportedTextSelection() }
+    }
+}
+
+/// Value-pattern fence — IsReadOnly/Value mirror the live snapshot anyway.
+#[implement(IValueProvider)]
+struct FencedValue {
+    inner: IValueProvider,
+    snap: Arc<Snapshot>,
+    node: NodeId,
+}
+impl IValueProvider_Impl for FencedValue_Impl {
+    fn SetValue(&self, val: &PCWSTR) -> Result<()> {
+        if !fence_live(&self.this.snap, self.this.node) {
+            return Err(unavailable());
+        }
+        unsafe { self.this.inner.SetValue(*val) }
+    }
+    fn Value(&self) -> Result<BSTR> {
+        if !fence_live(&self.this.snap, self.this.node) {
+            return Err(unavailable());
+        }
+        unsafe { self.this.inner.Value() }
+    }
+    fn IsReadOnly(&self) -> Result<BOOL> {
+        if !fence_live(&self.this.snap, self.this.node) {
+            return Err(unavailable());
+        }
+        unsafe { self.this.inner.IsReadOnly() }
+    }
+}
+
+/// Range fence — every method checks liveness before touching msftedit;
+/// range-returning calls re-wrap so cloned/sub-ranges stay fenced too.
+#[implement(ITextRangeProvider)]
+struct FencedRange {
+    inner: ITextRangeProvider,
+    snap: Arc<Snapshot>,
+    node: NodeId,
+}
+impl ITextRangeProvider_Impl for FencedRange_Impl {
+    fn Clone(&self) -> Result<ITextRangeProvider> {
+        if !fence_live(&self.this.snap, self.this.node) {
+            return Err(unavailable());
+        }
+        fence_range(
+            unsafe { self.this.inner.Clone() }?,
+            &self.this.snap,
+            self.this.node,
+        )
+    }
+    fn Compare(&self, range: windows_core::Ref<ITextRangeProvider>) -> Result<BOOL> {
+        if !fence_live(&self.this.snap, self.this.node) {
+            return Err(unavailable());
+        }
+        unsafe { self.this.inner.Compare(range.ok()?) }
+    }
+    fn CompareEndpoints(
+        &self,
+        endpoint: TextPatternRangeEndpoint,
+        targetrange: windows_core::Ref<ITextRangeProvider>,
+        targetendpoint: TextPatternRangeEndpoint,
+    ) -> Result<i32> {
+        if !fence_live(&self.this.snap, self.this.node) {
+            return Err(unavailable());
+        }
+        unsafe {
+            self.this
+                .inner
+                .CompareEndpoints(endpoint, targetrange.ok()?, targetendpoint)
+        }
+    }
+    fn ExpandToEnclosingUnit(&self, unit: TextUnit) -> Result<()> {
+        if !fence_live(&self.this.snap, self.this.node) {
+            return Err(unavailable());
+        }
+        unsafe { self.this.inner.ExpandToEnclosingUnit(unit) }
+    }
+    fn FindAttribute(
+        &self,
+        attributeid: UIA_TEXTATTRIBUTE_ID,
+        val: &VARIANT,
+        backward: BOOL,
+    ) -> Result<ITextRangeProvider> {
+        if !fence_live(&self.this.snap, self.this.node) {
+            return Err(unavailable());
+        }
+        fence_range(
+            unsafe {
+                self.this
+                    .inner
+                    .FindAttribute(attributeid, val, backward.as_bool())
+            }?,
+            &self.this.snap,
+            self.this.node,
+        )
+    }
+    fn FindText(
+        &self,
+        text: &BSTR,
+        backward: BOOL,
+        ignorecase: BOOL,
+    ) -> Result<ITextRangeProvider> {
+        if !fence_live(&self.this.snap, self.this.node) {
+            return Err(unavailable());
+        }
+        fence_range(
+            unsafe {
+                self.this
+                    .inner
+                    .FindText(text, backward.as_bool(), ignorecase.as_bool())
+            }?,
+            &self.this.snap,
+            self.this.node,
+        )
+    }
+    fn GetAttributeValue(&self, attributeid: UIA_TEXTATTRIBUTE_ID) -> Result<VARIANT> {
+        if !fence_live(&self.this.snap, self.this.node) {
+            return Err(unavailable());
+        }
+        unsafe { self.this.inner.GetAttributeValue(attributeid) }
+    }
+    fn GetBoundingRectangles(&self) -> Result<*mut SAFEARRAY> {
+        if !fence_live(&self.this.snap, self.this.node) {
+            return Err(unavailable());
+        }
+        unsafe { self.this.inner.GetBoundingRectangles() }
+    }
+    fn GetEnclosingElement(&self) -> Result<IRawElementProviderSimple> {
+        if !fence_live(&self.this.snap, self.this.node) {
+            return Err(unavailable());
+        }
+        unsafe { self.this.inner.GetEnclosingElement() }
+    }
+    fn GetText(&self, maxlength: i32) -> Result<BSTR> {
+        if !fence_live(&self.this.snap, self.this.node) {
+            return Err(unavailable());
+        }
+        unsafe { self.this.inner.GetText(maxlength) }
+    }
+    fn Move(&self, unit: TextUnit, count: i32) -> Result<i32> {
+        if !fence_live(&self.this.snap, self.this.node) {
+            return Err(unavailable());
+        }
+        unsafe { self.this.inner.Move(unit, count) }
+    }
+    fn MoveEndpointByUnit(
+        &self,
+        endpoint: TextPatternRangeEndpoint,
+        unit: TextUnit,
+        count: i32,
+    ) -> Result<i32> {
+        if !fence_live(&self.this.snap, self.this.node) {
+            return Err(unavailable());
+        }
+        unsafe { self.this.inner.MoveEndpointByUnit(endpoint, unit, count) }
+    }
+    fn MoveEndpointByRange(
+        &self,
+        endpoint: TextPatternRangeEndpoint,
+        targetrange: windows_core::Ref<ITextRangeProvider>,
+        targetendpoint: TextPatternRangeEndpoint,
+    ) -> Result<()> {
+        if !fence_live(&self.this.snap, self.this.node) {
+            return Err(unavailable());
+        }
+        unsafe {
+            self.this
+                .inner
+                .MoveEndpointByRange(endpoint, targetrange.ok()?, targetendpoint)
+        }
+    }
+    fn Select(&self) -> Result<()> {
+        if !fence_live(&self.this.snap, self.this.node) {
+            return Err(unavailable());
+        }
+        unsafe { self.this.inner.Select() }
+    }
+    fn AddToSelection(&self) -> Result<()> {
+        if !fence_live(&self.this.snap, self.this.node) {
+            return Err(unavailable());
+        }
+        unsafe { self.this.inner.AddToSelection() }
+    }
+    fn RemoveFromSelection(&self) -> Result<()> {
+        if !fence_live(&self.this.snap, self.this.node) {
+            return Err(unavailable());
+        }
+        unsafe { self.this.inner.RemoveFromSelection() }
+    }
+    fn ScrollIntoView(&self, aligntotop: BOOL) -> Result<()> {
+        if !fence_live(&self.this.snap, self.this.node) {
+            return Err(unavailable());
+        }
+        unsafe { self.this.inner.ScrollIntoView(aligntotop.as_bool()) }
+    }
+    fn GetChildren(&self) -> Result<*mut SAFEARRAY> {
+        if !fence_live(&self.this.snap, self.this.node) {
+            return Err(unavailable());
+        }
+        unsafe { self.this.inner.GetChildren() }
     }
 }
 
@@ -731,6 +1104,18 @@ impl UiaRoot {
         let mut order = Vec::new();
         let mut structure_changed = false;
         let mut enabled_flips: Vec<(IRawElementProviderFragment, bool)> = Vec::new();
+        let mut name_changes: Vec<(IRawElementProviderFragment, String, String)> = Vec::new();
+        let mut bounds_changes: Vec<(IRawElementProviderFragment, UiaRect, UiaRect)> = Vec::new();
+        // reorder detection: same set, different sequence is a structure
+        // change UIA clients must hear
+        let prev_order: Vec<NodeId> = self
+            .snap
+            .order
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(id, _)| *id)
+            .collect();
         {
             let mut table = self.snap.children.lock().unwrap();
             for k in children {
@@ -738,8 +1123,23 @@ impl UiaRoot {
                 // reuse the surviving association when the NodeId matches —
                 // state updates in place (no provider churn per rebuild)
                 if let Some(h) = table.get(&k.id) {
-                    *h.state.name.lock().unwrap() = k.name;
-                    *h.state.rect.lock().unwrap() = k.rect;
+                    // name/bounds updates notify — silent value drift is a
+                    // live-contract violation
+                    {
+                        let mut name = h.state.name.lock().unwrap();
+                        if *name != k.name {
+                            let old = std::mem::replace(&mut *name, k.name.clone());
+                            name_changes.push((h.frag.clone(), old, k.name.clone()));
+                        }
+                    }
+                    {
+                        let mut rect = h.state.rect.lock().unwrap();
+                        if *rect != k.rect {
+                            let old = *rect;
+                            *rect = k.rect;
+                            bounds_changes.push((h.frag.clone(), old, k.rect));
+                        }
+                    }
                     let prev = h
                         .state
                         .enabled
@@ -828,10 +1228,37 @@ impl UiaRoot {
                 .unwrap()
                 .retain(|slot, (g, _)| live.get(slot) == Some(g));
             *self.snap.live.lock().unwrap() = live;
+            if !structure_changed {
+                // reorder-only: same live ids in a different sequence
+                let new_order: Vec<NodeId> = order.iter().map(|(id, _)| *id).collect();
+                if new_order != prev_order {
+                    structure_changed = true;
+                }
+            }
             *self.snap.order.lock().unwrap() = order;
         }
         // notifications ride the public API — safe from any thread
         unsafe {
+            for (frag, old, new) in name_changes {
+                if let Ok(simple) = frag.cast::<IRawElementProviderSimple>() {
+                    let _ = UiaRaiseAutomationPropertyChangedEvent(
+                        &simple,
+                        UIA_NamePropertyId,
+                        &VARIANT::from(BSTR::from(old)),
+                        &VARIANT::from(BSTR::from(new)),
+                    );
+                }
+            }
+            for (frag, old, new) in bounds_changes {
+                if let Ok(simple) = frag.cast::<IRawElementProviderSimple>() {
+                    let _ = UiaRaiseAutomationPropertyChangedEvent(
+                        &simple,
+                        UIA_BoundingRectanglePropertyId,
+                        &VARIANT::from(bounding_variant(old)),
+                        &VARIANT::from(bounding_variant(new)),
+                    );
+                }
+            }
             for (frag, enabled) in enabled_flips {
                 if let Ok(simple) = frag.cast::<IRawElementProviderSimple>() {
                     let _ = UiaRaiseAutomationPropertyChangedEvent(
@@ -917,5 +1344,14 @@ impl UiaRoot {
 
     pub(crate) fn provider(&self) -> IRawElementProviderFragmentRoot {
         self.root.clone()
+    }
+}
+
+/// Every exit path breaks the snapshot<->fragment cycle and disconnects
+/// the root from UIA's tables — Drop is the cleanup contract's backstop,
+/// not just the normal close() route.
+impl Drop for UiaRoot {
+    fn drop(&mut self) {
+        self.close();
     }
 }
