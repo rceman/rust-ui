@@ -196,10 +196,19 @@ impl Spike {
                 if self.busy {
                     return;
                 }
-                self.busy = true;
-                self.response.clear();
-                self.turn_counter += 1;
-                let _ = cx.spawn("stream", |job| async move { Self::stream(job).await });
+                // spawn BEFORE busy — a rejected/failed start must not
+                // leave the UI stuck; the task key replaces any prior
+                // registration deterministically
+                match cx.spawn("stream", |job| async move { Self::stream(job).await }) {
+                    Ok(()) => {
+                        self.busy = true;
+                        self.response.clear();
+                        self.turn_counter += 1;
+                    }
+                    Err(e) => {
+                        self.notice = Some(format!("send rejected: {e:?}"));
+                    }
+                }
             }
             Msg::Stop => {
                 // cancel fences the registration — late chunks/completion

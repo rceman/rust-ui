@@ -3383,6 +3383,7 @@ fn uia_children_survive_rebuild() {
 /// native editor providers report an unusable BoundingRectangle
 /// (msftedit returns Infinity on windowless sites), so the root carries
 /// the authoritative rect per child.
+#[cfg(windows)]
 #[test]
 fn uia_element_from_point_uses_snapshot_rect() {
     use crate::platform::win32::uia::{ChildBuild, UiaRoot};
@@ -3470,6 +3471,7 @@ fn uia_element_from_point_uses_snapshot_rect() {
 
 /// A disabled control must surface as non-enabled + non-focusable in UIA
 /// — the assistive-tech contract that pairs with hit-test/dispatch gating.
+#[cfg(windows)]
 #[test]
 fn uia_disabled_node_reports_not_enabled() {
     use crate::platform::win32::uia::{ChildBuild, UiaRoot};
