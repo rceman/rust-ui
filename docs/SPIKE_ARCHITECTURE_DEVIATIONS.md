@@ -49,19 +49,28 @@ inline draw — the compositor positions its rectangle; the peer's internal
 origin is always `(0,0)`. This is also the shape a future
 DirectComposition visual-per-peer path wants.
 
-## 3. Activation latches the format space; peers get one activation
+## 3. Activation latches the format space — updated by the F04 rework
 
-`OnTxInPlaceActivate` binds the format space **once**. Re-activating at a
-different rect does not reliably re-anchor content, so peers activate
-lazily — at the first non-empty bounds — and never deactivate/re-activate
-on size changes (the mascot reference contract). `natural_size` activates
-with a tall scratch height because `EM_REQUESTRESIZE` requires an
-activated service to report; the lazy activation is therefore
-load-bearing for measurement, not a defect.
+`OnTxInPlaceActivate` binds the format space in the host's **physical
+px** units — the scale relatch defect (ink drawn one row displaced after
+a scale change) proved the latched view does NOT follow the DIP bounds.
 
-**Contract implication:** an editor's activation is not "create-time"; it
-is "first real bounds". Any implementation detail that relies on
-create-time activation is wrong.
+**Current contract (supersedes the earlier "one activation forever"
+rule):** activation is an explicit three-state machine
+(`Inactive`/`InPlace`/`Ui` — in-place activation covers measure/draw;
+UI activation is focus-owned). A peer activates lazily at first
+non-empty bounds and, on a **scale change**, deactivates and
+re-activates at the new px mapping — the native editing state (committed
+text, directional selection, undo history, composition) survives because
+the `ITextServices` COM object is retained; the selection anchor/focus
+pair is additionally snapshotted and restored because deactivation is
+free to collapse it. `natural_size` activates with a tall scratch height
+because `EM_REQUESTRESIZE` requires an activated service and reports the
+natural extent through the host callback; a request that produces no
+fresh notification is an error, never stale success.
+
+**Contract implication:** an editor's activation is not "create-time";
+it is "first real bounds", and scale transitions re-latch explicitly.
 
 ## 4. Synchronous reentrancy: `send` must defer through the backend
 

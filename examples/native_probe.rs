@@ -635,9 +635,7 @@ fn main() {
             let shift = args.get(4).is_some_and(|a| a == "shift" || a == "2")
                 || args.get(5).is_some_and(|a| a == "shift");
             key_post(hwnd, vk, ctrl, shift).map(|_| {
-                format!(
-                    "{{\"kind\":\"key-post\",\"evidence\":\"regression\",\"vk\":{vk}}}"
-                )
+                format!("{{\"kind\":\"key-post\",\"evidence\":\"regression\",\"vk\":{vk}}}")
             })
         }
         "uia-rect" => uia_rect(hwnd, &args[3]),

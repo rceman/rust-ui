@@ -4667,6 +4667,53 @@ fn geometry_contract_rect_conversion() {
     assert_eq!(u.right(), 50.0);
 }
 
+/// F03 regression — the reviewer's reproduction. A peer at fractional
+/// logical origin under a fractional scale must resolve ONE snapped
+/// physical origin; pointer/caret/host callbacks share it. The bug was
+/// two competing models giving different answers at the same pixel.
+#[test]
+fn peer_origin_single_snapped_transform() {
+    use crate::geom::{
+        ClientPhysicalPoint, PeerLocalPoint, PeerOrigin, PhysicalPoint, Rect, ScaleFactor,
+    };
+    // scale=1.25, logical origin 0.4 -> snapped physical origin:
+    // round-half-away(0.4 * 1.25) = round(0.5) = 1px
+    let o = PeerOrigin::from_logical(
+        Rect {
+            x: 0.4,
+            y: 0.4,
+            width: 100.0,
+            height: 20.0,
+        },
+        ScaleFactor(1.25),
+    );
+    assert_eq!(o.0, PhysicalPoint { x: 1, y: 1 });
+    // client px 1 -> peer-local 0 under the SHARED snapped transform
+    // (the alternate "subtract-then-rescale" path answered 1 — removed)
+    assert_eq!(
+        o.to_local(ClientPhysicalPoint(PhysicalPoint { x: 1, y: 1 })),
+        PeerLocalPoint(PhysicalPoint { x: 0, y: 0 })
+    );
+    // round-trip is exact in integer px
+    let c = ClientPhysicalPoint(PhysicalPoint { x: 42, y: 7 });
+    assert_eq!(o.to_client(o.to_local(c)), c);
+    // negative peer-local (pointer above/left of the surface) is legal
+    let neg = o.to_local(ClientPhysicalPoint(PhysicalPoint { x: -3, y: 0 }));
+    assert_eq!(neg.0, PhysicalPoint { x: -4, y: -1 });
+    assert_eq!(o.to_client(neg).0, PhysicalPoint { x: -3, y: 0 });
+    // another fractional case at a different scale — origin 8.2dp @1.5
+    let o2 = PeerOrigin::from_logical(
+        Rect {
+            x: 8.2,
+            y: 0.0,
+            width: 10.0,
+            height: 10.0,
+        },
+        ScaleFactor(1.5),
+    );
+    assert_eq!(o2.0.x, 12); // 8.2 * 1.5 = 12.3 -> 12
+}
+
 #[test]
 fn geometry_contract_scale_change_is_pure() {
     use crate::geom::{Rect, ScaleFactor};
@@ -4724,13 +4771,13 @@ mod native_contract_tests {
         }
         // sync-result / pointer-bearing / non-queued classes are NOT
         for m in [
-            WM_GETOBJECT,   // needs a synchronous provider answer
-            WM_NCCREATE,    // carries CREATESTRUCT* — borrowed
-            WM_CREATE,      // borrowed create params
-            WM_NOTIFY,      // NMHDR* — borrowed
-            0x02E0,         // WM_DPICHANGED — borrowed RECT* (handled explicitly)
-            WM_NCDESTROY,   // teardown runs its own contract
-            WM_PAINT,       // coalesced, not queued
+            WM_GETOBJECT, // needs a synchronous provider answer
+            WM_NCCREATE,  // carries CREATESTRUCT* — borrowed
+            WM_CREATE,    // borrowed create params
+            WM_NOTIFY,    // NMHDR* — borrowed
+            0x02E0,       // WM_DPICHANGED — borrowed RECT* (handled explicitly)
+            WM_NCDESTROY, // teardown runs its own contract
+            WM_PAINT,     // coalesced, not queued
         ] {
             assert!(
                 !deferrable_arrival(m),

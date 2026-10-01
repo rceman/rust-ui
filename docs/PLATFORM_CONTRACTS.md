@@ -40,7 +40,10 @@ types) with **no dynamic dispatch, registries, or DI machinery**.
 there — platform-neutral:
 
 ```text
-Dp                    logical scalar (1/96 inch — the 96-dpi baseline)
+Dp                    rust-ui logical layout/design unit (a pure scalar —
+                      NOT a physical "1/96 inch" promise; the 96-DPI
+                      baseline is Windows' own mapping rule and lives in
+                      the Win32 adapter only)
 PhysicalPx            physical scalar
 
 Point/Size/Rect       logical-space point/size/rect (== Logical*)
@@ -49,10 +52,18 @@ PhysicalPoint/Size/Rect
 
 ClientPhysicalPoint   marker — a window/surface client's own 0,0 space
 ScreenPhysicalPoint   marker — global display space
+PeerLocalPoint        marker — a peer surface's own 0,0 space
 
-ScaleFactor           px-per-logical-unit; from_dpi / dpi /
-                      to_physical / to_physical_f /
-                      to_logical / to_logical_f — ALL the math
+PeerOrigin            THE client-px <-> peer-local-px transform — one
+                      snapped physical origin per (bounds, scale);
+                      integer subtraction/addition only. Every consumer
+                      (pointer, caret, host callbacks, probe) shares it.
+
+ScaleFactor           px-per-logical-unit RATIO — platform-neutral,
+                      positive and finite. `new`/`to_physical`/
+                      `to_physical_f`/`to_logical`/`to_logical_f` are the
+                      shared math; `scale_from_dpi`/`dpi_of` (the 96
+                      baseline) exist ONLY in platform/win32/space.rs.
 
 rounding policy       round-half-away-from-zero at logical→physical;
                       physical→logical is exact
@@ -67,10 +78,14 @@ that must not snap mid-pipeline.
 
 Windows realizes the contract in `platform/win32/space.rs` — a thin
 adapter owning `RECT`/`RECTL`/`POINT`/`SIZE` conversions, `LPARAM`
-packing, `ClientToScreen`/`ScreenToClient`. Any `* scale`/`dpi/96`
-outside `geom.rs` is a contract violation, except documented
-API-required unit exceptions (e.g. `TxGetExtent`'s HIMETRIC — 1/100 mm —
-computed locally at that call site).
+packing, `ClientToScreen`/`ScreenToClient` (checked — native failure is
+`None`, never an identity fallback), and the `dpi ↔ ratio` mapping
+(`scale_from_dpi`/`dpi_of`). Any `* scale`/`dpi/96` outside `geom.rs`
+(the ratio math) or `space.rs` (the DPI mapping) is a contract
+violation, except documented API-required unit exceptions (e.g.
+`TxGetExtent`'s HIMETRIC — 1/100 mm — computed locally at that call
+site). Signed-16-bit LPARAM coordinates are range-checked
+(`try_lparam_px` returns `None` out of range).
 
 ## Service inventory
 
@@ -80,12 +95,12 @@ Responsibilities actually present in the Windows backend today:
 |---|---|---|---|---|
 | Geometry / DPI | `crate::geom` typed spaces + `ScaleFactor` | `platform::win32::space` (RECT/POINT seams, client↔screen) | `geometry_contract_*` conformance (96/120/144/192) | RichEdit px probe, UIA rect probe, `native_probe geometry` |
 | Window | runtime window lifecycle + event delivery (rust-ui `Backend` trait) | `platform::win32::window` WndProc | runtime pump tests | live composer capture |
-| Text services | `crate::node::TextPeer` (natural size, draw, committed-edit sink) | `platform::win32::text` (windowless RichEdit host) | node/peer lifecycle tests | `native_probe_richedit_paints_text`, real IME (pending) |
-| Input | `PointerEvent`/`KeyEvent`/`Modifiers` normalized events | `platform::win32::window` WM_* → semantic | pump/dispatch tests | real-key acceptance (pending) |
+| Text services | `crate::node::TextPeer` (natural size, draw, committed-edit sink) | `platform::win32::text` (windowless RichEdit host, explicit `Activation` state machine + preserving scale relatch) | node/peer lifecycle + relatch-state tests | `native_probe_richedit_paints_text`, real IME (MEASURED via `native_probe ime`) |
+| Input | `PointerEvent`/`KeyEvent`/`Modifiers` normalized events (modifiers read from real GetKeyState; `Key::Other` is platform-scoped raw VK) | `platform::win32::window` WM_* → semantic | pump/dispatch + submit-contract tests | real-key + real-IME acceptance |
 | Accessibility | rust-ui semantic tree (role/name/bounds/state) | `platform::win32::uia` IUIAutomation provider | UIA-adjacent unit tests | `native_probe uia-tree`, UIA probe |
 | Clipboard | **deferred** — RichEdit owns Ctrl+X/C/V internally; no rust-ui consumer exists | — | — | — |
 | Rendering | `BoxStyle`/shadow/fill/border/text semantics | `platform::win32::render` Direct2D | style/state tests | composer captures |
-| Timers | scheduler deadlines | `platform::win32::window` + `SetTimer` trampoline | timer queue tests | idle/timeout evidence |
+| Timers | scheduler deadlines | ONE shared `TimerPool` armed synchronously by `TxSetTimer` (FALSE on failure), routed through `platform::win32::window` `SetTimer`; collision-free ids + generation fencing | timer alloc/pool tests | idle/timeout evidence |
 
 Deferred contracts are deferred *because no consumer exists* — the
 documented rule is "no abstraction without a consumer".
