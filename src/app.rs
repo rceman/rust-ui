@@ -85,7 +85,7 @@ where
 pub(crate) fn runtime_for<S, M, U, V>(
     app: App<S, M, U, V>,
     peer_factory: Box<
-        dyn Fn(bool, crate::style::TextStyle) -> crate::UiResult<Box<dyn crate::node::TextPeer>>,
+        dyn Fn(crate::node::PeerSpec) -> crate::UiResult<Box<dyn crate::node::TextPeer>>,
     >,
     theme: crate::theme::Theme,
     appearance: crate::theme::Appearance,

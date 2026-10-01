@@ -56,6 +56,10 @@ impl Arena {
     pub(crate) fn slot_mut(&mut self, slot: u32) -> Option<&mut Node> {
         self.slots.get_mut(slot as usize)?.as_mut()
     }
+    /// live-checked slot read — ancestors are stored by slot
+    pub(crate) fn slot(&self, slot: u32) -> Option<&Node> {
+        self.slots.get(slot as usize)?.as_ref()
+    }
 
     /// Take the node out after invalidation/teardown.
     pub(crate) fn free(&mut self, id: NodeId) {

@@ -135,8 +135,7 @@ where
     pub(crate) suppressed_selections: u64,
     /// an enqueue overflowed during commit — surfaced as QueueOverflow
     last_queue_error: bool,
-    peer_factory:
-        Option<Box<dyn Fn(bool, crate::style::TextStyle) -> crate::UiResult<Box<dyn TextPeer>>>>,
+    peer_factory: Option<Box<dyn Fn(crate::node::PeerSpec) -> crate::UiResult<Box<dyn TextPeer>>>>,
     /// chrome scheduler events produced between polls (policy flips)
     chrome_backlog: Vec<SchedEvent>,
     _m: std::marker::PhantomData<fn() -> M>,
@@ -153,9 +152,7 @@ where
         update: U,
         view: V,
         executor: Option<Arc<dyn Executor>>,
-        peer_factory: Box<
-            dyn Fn(bool, crate::style::TextStyle) -> crate::UiResult<Box<dyn TextPeer>>,
-        >,
+        peer_factory: Box<dyn Fn(crate::node::PeerSpec) -> crate::UiResult<Box<dyn TextPeer>>>,
         theme: Theme,
         appearance: Appearance,
         mailbox: Arc<Mailbox>,
@@ -531,13 +528,25 @@ where
             }
         );
         let mut peer: Option<Box<dyn TextPeer>> = None;
-        if let NodeData::Editor { patch, .. } = &data
+        if let NodeData::Editor {
+            patch,
+            read_only,
+            disabled,
+            ..
+        } = &data
             && let Some(pf) = &self.peer_factory
         {
-            // recipe defaults + the surgical patch -> resolved text style
+            // recipe defaults + the surgical patch -> resolved text style;
+            // behavior gates ride the spec so a mounted peer never starts
+            // writable when the node says otherwise
             let mut ts = crate::style::TextStyle::default();
             ts.patch(patch);
-            peer = Some(pf(multiline, ts)?);
+            peer = Some(pf(crate::node::PeerSpec {
+                multiline,
+                read_only: *read_only,
+                disabled: *disabled,
+                style: ts,
+            })?);
         }
 
         let id = self.arena.alloc(Node {
@@ -634,16 +643,29 @@ where
             let mut commit_err = None;
             match (&mut n.data, old_data) {
                 (
-                    NodeData::Editor { sync, patch, .. },
+                    NodeData::Editor {
+                        sync,
+                        patch,
+                        read_only,
+                        disabled,
+                        ..
+                    },
                     NodeData::Editor {
                         sync: retained_sync,
                         patch: old_patch,
+                        read_only: old_ro,
+                        disabled: old_dis,
                         ..
                     },
                 ) => {
                     *sync = retained_sync;
                     let patch_changed = *patch != old_patch;
                     if let Some(p) = n.peer.as_mut() {
+                        // effective editability = read_only || disabled —
+                        // the native service enforces it (EM_SETREADONLY)
+                        if *read_only != old_ro || *disabled != old_dis {
+                            p.set_read_only(*read_only || *disabled);
+                        }
                         if patch_changed {
                             let mut ts = crate::style::TextStyle::default();
                             ts.patch(patch);
@@ -1010,6 +1032,14 @@ where
     /// Composition ended: a queued proposal applies if its base survived,
     /// otherwise ONE conflict is emitted (now — never while marked input is
     /// active). All of the sync bookkeeping lives in
+    /// IME composition active on this node — the keyboard/submit layer
+    /// must not interpret keys while marked input is owned by the IME.
+    pub(crate) fn composition_active(&self, node: NodeId) -> bool {
+        self.arena
+            .get(node)
+            .is_some_and(|n| matches!(&n.data, NodeData::Editor { sync, .. } if sync.composing))
+    }
+
     /// `TextPeerSync::composition_end` — ONE implementation.
     pub(crate) fn composition_end(&mut self, node: NodeId) -> UiResult {
         enum After {

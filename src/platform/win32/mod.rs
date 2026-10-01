@@ -92,6 +92,9 @@ pub(crate) struct PeerCtx {
     next_id: AtomicU64,
     /// live theme colors for peer creation (updated on theme switch)
     pub colors: std::cell::RefCell<(Appearance, Theme)>,
+    /// aggregate peer-surface byte budget — every peer's bitmap surface
+    /// accounts into this; capped in `WindowlessPeer::draw`
+    pub byte_budget: Arc<AtomicU64>,
 }
 
 impl PeerCtx {
@@ -100,33 +103,33 @@ impl PeerCtx {
     /// a routing index of Weak handles, not a second owner.
     fn make_factory(
         self: &Rc<PeerCtx>,
-    ) -> impl Fn(bool, crate::style::TextStyle) -> UiResult<Box<dyn crate::node::TextPeer>> + 'static
-    {
+    ) -> impl Fn(crate::node::PeerSpec) -> UiResult<Box<dyn crate::node::TextPeer>> + 'static {
         let ctx = self.clone();
-        move |multiline, ts| {
+        move |spec| {
             let id = ctx.next_id.fetch_add(1, Ordering::SeqCst);
             let (appearance, theme) = ctx.colors.borrow().clone();
             let (fg, sel_bg, sel_fg) = palette(&theme, &appearance);
             // resolved text style -> the peer's CHARFORMAT inputs
-            let size_pt = match ts.size {
+            let size_pt = match spec.style.size {
                 crate::style::TextSize::Body => 14.0,
                 crate::style::TextSize::Exact(d) => d.0,
             };
             let cfg = PeerConfig {
-                multiline,
-                read_only: false,
+                multiline: spec.multiline,
+                // disabled peers mount read-only — inert until enabled
+                read_only: spec.read_only || spec.disabled,
                 face: "Segoe UI".into(),
                 size_twips: (size_pt * 20.0) as i32,
-                fg: if ts.foreground
+                fg: if spec.style.foreground
                     == crate::style::Color::Role(crate::theme::ColorRole::Foreground)
                 {
                     fg
                 } else {
-                    crate::style::resolve_color(ts.foreground, theme.dark)
+                    crate::style::resolve_color(spec.style.foreground, theme.dark)
                 },
                 sel_bg,
                 sel_fg,
-                bold: ts.weight == crate::style::TextWeight::Bold,
+                bold: spec.style.weight == crate::style::TextWeight::Bold,
             };
             let peer = WindowlessPeer::create(
                 id,
@@ -135,6 +138,7 @@ impl PeerCtx {
                 ctx.scale.get(),
                 &cfg,
                 ctx.sink.clone(),
+                ctx.byte_budget.clone(),
             )?;
             let handle = Rc::new(RefCell::new(peer));
             Ok(Box::new(PeerHandle {
@@ -201,6 +205,12 @@ impl crate::node::TextPeer for PeerHandle {
             .borrow_mut()
             .apply_format(fg, (pt * 20.0) as i32, bold);
     }
+    /// Read-only flips ride into the native service — ES_READONLY blocks
+    /// edits at the msftedit level, not just the input router. The runtime
+    /// passes the composed value (`read_only || disabled`).
+    fn set_read_only(&mut self, ro: bool) {
+        self.peer.borrow().set_read_only(ro);
+    }
     fn attach(&mut self, node: NodeId) {
         self.node_slot.set(node.slot);
         self.peer.borrow_mut().attach(node);
@@ -261,8 +271,12 @@ where
     pub mouse: Point,
     /// armed/deadline timers owned by the loop (distinct from peer timers)
     pub deadline_timer: Option<std::time::Instant>,
-    /// peer-requested native timers: win32 id -> (slot, richedit id)
-    pub native_timers: HashMap<usize, (u32, u32)>,
+    /// peer-requested native timers: win32 timer id -> (node, richedit id)
+    /// — the NodeId carries the generation so a stale fire can never reach
+    /// a replacement peer in the same slot
+    pub native_timers: HashMap<usize, (NodeId, u32)>,
+    /// next win32 timer id offset above NATIVE_TIMER_BASE — wraps at the
+    /// cap so the namespace stays disjoint from framework timers forever
     next_timer_id: usize,
     /// currently-shown tooltip node (overlay window managed by renderer)
     pub tooltip_for: Option<NodeId>,
@@ -278,11 +292,84 @@ where
     /// `turn()` is executing — native reentrancy (e.g. `SetFocus` inside
     /// `OnTxUIActivate`) must queue another pump instead of recursing
     in_turn: std::cell::Cell<bool>,
+    /// WndProc dispatch holds the backend — the trampoline checks this
+    /// THROUGH THE ROUTE POINTER before forming `&mut Backend`, so a
+    /// synchronous native callback can never create overlapping access
+    pub(crate) in_dispatch: std::cell::Cell<bool>,
     /// one coalesced `WM_PUMP` outstanding for a deferred turn
     pump_queued: std::cell::Cell<bool>,
     /// native messages deferred while their target peer was borrowed —
-    /// delivered at the top of the next `service_peer_events`
-    deferred_native: Vec<(NodeId, u32, usize, isize)>,
+    /// FIFO; delivered at the top of the next `service_peer_events`
+    deferred_native: std::collections::VecDeque<DeferredNative>,
+    /// interaction-state change (hot/pressed/focus) with no consumer
+    /// handler — chrome must still repaint; consumed by turn_body
+    state_paint_dirty: std::cell::Cell<bool>,
+}
+
+/// The deferred-native-delivery contract (private to this backend).
+///
+/// WHAT may defer: only `DeferredNative::Message` — a (node, msg, wparam,
+/// lparam) tuple whose parameters are PURE COPYABLE SCALARS for that
+/// message id (verified by `deferrable(msg)`): focus, char, key, pointer,
+/// IME, wheel, and peer timer messages. No message carrying a pointer, a
+/// borrowed lifetime, or a required synchronous return may ever enter
+/// this queue — such sends must execute synchronously or fail.
+///
+/// ORDER: strict FIFO. While the queue is non-empty EVERY subsequent
+/// delivery enqueues behind it — a live send may never overtake a queued
+/// one. The queue drains in full at the head of `service_peer_events`.
+///
+/// OVERFLOW: bounded at `EVENT_QUEUE_CAP`; a push past capacity returns
+/// `UiError::QueueOverflow` to the caller — nothing is silently dropped.
+///
+/// PROGRESS: enqueueing while no turn is active posts `WM_PUMP`, so a
+/// deferred message always reaches `service_peer_events` without relying
+/// on an unrelated later message.
+///
+/// FENCING: each entry carries the full `NodeId` (slot+generation); a
+/// drained entry whose slot now holds a different generation is dropped.
+///
+/// TEARDOWN: `shutdown` clears the queue — a closed backend drops pending
+/// deliveries deterministically.
+#[derive(Debug)]
+enum DeferredNative {
+    /// a whole WM_* triple — both parameters are scalars for this msg
+    Message {
+        node: NodeId,
+        msg: u32,
+        wparam: usize,
+        lparam: isize,
+    },
+}
+
+/// The set of messages whose wparam/lparam are plain scalars — the only
+/// ones permitted in the deferred queue.
+fn deferrable(msg: u32) -> bool {
+    matches!(
+        msg,
+        WM_SETFOCUS
+            | WM_KILLFOCUS
+            | WM_CHAR
+            | WM_SYSCHAR
+            | WM_KEYDOWN
+            | WM_KEYUP
+            | WM_SYSKEYDOWN
+            | WM_SYSKEYUP
+            | WM_MOUSEMOVE
+            | WM_LBUTTONDOWN
+            | WM_LBUTTONUP
+            | WM_LBUTTONDBLCLK
+            | WM_RBUTTONDOWN
+            | WM_RBUTTONUP
+            | WM_MBUTTONDOWN
+            | WM_MBUTTONUP
+            | WM_MOUSEWHEEL
+            | WM_IME_STARTCOMPOSITION
+            | WM_IME_ENDCOMPOSITION
+            | WM_IME_COMPOSITION
+            | WM_IME_NOTIFY
+            | WM_TIMER
+    )
 }
 
 impl<S, M, U, V> Backend<S, M, U, V>
@@ -360,6 +447,9 @@ where
         }
         // dirty classification -> layout / paint work
         let dirty = self.rt.drain_dirty();
+        // commit boundary: a removed/disabled focus or capture owner must
+        // be resolved BEFORE layout/paint use stale state
+        self.sanitize_focus();
         let mut needs_layout = !self.rects.is_empty() && self.order.is_empty();
         let mut needs_paint = !chrome.is_empty();
         for (id, d) in dirty {
@@ -376,6 +466,10 @@ where
         }
         if needs_layout || updated {
             self.relayout()?;
+            needs_paint = true;
+        }
+        // built-in chrome repaint is never dependent on consumer handlers
+        if self.state_paint_dirty.replace(false) {
             needs_paint = true;
         }
         if needs_paint {
@@ -406,24 +500,51 @@ where
         }
     }
 
-    /// Send a raw window message to a node's peer, deferring while the
-    /// peer's `RefCell` is held (msftedit calls `TxSetFocus` mid-`send`,
-    /// which re-enters `WM_SETFOCUS` synchronously — a second `borrow()`
-    /// would panic). Deferred messages deliver at the top of the next
-    /// `service_peer_events`, still generation-checked.
-    pub(crate) fn send_native(&mut self, id: NodeId, msg: u32, wparam: usize, lparam: isize) {
+    /// The ONE backend→peer native delivery funnel — see `DeferredNative`
+    /// for the contract. Returns the message LRESULT for the synchronous
+    /// path; a queued delivery returns 0 (deferred messages are
+    /// fire-and-forget by contract — senders needing a result must be on
+    /// the synchronous path).
+    ///
+    /// Errors: `QueueOverflow` when the deferred queue is full;
+    /// `UiError::Platform` when a non-deferrable message hits a borrowed
+    /// peer (contract violation — such messages may never sit in the
+    /// queue).
+    /// The ONE backend→peer native delivery funnel — see `DeferredNative`
+    /// for the contract. `Ok(Some(send))` = executed synchronously with the
+    /// real `TxSendMessage` outcome (HRESULT consumption + LRESULT);
+    /// `Ok(None)` = queued (deferred sends are fire-and-forget by contract
+    /// — callers needing a result are on the synchronous path and treat
+    /// `None` as "availability unknown").
+    ///
+    /// Errors: `QueueOverflow` when the deferred queue is full;
+    /// `UiError::Platform` when a non-deferrable message hits a borrowed
+    /// peer (contract violation — such messages may never sit in the
+    /// queue).
+    pub(crate) fn deliver_native(
+        &mut self,
+        id: NodeId,
+        msg: u32,
+        wparam: usize,
+        lparam: isize,
+    ) -> UiResult<Option<text::NativeSend>> {
+        // FIFO: a live delivery may never overtake a queued one — while
+        // anything is pending, enqueue behind it
+        if !self.deferred_native.is_empty() {
+            return self.enqueue_native(id, msg, wparam, lparam);
+        }
         // NOTE: no peer_for() — its generation filter borrows the cell and
         // would panic during a live borrow; the deferred delivery runs the
         // slot lookup then instead
-        let Some(peer) = self
+        let peer = self
             .peer_ctx
             .registry
             .lock()
             .unwrap()
             .get(&id.slot)
-            .and_then(|w| w.upgrade())
-        else {
-            return;
+            .and_then(|w| w.upgrade());
+        let Some(peer) = peer else {
+            return Ok(None); // fenced: dead slot — nothing to deliver to
         };
         match peer.try_borrow() {
             Ok(p) if p.node() == id => {
@@ -433,41 +554,92 @@ where
                 // until this send unwinds (restore, not clear — the send
                 // may itself run inside an outer turn)
                 let was = self.in_turn.replace(true);
-                p.send(msg, wparam, lparam);
+                let r = p.send(msg, wparam, lparam);
                 self.in_turn.set(was);
+                r.map(Some)
+                    .map_err(|e| UiError::Platform(format!("peer send msg={msg:#x}: {e}")))
             }
-            Ok(_) => {}
-            Err(_) => {
-                if self.deferred_native.len() < crate::event::EVENT_QUEUE_CAP {
-                    self.deferred_native.push((id, msg, wparam, lparam));
-                }
+            Ok(_) => Ok(None), // fenced: slot holds a different generation
+            Err(_) => self.enqueue_native(id, msg, wparam, lparam),
+        }
+    }
+
+    /// FIFO enqueue with progress + overflow semantics per the contract.
+    fn enqueue_native(
+        &mut self,
+        id: NodeId,
+        msg: u32,
+        wparam: usize,
+        lparam: isize,
+    ) -> UiResult<Option<text::NativeSend>> {
+        if !deferrable(msg) {
+            return Err(UiError::Platform(format!(
+                "native msg {msg:#x} is not deferrable (pointer or sync result)"
+            )));
+        }
+        if self.deferred_native.len() >= crate::event::EVENT_QUEUE_CAP {
+            return Err(UiError::QueueOverflow);
+        }
+        self.deferred_native.push_back(DeferredNative::Message {
+            node: id,
+            msg,
+            wparam,
+            lparam,
+        });
+        // guaranteed progress: outside a turn nothing else will reach
+        // service_peer_events — arm one pump (coalesced)
+        if !self.in_turn.get()
+            && !self.pump_queued.replace(true)
+            && !self.hwnd.0.is_null()
+            && !self.closed.load(Ordering::SeqCst)
+        {
+            unsafe {
+                let _ = PostMessageW(Some(self.hwnd), WM_PUMP, WPARAM(0), LPARAM(0));
             }
         }
+        Ok(None)
     }
 
     /// Raw window message to the focused peer (IME, focus, wheel routing).
     pub(crate) fn send_focused(&mut self, msg: u32, wparam: usize, lparam: isize) {
-        let Some(id) = self.focus else { return };
-        self.send_native(id, msg, wparam, lparam);
+        if let Some(id) = self.focus {
+            let _ = self.deliver_native(id, msg, wparam, lparam);
+        }
     }
 
     /// Drain every live peer's host-event queue: caret/capture/timer/change
     /// notifications msftedit posted while a call ran.
     pub(crate) fn service_peer_events(&mut self) -> UiResult {
-        // deferred focus/native sends first — the borrow that blocked them
-        // is unwound by the time a turn calls this
-        let pending: Vec<(NodeId, u32, usize, isize)> = std::mem::take(&mut self.deferred_native);
-        for (id, msg, wp, lp) in pending {
-            if let Some(peer) = self
+        // deferred native sends first — FIFO drain; the borrow that blocked
+        // them is unwound by the time a turn calls this. Sends can re-queue
+        // (a reentrant delivery while the peer is still borrowed), so the
+        // pass is bounded at the queue cap — anything still pending drains
+        // on the next service call.
+        let mut budget = crate::event::EVENT_QUEUE_CAP;
+        while budget > 0
+            && let Some(item) = self.deferred_native.pop_front()
+        {
+            budget -= 1;
+            let DeferredNative::Message {
+                node,
+                msg,
+                wparam,
+                lparam,
+            } = item;
+            let peer = self
                 .peer_ctx
                 .registry
                 .lock()
                 .unwrap()
-                .get(&id.slot)
+                .get(&node.slot)
                 .and_then(|w| w.upgrade())
-                .filter(|p| p.borrow().node() == id)
-            {
-                peer.borrow().send(msg, wp, lp);
+                .filter(|p| p.borrow().node() == node);
+            if let Some(peer) = peer {
+                // generation-checked; the send's host callbacks may defer
+                // further messages — they enqueue behind, drained next pass
+                let was = self.in_turn.replace(true);
+                let _ = peer.borrow().send(msg, wparam, lparam);
+                self.in_turn.set(was);
             }
         }
         let slots: Vec<u32> = self
@@ -507,10 +679,12 @@ where
                         self.native_selection(slot, &peer)?;
                     }
                     HostEvent::SetTimer(id, ms) => {
-                        self.arm_native_timer(slot, id, ms);
+                        // generation-bearing owner — a stale fire can never
+                        // reach a slot's replacement peer
+                        self.arm_native_timer(peer.borrow().node(), id, ms);
                     }
                     HostEvent::KillTimer(id) => {
-                        self.disarm_native_timer(slot, id);
+                        self.disarm_native_timer(peer.borrow().node(), id);
                     }
                     HostEvent::Capture(on) => {
                         if on {
@@ -536,6 +710,9 @@ where
                 }
             }
         }
+        // unmount cleanup — a peer that released mid-pass leaves timers
+        // behind; prune here so no native timer outlives its owner
+        self.prune_native_timers();
         Ok(())
     }
 
@@ -567,16 +744,23 @@ where
     /// A committed native edit: read the peer's committed text, mint a
     /// checked revision, emit the semantic `Edit` event. An IME composition
     /// in progress forwards the FINAL commit before CompositionEnd — the
-    /// transient preedit never reaches `on_edit`.
+    /// transient preedit never reaches `on_edit`. The peer borrow NEVER
+    /// spans an `rt.*` call — a consumer handler may touch its own
+    /// `TextValue`/peer handle during the event.
     fn native_commit(&mut self, slot: u32, peer: &Rc<RefCell<WindowlessPeer>>) -> UiResult {
-        let p = peer.borrow();
-        let text = p.text()?;
-        let (anchor, focus) = p.selection_utf16().unwrap_or((0, 0));
-        let _ = (anchor, focus);
-        let node = p.node();
-        let base = p.peer_rev();
+        let (text, anchor, focus, node, base, binding) = {
+            let p = peer.borrow();
+            (
+                p.text()?,
+                p.selection_utf16().unwrap_or((0, 0)).0,
+                p.selection_utf16().unwrap_or((0, 0)).1,
+                p.node(),
+                p.peer_rev(),
+                p.binding(),
+            )
+        };
         let result = crate::text::TextRevision::mint();
-        if let Some(binding) = p.binding() {
+        if let Some(binding) = binding {
             // UTF-8 positions of the selection at THIS commit — indices stay
             // consistent because we never normalize CR/LF
             let sel = TextSelection {
@@ -595,22 +779,24 @@ where
                 },
             )?;
             self.rt.selection_event(node, sel)?;
-            p.record_commit(result);
+            peer.borrow().record_commit(result);
         }
         let _ = slot;
         Ok(())
     }
 
     fn native_selection(&mut self, _slot: u32, peer: &Rc<RefCell<WindowlessPeer>>) -> UiResult {
-        let p = peer.borrow();
-        let text = p.text()?;
-        let (anchor, focus) = p.selection_utf16()?;
+        let (text, anchor, focus, rev, node) = {
+            let p = peer.borrow();
+            let (a, f) = p.selection_utf16()?;
+            (p.text()?, a, f, p.peer_rev(), p.node())
+        };
         let sel = TextSelection {
-            revision: p.peer_rev(),
+            revision: rev,
             anchor: crate::text::utf16_index_to_utf8(&text, anchor).unwrap_or(text.len()),
             focus: crate::text::utf16_index_to_utf8(&text, focus).unwrap_or(text.len()),
         };
-        self.rt.selection_event(p.node(), sel)?;
+        self.rt.selection_event(node, sel)?;
         Ok(())
     }
 
@@ -625,7 +811,14 @@ where
         if !created {
             return;
         }
-        let Some(r) = self.rects.get(&node).copied() else {
+        // the caret reports peer-local DIP — same content transform as
+        // draw/pointer so the caret lands where the glyph is
+        let Some(r) = self
+            .rects
+            .get(&node)
+            .copied()
+            .map(layout::editor_content_rect)
+        else {
             return;
         };
         let s = self.peer_ctx.scale.get();
@@ -648,23 +841,42 @@ where
     }
 
     // ----- native timers ----------------------------------------------------
+    //
+    // One ID namespace: framework timers are 1 (deadline); peer timers live
+    // at NATIVE_TIMER_BASE + n. The map keys on the WIN32 id and carries the
+    // full NodeId (slot+generation), so a stale fire or a reused slot can
+    // never deliver into a replacement peer. A repeated (node, richedit-id)
+    // request reschedules the SAME win32 id rather than allocating a new
+    // one; disarm kills every win32 id for that (node, nid).
 
-    fn arm_native_timer(&mut self, slot: u32, id: u32, ms: u32) {
-        let tid = {
-            self.next_timer_id += 1;
-            self.next_timer_id
-        };
+    fn arm_native_timer(&mut self, node: NodeId, id: u32, ms: u32) {
+        // repeat request — reschedule the existing win32 id
+        if let Some((&tid, _)) = self
+            .native_timers
+            .iter()
+            .find(|(_, (n, i))| *n == node && *i == id)
+        {
+            unsafe {
+                SetTimer(Some(self.hwnd), tid, ms, None);
+            }
+            return;
+        }
+        if self.native_timers.len() >= crate::event::EVENT_QUEUE_CAP {
+            return; // bounded — a flooded timer table is a defect, not growth
+        }
+        self.next_timer_id += 1;
+        let tid = window::native_timer_id(self.next_timer_id);
         unsafe {
             SetTimer(Some(self.hwnd), tid, ms, None);
         }
-        self.native_timers.insert(tid, (slot, id));
+        self.native_timers.insert(tid, (node, id));
     }
 
-    fn disarm_native_timer(&mut self, slot: u32, id: u32) {
+    fn disarm_native_timer(&mut self, node: NodeId, id: u32) {
         let dead: Vec<usize> = self
             .native_timers
             .iter()
-            .filter(|(_, (s, i))| *s == slot && *i == id)
+            .filter(|(_, (n, i))| *n == node && *i == id)
             .map(|(t, _)| *t)
             .collect::<Vec<usize>>();
         for t in dead {
@@ -675,11 +887,37 @@ where
         }
     }
 
-    /// `WM_TIMER` on a peer-owned id: forward into the peer, drain the host
-    /// events the callback produced.
+    /// Kill every peer timer whose node no longer owns a live peer —
+    /// unmount/close cleanup driven by the registry, not by the peer (the
+    /// peer is already gone by the time anyone notices).
+    fn prune_native_timers(&mut self) {
+        let dead: Vec<usize> = self
+            .native_timers
+            .iter()
+            .filter(|(_, (n, _))| {
+                self.peer_ctx
+                    .registry
+                    .lock()
+                    .unwrap()
+                    .get(&n.slot)
+                    .and_then(|w| w.upgrade())
+                    .is_none_or(|p| p.borrow().node() != *n)
+            })
+            .map(|(t, _)| *t)
+            .collect();
+        for t in dead {
+            unsafe {
+                let _ = KillTimer(Some(self.hwnd), t);
+            }
+            self.native_timers.remove(&t);
+        }
+    }
+
+    /// `WM_TIMER` on a peer-owned id: forward into the peer through the
+    /// delivery contract, drain the host events the callback produced.
     pub(crate) fn native_timer_fire(&mut self, tid: usize) -> UiResult {
-        let Some((slot, nid)) = self.native_timers.get(&tid).copied() else {
-            return Ok(());
+        let Some((node, nid)) = self.native_timers.get(&tid).copied() else {
+            return Ok(()); // stale timer id — reject
         };
         // one-shot per richedit request — kill before processing, rearm
         // inside if it asks again
@@ -690,16 +928,7 @@ where
         self.counters
             .native_timer_fires
             .fetch_add(1, Ordering::Relaxed);
-        if let Some(peer) = self
-            .peer_ctx
-            .registry
-            .lock()
-            .unwrap()
-            .get(&slot)
-            .and_then(|w| w.upgrade())
-        {
-            peer.borrow().send(WM_TIMER, nid as usize, 0);
-        }
+        let _ = self.deliver_native(node, WM_TIMER, nid as usize, 0);
         self.service_peer_events()?;
         Ok(())
     }
@@ -751,7 +980,13 @@ where
     // ----- layout / paint ---------------------------------------------------
 
     /// Relayout the whole tree — rect cache over LIVE NodeIds only.
+    /// HWND-gated: a synchronous WM_SIZE inside CreateWindowExW arrives
+    /// before the peer ctx has a window — layout defers to the first real
+    /// turn rather than failing on a null HWND.
     pub(crate) fn relayout(&mut self) -> UiResult {
+        if self.peer_ctx.hwnd.get().is_invalid() {
+            return Ok(());
+        }
         // state branches can consume content insets — expose the live
         // interaction state so layout resolves the same style the paint does
         self.peer_ctx.hot.set(self.hot);
@@ -807,13 +1042,34 @@ where
 
     // ----- input routing -----------------------------------------------------
 
-    /// Hit-test a DIP point: topmost visible interactive node wins.
+    /// A node nested inside a semantic `Action` is decorative content —
+    /// never the hit target; the enclosing Action owns press/focus.
+    /// Parents are slot-indexed — walk slots, generation is irrelevant to
+    /// ancestry (a dead parent can't have live children).
+    fn inside_action(&self, id: NodeId) -> bool {
+        let mut cur = self.rt.arena.get(id).and_then(|n| n.parent);
+        while let Some(slot) = cur {
+            match self.rt.arena.slot(slot) {
+                Some(pn) => {
+                    if matches!(pn.data, NodeData::Action { .. }) {
+                        return true;
+                    }
+                    cur = pn.parent;
+                }
+                None => return false,
+            }
+        }
+        false
+    }
+
+    /// Hit-test a DIP point: topmost visible interactive node wins; nodes
+    /// inside an Action defer to it (Action owns the semantic target).
     pub(crate) fn hit_test(&self, p: Point) -> Option<NodeId> {
         for &id in self.order.iter().rev() {
             let Some(n) = self.rt.arena.get(id) else {
                 continue;
             };
-            if n.visibility != Visibility::Visible {
+            if n.visibility != Visibility::Visible || self.inside_action(id) {
                 continue;
             }
             let Some(r) = self.rects.get(&id) else {
@@ -838,13 +1094,15 @@ where
         None
     }
 
-    /// Route a pointer event — editors get the raw Win32 message; semantic
-    /// nodes get `NodeEvent` phases.
+    /// Route a pointer event — editors get the raw Win32 message (the
+    /// caller's wparam carries MK_* modifier/button flags, preserved
+    /// end-to-end); semantic nodes get `NodeEvent` phases.
     pub(crate) fn pointer(
         &mut self,
         phase: crate::node::PointerPhase,
         pos: Point,
         button: Option<PointerButton>,
+        wparam: usize,
     ) -> UiResult {
         let hit = if self.native_capture.is_some() {
             self.native_capture
@@ -892,23 +1150,24 @@ where
         if let Some(id) = hit {
             // native peer? forward the raw message + focus on down
             if self.peer_for(id).is_some() {
-                let r = self.rects.get(&id).copied().unwrap_or_default();
+                // peer-local = content-local — THE shared transform
+                let r =
+                    layout::editor_content_rect(self.rects.get(&id).copied().unwrap_or_default());
                 let local = Point {
                     x: pos.x - r.x,
                     y: pos.y - r.y,
                 };
-                let (msg, wp) = match (phase, button) {
+                let msg = match (phase, button) {
                     (crate::node::PointerPhase::Down, Some(PointerButton::Primary)) => {
                         self.set_focus(Some(id));
-                        (WM_LBUTTONDOWN, 0usize)
+                        WM_LBUTTONDOWN
                     }
-                    (crate::node::PointerPhase::Up, Some(PointerButton::Primary)) => {
-                        (WM_LBUTTONUP, 0usize)
-                    }
-                    _ => (WM_MOUSEMOVE, 0usize),
+                    (crate::node::PointerPhase::Up, Some(PointerButton::Primary)) => WM_LBUTTONUP,
+                    _ => WM_MOUSEMOVE,
                 };
                 let lp = ((local.y as isize) << 16) | (local.x as isize & 0xffff);
-                self.send_native(id, msg, wp, lp);
+                // wparam is the caller's MK_* flags — preserved metadata
+                let _ = self.deliver_native(id, msg, wparam, lp);
                 self.service_peer_events()?;
                 return self.turn();
             }
@@ -919,6 +1178,7 @@ where
             let ev = match phase {
                 crate::node::PointerPhase::Down => {
                     self.pressed = Some(id);
+                    self.state_paint_dirty.set(true);
                     NodeEvent::Pointer(
                         PointerEvent {
                             position: pos,
@@ -931,6 +1191,9 @@ where
                 crate::node::PointerPhase::Up => {
                     let was_pressed = self.pressed == Some(id);
                     self.pressed = None;
+                    if was_pressed {
+                        self.state_paint_dirty.set(true);
+                    }
                     // press = down+up on the same node
                     if was_pressed {
                         let _ = self.push_input(id, NodeEvent::Press);
@@ -978,10 +1241,13 @@ where
             .filter(|p| p.borrow().node() == node)
     }
 
-    /// Keyboard: focused editor gets raw messages; everything else is a
-    /// semantic `NodeEvent::Key` (buttons submit on Space/Enter).
-    pub(crate) fn key(&mut self, key: u32) -> UiResult {
-        let down = true;
+    /// Keyboard: focused editor gets the raw message FIRST — native
+    /// handling decides whether the key remains available for framework
+    /// interpretation (a key consumed by msftedit — e.g. Enter confirming
+    /// an IME composition — never produces Submit). Everything else is a
+    /// semantic `NodeEvent::Key`/`Press`.
+    pub(crate) fn key_msg(&mut self, msg: u32, vk: usize, lparam: isize) -> UiResult {
+        let key = vk as u32;
         let ev = match key {
             k if k == VK_TAB.0 as u32 => Key::Tab,
             k if k == VK_RETURN.0 as u32 => Key::Enter,
@@ -996,24 +1262,40 @@ where
             other => Key::Other(other),
         };
         // Tab traversal — focus moves through eligible nodes
-        if key == VK_TAB.0 as u32 && down {
+        if msg == WM_KEYDOWN && key == VK_TAB.0 as u32 {
             self.focus_step(unsafe { GetKeyState(VK_SHIFT.0 as i32) } < 0);
             return self.turn();
         }
         // focused editor gets the raw key (native editing, IME)
         if let Some(focus) = self.focus
             && self.peer_for(focus).is_some()
-            && down
         {
-            let submit = self.check_submit(focus, ev);
-            self.send_native(focus, WM_KEYDOWN, key as usize, 0);
+            // send first — the consumed signal decides availability; a
+            // deferred delivery reports no result, and an active
+            // composition owns the keyboard either way
+            let delivered = self.deliver_native(focus, msg, vk, lparam)?;
             self.service_peer_events()?;
-            if let Some(sub) = submit {
-                self.push_input(focus, sub)?;
+            let consumed = match delivered {
+                Some(s) => s.consumed(),
+                // no synchronous result — treat as consumed (never submit
+                // on an unknown; the queued key still reaches the peer)
+                None => true,
+            };
+            if msg == WM_KEYDOWN && !self.rt.composition_active(focus) {
+                // unconsumed → policy decides; consumed → only the
+                // documented override (multiline plain-Enter) submits
+                let sub = if !consumed {
+                    self.check_submit(focus, ev)
+                } else {
+                    self.check_submit_override(focus, ev)
+                };
+                if let Some(sub) = sub {
+                    self.push_input(focus, sub)?;
+                }
             }
             return self.turn();
         }
-        if !down {
+        if msg != WM_KEYDOWN {
             return Ok(());
         }
         // semantic focus: Space/Enter on a button is Press
@@ -1073,6 +1355,29 @@ where
         }
     }
 
+    /// The consumed-key override: for `multiline + SubmitPolicy::Enter`,
+    /// plain Enter both inserts a newline (consumed by msftedit) AND
+    /// submits — the documented semantic. Every other consumed key is the
+    /// peer's alone.
+    fn check_submit_override(&self, node: NodeId, key: Key) -> Option<NodeEvent> {
+        if key != Key::Enter {
+            return None;
+        }
+        let n = self.rt.arena.get(node)?;
+        if let NodeData::Editor {
+            submit: SubmitPolicy::Enter,
+            multiline: true,
+            ..
+        } = &n.data
+        {
+            let shift = unsafe {
+                windows::Win32::UI::Input::KeyboardAndMouse::GetKeyState(VK_SHIFT.0 as i32)
+            } < 0;
+            return (!shift).then_some(NodeEvent::Submit);
+        }
+        None
+    }
+
     /// Focus next/previous eligible node (Tab/Shift-Tab traversal).
     pub(crate) fn focus_step(&mut self, back: bool) {
         let eligible: Vec<NodeId> = self
@@ -1120,11 +1425,12 @@ where
         if self.focus == node {
             return;
         }
+        self.state_paint_dirty.set(true);
         if let Some(old) = self.focus {
             if self.rt.arena.is_live(old) {
                 let _ = self.push_input(old, NodeEvent::Focus(false));
             }
-            self.send_native(old, WM_KILLFOCUS, 0, 0);
+            self.deliver_native(old, WM_KILLFOCUS, 0, 0);
         }
         self.focus = node;
         if let Some(u) = &self.uia {
@@ -1132,7 +1438,7 @@ where
         }
         if let Some(id) = node {
             let _ = self.push_input(id, NodeEvent::Focus(true));
-            self.send_native(id, WM_SETFOCUS, 0, 0);
+            self.deliver_native(id, WM_SETFOCUS, 0, 0);
         }
     }
 
@@ -1162,6 +1468,7 @@ where
                 self.rt.sched_unarm_tooltip(old);
             }
             self.hot = hit;
+            self.state_paint_dirty.set(true);
             if let Some(id) = hit {
                 if self.peer_for(id).is_none() {
                     let _ = self.push_input(
@@ -1182,12 +1489,13 @@ where
             }
         }
         // hovered editor receives the raw move (hover states, drag select)
+        // — peer-local = content-local via the shared transform
         if let Some(id) = hit
-            && let Some(peer) = self.peer_for(id)
+            && self.peer_for(id).is_some()
         {
-            let r = self.rects.get(&id).copied().unwrap_or_default();
+            let r = layout::editor_content_rect(self.rects.get(&id).copied().unwrap_or_default());
             let lp = (((pos.y - r.y) as isize) << 16) | ((pos.x - r.x) as isize & 0xffff);
-            peer.borrow().send(WM_MOUSEMOVE, 0, lp);
+            let _ = self.deliver_native(id, WM_MOUSEMOVE, 0, lp);
             self.service_peer_events()?;
         }
         self.turn()
@@ -1337,10 +1645,17 @@ where
     }
 
     /// UIA press/focus post landed — the generation check happens HERE so a
-    /// stale external press can't hit a newer peer.
+    /// stale external press can't hit a newer peer, and eligibility is the
+    /// SAME contract as pointer input: a disabled node cannot be focused
+    /// or invoked through UIA either.
     pub(crate) fn uia_action(&mut self, slot: u32, generation: u64, focus: bool) -> UiResult {
         let id = NodeId { slot, generation };
-        if !self.rt.arena.is_live(id) {
+        let eligible = self
+            .rt
+            .arena
+            .get(id)
+            .is_some_and(|n| n.interactive() && n.visibility == Visibility::Visible);
+        if !eligible {
             return Ok(());
         }
         if focus {
@@ -1381,10 +1696,12 @@ where
     pub(crate) fn focus_peer(&self) -> Option<Rc<RefCell<WindowlessPeer>>> {
         self.focus.and_then(|id| self.peer_for(id))
     }
-    /// WM_CHAR — focused peer sees the raw message (IME/text semantics)
-    pub(crate) fn char(&mut self, _ch: u32) -> UiResult {
-        if self.focus.is_some() {
-            self.send_focused(WM_CHAR, _ch as usize, 0);
+    /// WM_CHAR/WM_SYSCHAR — the focused peer sees the raw message with its
+    /// real lparam (repeat count, scan code, alt flag are part of the
+    /// native text-input contract)
+    pub(crate) fn char_msg(&mut self, msg: u32, wparam: usize, lparam: isize) -> UiResult {
+        if let Some(id) = self.focus {
+            let _ = self.deliver_native(id, msg, wparam, lparam);
             self.service_peer_events()?;
         }
         self.turn()
@@ -1423,9 +1740,27 @@ where
     }
 
     /// Backend teardown — UIA disconnects BEFORE peers/surfaces/model die.
+    /// Deterministic: pending deferred deliveries drop, every native timer
+    /// dies with the window, capture/caret release.
     pub(crate) fn shutdown(&mut self) {
         if let Some(u) = self.uia.take() {
             u.close();
+        }
+        self.deferred_native.clear();
+        for tid in self.native_timers.keys().copied().collect::<Vec<_>>() {
+            unsafe {
+                let _ = KillTimer(Some(self.hwnd), tid);
+            }
+        }
+        self.native_timers.clear();
+        unsafe {
+            let _ = KillTimer(Some(self.hwnd), window::DEADLINE_TIMER);
+        }
+        if self.native_capture.is_some() {
+            unsafe {
+                let _ = windows::Win32::UI::Input::KeyboardAndMouse::ReleaseCapture();
+            }
+            self.native_capture = None;
         }
         self.renderer.borrow_mut().hide_tooltip();
         unsafe {
@@ -1434,22 +1769,55 @@ where
         self.rt.shutdown();
     }
 
-    /// After a commit/geometry change, validate the focused node — if it's
-    /// gone/hidden/disabled, focus moves to the next eligible or the root.
+    /// Take the recorded fatal error — the message loop consumes it.
+    pub(crate) fn take_fatal(&mut self) -> Option<crate::UiError> {
+        self.fatal.take()
+    }
+
+    /// Commit/update boundary: a removed/disabled/hidden focus or capture
+    /// owner is resolved BEFORE layout/paint see it. The native side
+    /// follows — blur message, capture release, caret destroyed.
     pub(crate) fn sanitize_focus(&mut self) {
-        let valid = self.focus.is_some_and(|f| {
+        let ok = |f: NodeId| {
             self.rt
                 .arena
                 .get(f)
                 .is_some_and(|n| n.interactive() && n.visibility == Visibility::Visible)
-        });
+        };
+        // capture release: a captured node that died or went inert lets go
+        if let Some(cap) = self.native_capture
+            && !ok(cap)
+        {
+            unsafe {
+                let _ = windows::Win32::UI::Input::KeyboardAndMouse::ReleaseCapture();
+            }
+            self.native_capture = None;
+        }
+        if let Some(pr) = self.pressed
+            && !ok(pr)
+        {
+            self.pressed = None;
+        }
+        if let Some(h) = self.hot
+            && !ok(h)
+        {
+            self.hot = None;
+        }
+        let valid = self.focus.is_some_and(|f| ok(f));
         if !valid {
-            let old = self.focus;
-            self.focus = None;
-            if let Some(id) = old
-                && self.rt.arena.is_live(id)
-            {
-                let _ = self.push_input(id, NodeEvent::Focus(false));
+            if let Some(id) = self.focus.take() {
+                // blur the native peer even when the node is dead — its
+                // peer may still be mid-teardown
+                let _ = self.deliver_native(id, WM_KILLFOCUS, 0, 0);
+                if self.rt.arena.is_live(id) {
+                    let _ = self.push_input(id, NodeEvent::Focus(false));
+                }
+            }
+            if let Some(u) = &self.uia {
+                u.set_focus(None);
+            }
+            unsafe {
+                let _ = DestroyCaret();
             }
             self.focus_step(false);
         }
@@ -1515,6 +1883,7 @@ where
         registry: Arc::new(Mutex::new(HashMap::new())),
         next_id: AtomicU64::new(1),
         colors: std::cell::RefCell::new((appearance, Theme::dark())),
+        byte_budget: Arc::new(AtomicU64::new(0)),
     });
     let factory_ctx = peer_ctx.clone();
     let factory = factory_ctx.make_factory();
@@ -1559,15 +1928,23 @@ where
         last_appearance: appearance,
         fatal: None,
         in_turn: std::cell::Cell::new(false),
+        in_dispatch: std::cell::Cell::new(false),
         pump_queued: std::cell::Cell::new(false),
-        deferred_native: Vec::new(),
+        deferred_native: std::collections::VecDeque::new(),
+        state_paint_dirty: std::cell::Cell::new(false),
     });
     backend.rt.theme = theme;
 
     // the window carries a stable pointer to the route object — its lifetime
     // is the loop's lifetime; WM_NCDESTROY clears it before `backend` drops
     let route = backend.as_mut() as *mut Backend<S, M, U, V>;
-    let hwnd = window::create(&title, route)?;
+    let hwnd = match window::create(&title, route) {
+        Ok(h) => h,
+        Err(e) => {
+            // window died before it could hold the route — nothing to detach
+            return Err(e);
+        }
+    };
     backend.hwnd = hwnd;
     backend.peer_ctx.hwnd.set(hwnd);
     // peers that mounted inside CreateWindowExW latched an invalid hwnd —
@@ -1603,9 +1980,27 @@ where
         }
     }));
 
+    /// Every failure path after window creation destroys the HWND first —
+    /// WM_NCDESTROY detaches the route pointer so the live window can never
+    /// call into a dropped Backend.
+    fn bail<S, M, U, V>(backend: &mut Backend<S, M, U, V>, e: crate::UiError) -> UiResult
+    where
+        M: 'static,
+        U: Fn(&mut S, M, &mut UpdateCtx<'_, M>),
+        V: Fn(&S, &mut crate::Ui<'_, '_, M>),
+    {
+        if !backend.hwnd.0.is_null() {
+            unsafe {
+                // WM_NCDESTROY inside this call runs shutdown + detaches
+                // the route pointer
+                let _ = DestroyWindow(backend.hwnd);
+            }
+        }
+        Err(e)
+    }
+
     if let Err(e) = backend.turn() {
-        eprintln!("[turn-err] {e:?}");
-        return Err(e);
+        return bail(&mut backend, e);
     } // initial view/layout/paint
 
     // blocking GetMessage loop — exits when WM_QUIT lands
@@ -1614,6 +2009,11 @@ where
         while GetMessageW(&mut msg, None, 0, 0).as_bool() {
             let _ = TranslateMessage(&msg);
             DispatchMessageW(&msg);
+            // a WndProc-level failure is recorded, not dropped — the next
+            // safe point surfaces it and tears the window down
+            if let Some(e) = backend.take_fatal() {
+                return bail(&mut backend, e);
+            }
         }
     }
     Ok(())

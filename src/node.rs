@@ -28,6 +28,17 @@ pub(crate) const KIND_SCOPE: u8 = 11;
 pub(crate) const KIND_BOX: u8 = 12;
 pub(crate) const KIND_ACTION: u8 = 13;
 
+/// Everything the platform needs to build one native editor peer —
+/// behavior gates are part of the spec so a mounted editor never defaults
+/// to writable when the node is read-only/disabled.
+#[derive(Clone, Debug)]
+pub struct PeerSpec {
+    pub multiline: bool,
+    pub read_only: bool,
+    pub disabled: bool,
+    pub style: crate::style::TextStyle,
+}
+
 /// Backend surface the retained core talks to. Windowless rich-text peers
 /// implement this; tests drive `FakePeer`s.
 pub(crate) trait TextPeer {
@@ -56,6 +67,11 @@ pub(crate) trait TextPeer {
     /// full style and re-applies the peer's char format (fg/size/weight).
     /// Default no-op — core tests use peers that don't style.
     fn apply_text_style(&mut self, _style: &crate::style::TextStyle) {}
+    /// The node's effective editability changed — push it into native
+    /// behavior (EM_SETREADONLY gates edits inside msftedit, not just in
+    /// the input router). The runtime passes `read_only || disabled`.
+    /// Default no-op — core tests use peers that don't gate.
+    fn set_read_only(&mut self, _ro: bool) {}
     /// Teardown — called exactly once per peer.
     fn release(&mut self);
     /// bound after the arena assigns the NodeId — peers tag their native

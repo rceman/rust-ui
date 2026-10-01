@@ -204,6 +204,10 @@ pub(crate) struct Renderer {
     target: Option<ID2D1HwndRenderTarget>,
     hwnd: HWND,
     dpi: f32,
+    /// bumped every time the frame target is (re)created or its DPI
+    /// changes — peer-compatible surfaces key on this so device loss or a
+    /// DPI move deterministically invalidates every cached bitmap
+    pub(crate) target_gen: std::cell::Cell<u64>,
     tip: RefCell<Option<Tip>>,
     /// tooltip fade clock — 150ms chrome fade (chrome only, never text)
     tip_fade_start: RefCell<Option<std::time::Instant>>,
@@ -220,16 +224,24 @@ impl Renderer {
             target: None,
             hwnd: HWND::default(),
             dpi: 96.0,
+            target_gen: std::cell::Cell::new(0),
             tip: RefCell::new(None),
             tip_fade_start: RefCell::new(None),
         })
     }
 
     pub(crate) fn set_dpi(&mut self, dpi: f32) {
+        if (self.dpi - dpi).abs() < f32::EPSILON {
+            return;
+        }
         self.dpi = dpi;
         if let Some(t) = &self.target {
             unsafe { t.SetDpi(dpi, dpi) };
         }
+        // peer surfaces rasterize at target DPI — a scale change means
+        // every cached bitmap is stale; the generation bump forces
+        // re-rasterization on next paint
+        self.target_gen.set(self.target_gen.get() + 1);
     }
 
     pub(crate) fn resize(&mut self) {
@@ -282,6 +294,9 @@ impl Renderer {
                 .CreateHwndRenderTarget(&props, &hp)
                 .map_err(|e| UiError::Platform(format!("CreateHwndRenderTarget: {e}")))?;
             self.target = Some(t);
+            // device/target recreation invalidates every peer surface —
+            // compatible bitmaps die with their parent target
+            self.target_gen.set(self.target_gen.get() + 1);
             Ok(self.target.as_ref().unwrap())
         }
     }
@@ -322,7 +337,13 @@ impl Renderer {
         // resolved theme darkness — the app-selected mode, not raw OS state
         let dark = be.rt.theme.dark;
         let dpi = self.dpi;
-        let target = self.ensure_target()?;
+        // COM add-ref as the interface we paint through — ends the &mut
+        // self borrow so peer draws can read renderer state
+        let target: ID2D1RenderTarget = self
+            .ensure_target()?
+            .cast()
+            .map_err(|e| UiError::Platform(format!("target cast: {e}")))?;
+        let tgen = self.target_gen.get();
         unsafe {
             target.SetDpi(dpi, dpi);
         }
@@ -421,7 +442,7 @@ impl Renderer {
                         bottom: r.y + r.h,
                     };
                     unsafe {
-                        paint_box(target, &br, bs, dark)?;
+                        paint_box(&target, &br, bs, dark)?;
                         let wide: Vec<u16> = text.as_ref().encode_utf16().collect();
                         let fmt = fmt_for(&vs.text_style, 0)?;
                         let lay = dwrite()?.factory.CreateTextLayout(
@@ -477,18 +498,21 @@ impl Renderer {
                         && clip.bottom > clip.top
                         && let Some(peer) = be.peer_for(id)
                     {
-                        // the bitmap is sized/positioned at the CONTENT
-                        // rect — chrome insets (6 horiz / 5 vert DIP) live
-                        // between the pill border and the text
+                        // `editor_content_rect` is THE pill→content
+                        // transform — shared with layout/pointer/caret.
+                        let c = super::layout::editor_content_rect(r);
+                        let dark_c = role_color(crate::theme::ColorRole::Background, dark);
                         peer.borrow().draw(
-                            target,
-                            (r.x + 6.0, r.y + 5.0, r.x + r.w - 6.0, r.y + r.h - 5.0),
+                            &target,
+                            (c.x, c.y, c.x + c.w, c.y + c.h),
+                            tgen,
+                            [dark_c.r, dark_c.g, dark_c.b, 1.0],
                         )?;
                     }
                 }
                 NodeData::Custom { render, .. } => {
                     let mut canvas = D2dCanvas {
-                        target,
+                        target: &target,
                         dark,
                         geo_stack: Vec::new(),
                         path_geos: Vec::new(),
@@ -509,7 +533,7 @@ impl Renderer {
                     // box_ = authored full style
                     if let Some(bs) = props.resolved_box(*kind) {
                         unsafe {
-                            paint_box(target, &clip, &bs, dark)?;
+                            paint_box(&target, &clip, &bs, dark)?;
                         }
                     }
                 }
@@ -523,7 +547,7 @@ impl Renderer {
                         be.focus == Some(id),
                     );
                     unsafe {
-                        paint_box(target, &clip, &bs, dark)?;
+                        paint_box(&target, &clip, &bs, dark)?;
                         // recipe focus ring — real Focus role outside the box
                         if be.focus == Some(id) && !*disabled {
                             let ring = target.CreateSolidColorBrush(
@@ -683,7 +707,7 @@ unsafe extern "system" fn tip_wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPAR
 // ---------------------------------------------------------------------------
 
 struct D2dCanvas<'a> {
-    target: &'a ID2D1HwndRenderTarget,
+    target: &'a ID2D1RenderTarget,
     dark: bool,
     /// built geometries kept alive for the paint call's borrow scope
     geo_stack: Vec<ID2D1PathGeometry>,

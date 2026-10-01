@@ -22,6 +22,7 @@ use std::cell::{Cell, RefCell};
 use std::collections::BTreeSet;
 use std::ffi::c_void;
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 
 use windows::Win32::Foundation::*;
 use windows::Win32::Graphics::Direct2D::ID2D1RenderTarget;
@@ -37,6 +38,8 @@ use windows::core::*;
 use crate::text::{BindingToken, TextRevision};
 use crate::{NodeId, UiError, UiResult};
 
+/// missing from the windows bindings
+const EM_SETREADONLY: u32 = 0x40CF; // WM_USER + 31
 /// RichEdit notifications we route (missing from bindings).
 const EN_CHANGE_CODE: u32 = 0x0300;
 const EN_REQUESTRESIZE_CODE: u32 = 0x0701;
@@ -281,6 +284,11 @@ impl HostBox {
 impl ITextHost_Impl for HostBox {
     fn TxGetDC(&self) -> HDC {
         let hwnd = self.s().host.hwnd;
+        if hwnd.is_invalid() {
+            // GetDC(NULL) would return the whole-screen DC — never hand
+            // that out; a null HDC is the documented "unavailable" answer
+            return HDC::default();
+        }
         unsafe { GetDC(Some(hwnd)) }
     }
     fn TxReleaseDC(&self, hdc: HDC) -> i32 {
@@ -620,9 +628,19 @@ pub(crate) struct WindowlessPeer {
     /// OnTxInPlaceActivate once the peer has real (non-empty) bounds
     activated: Cell<bool>,
     /// peer-local compatible bitmap target — TxDrawD2D renders into this
-    /// local space and we blit it into the window target at the global rect
-    bmp_target:
-        std::cell::RefCell<Option<windows::Win32::Graphics::Direct2D::ID2D1BitmapRenderTarget>>,
+    /// local space and we blit it into the window target at the global
+    /// rect. Reuse key = (pixel w, pixel h, frame-target generation) —
+    /// DPI moves and device recreation force re-rasterization.
+    bmp_target: std::cell::RefCell<
+        Option<(
+            windows::Win32::Graphics::Direct2D::ID2D1BitmapRenderTarget,
+            (u32, u32, u64),
+        )>,
+    >,
+    /// this peer's current surface footprint in bytes (BGRA8)
+    bmp_bytes: Cell<u64>,
+    /// aggregate peer-surface byte budget shared via PeerCtx
+    byte_budget: std::sync::Arc<std::sync::atomic::AtomicU64>,
 }
 
 impl WindowlessPeer {
@@ -678,7 +696,7 @@ impl WindowlessPeer {
             sh.host.cf.dwEffects = CFE_EFFECTS(e);
             *sh.host.cf
         };
-        self.send(EM_SETCHARFORMAT, SCF_ALL as usize, &cf as *const _ as isize);
+        let _ = self.send(EM_SETCHARFORMAT, SCF_ALL as usize, &cf as *const _ as isize);
     }
 
     /// Build the host + text services for one peer.
@@ -689,6 +707,7 @@ impl WindowlessPeer {
         scale: f32,
         cfg: &PeerConfig,
         sink: std::sync::Arc<std::sync::Mutex<Vec<super::NativeSinkItem>>>,
+        byte_budget: std::sync::Arc<std::sync::atomic::AtomicU64>,
     ) -> UiResult<WindowlessPeer> {
         let mut face = [0u16; 32];
         for (i, c) in cfg.face.encode_utf16().take(31).enumerate() {
@@ -798,20 +817,32 @@ impl WindowlessPeer {
                 multiline: cfg.multiline,
                 activated: Cell::new(false),
                 bmp_target: std::cell::RefCell::new(None),
+                bmp_bytes: Cell::new(0),
+                byte_budget,
             })
         }
     }
 
     /// Forward a window message (already in the peer's local DIP space for
     /// pointer coords) into the text service. Host callbacks run INSIDE
-    /// this call — no `RefCell` borrow may be held across it.
-    pub(crate) fn send(&self, msg: u32, wparam: usize, lparam: isize) -> isize {
+    /// this call — no `RefCell` borrow may be held across it. The HRESULT
+    /// is captured raw (the safe binding drops it) — it's the documented
+    /// processed/fallback signal.
+    pub(crate) fn send(&self, msg: u32, wparam: usize, lparam: isize) -> UiResult<NativeSend> {
         unsafe {
             let mut res = LRESULT(0);
-            let _ = self
-                .tx()
-                .TxSendMessage(msg, WPARAM(wparam), LPARAM(lparam), &mut res);
-            res.0
+            let vtbl = Interface::vtable(self.tx());
+            let hr = (vtbl.base__.TxSendMessage)(
+                self.tx().as_raw(),
+                msg,
+                WPARAM(wparam),
+                LPARAM(lparam),
+                &mut res,
+            );
+            if !hr.is_ok() && hr != S_FALSE {
+                return Err(UiError::Platform(format!("TxSendMessage {msg:#x}: {hr:?}")));
+            }
+            Ok(NativeSend { hr, lr: res.0 })
         }
     }
 
@@ -866,72 +897,108 @@ impl WindowlessPeer {
         }
     }
 
-    /// Draw the peer's content into the window's D2D target. `bounds` is the
-    /// peer's rect in the target's logical DIP units. The peer paints into a
-    /// per-peer compatible bitmap at LOCAL coords and we blit it at the
-    /// global rect — TxDrawD2D's anchoring into a shared hwnd target is
-    /// unreliable (content lands offset from lprcBounds); owning the
-    /// intermediate surface makes the mapping exact.
+    /// Per-peer pixel ceiling: rejects absurd surfaces before arithmetic
+    /// can overflow — a fullscreen 8K editor at 200% stays under this.
+    const MAX_PEER_PX: u32 = 64 * 1024 * 1024;
+    /// Aggregate ceiling across all peer surfaces (256 MB of BGRA).
+    const MAX_PEER_BYTES_TOTAL: u64 = 256 * 1024 * 1024;
+
+    /// Draw the peer's content into the window's D2D target. `bounds` is
+    /// the peer's CONTENT rect in window DIP (`editor_content_rect` is the
+    /// single shared transform). The peer paints into a per-peer
+    /// compatible bitmap at LOCAL coords and we blit at the global rect —
+    /// TxDrawD2D's anchoring into a shared hwnd target is unreliable.
+    ///
+    /// Surface identity = (pixel size, target generation). The generation
+    /// bumps on DPI change and device/target recreation — both invalidate
+    /// every cached bitmap deterministically. Pixel arithmetic is checked;
+    /// per-peer and aggregate byte budgets bound retained surfaces.
+    ///
+    /// `clear` is the resolved opaque background — the island is OPAQUE,
+    /// never dependent on transparent alpha compositing.
     pub(crate) fn draw(
         &self,
         rt: &ID2D1RenderTarget,
         bounds: (f32, f32, f32, f32),
+        target_gen: u64,
+        clear: [f32; 4],
     ) -> UiResult<()> {
         self.ensure_activated();
         let (l, t, r, b) = bounds;
         let (w, h) = (r - l, b - t);
-        if w <= 0.0 || h <= 0.0 {
+        if !(w.is_finite() && h.is_finite() && w > 0.0 && h > 0.0) {
             return Ok(());
         }
-        let mut bmp_target = self.bmp_target.borrow_mut();
-        let bt = match &*bmp_target {
-            Some(bt) => Some(bt.clone()),
-            None => None,
-        };
-        // create/resize the peer-local surface when size changes
-        let bt = match bt {
-            Some(bt)
-                if {
-                    let sz = unsafe { bt.GetSize() };
-                    (sz.width - w).abs() < 0.5 && (sz.height - h).abs() < 0.5
-                } =>
-            {
-                bt
+        let scale = self.shared().host.scale;
+        // checked device-pixel conversion — no silent wrap
+        let (w_px, h_px) = {
+            let wp = (w as f64 * scale as f64).ceil();
+            let hp = (h as f64 * scale as f64).ceil();
+            if wp < 1.0 || hp < 1.0 || wp > u32::MAX as f64 || hp > u32::MAX as f64 {
+                return Err(UiError::Platform("peer surface size out of range".into()));
             }
-            _ => unsafe {
-                match rt.CreateCompatibleRenderTarget(
-                    None,
-                    Some(&windows::Win32::Graphics::Direct2D::Common::D2D_SIZE_U {
-                        width: (w * self.shared().host.scale).ceil() as u32,
-                        height: (h * self.shared().host.scale).ceil() as u32,
-                    }),
-                    None,
-                    windows::Win32::Graphics::Direct2D::D2D1_COMPATIBLE_RENDER_TARGET_OPTIONS_NONE,
-                ) {
-                    Ok(t) => {
-                        let bt: windows::Win32::Graphics::Direct2D::ID2D1BitmapRenderTarget = t
-                            .cast()
-                            .map_err(|e| UiError::Platform(format!("compat target cast: {e}")))?;
-                        bt.SetDpi(
-                            self.shared().host.scale * 96.0,
-                            self.shared().host.scale * 96.0,
-                        );
-                        *bmp_target = Some(bt.clone());
-                        bt
-                    }
-                    Err(e) => return Err(UiError::Platform(format!("compat target: {e}"))),
-                }
-            },
+            (wp as u32, hp as u32)
         };
-        // render the peer into its own surface at LOCAL (0,0,w,h)
+        let pixels = w_px
+            .checked_mul(h_px)
+            .filter(|p| *p <= Self::MAX_PEER_PX)
+            .ok_or_else(|| UiError::Platform("peer surface pixel cap".into()))?;
+        let bytes = (pixels as u64)
+            .checked_mul(4)
+            .ok_or_else(|| UiError::Platform("peer surface byte overflow".into()))?;
+
+        let mut bmp_target = self.bmp_target.borrow_mut();
+        let key = (w_px, h_px, target_gen);
+        let bt = match &*bmp_target {
+            Some((bt, k)) if *k == key => Some(bt.clone()),
+            _ => None,
+        };
+        let bt = match bt {
+            Some(bt) => bt,
+            None => {
+                // aggregate budget check BEFORE the allocation
+                let old = self.bmp_bytes.get();
+                let after = self
+                    .byte_budget
+                    .load(Ordering::Relaxed)
+                    .checked_sub(old)
+                    .and_then(|b| b.checked_add(bytes))
+                    .filter(|b| *b <= Self::MAX_PEER_BYTES_TOTAL)
+                    .ok_or_else(|| UiError::Platform("peer surface byte budget".into()))?;
+                let nbt = unsafe {
+                    let t = rt
+                        .CreateCompatibleRenderTarget(
+                            None,
+                            Some(&windows::Win32::Graphics::Direct2D::Common::D2D_SIZE_U {
+                                width: w_px,
+                                height: h_px,
+                            }),
+                            None,
+                            windows::Win32::Graphics::Direct2D::D2D1_COMPATIBLE_RENDER_TARGET_OPTIONS_NONE,
+                        )
+                        .map_err(|e| UiError::Platform(format!("compat target: {e}")))?;
+                    let bt: windows::Win32::Graphics::Direct2D::ID2D1BitmapRenderTarget = t
+                        .cast()
+                        .map_err(|e| UiError::Platform(format!("compat target cast: {e}")))?;
+                    bt.SetDpi(scale * 96.0, scale * 96.0);
+                    bt
+                };
+                self.byte_budget.store(after, Ordering::Relaxed);
+                self.bmp_bytes.set(bytes);
+                *bmp_target = Some((nbt.clone(), key));
+                nbt
+            }
+        };
+        // render the peer into its own surface at LOCAL (0,0,w,h) —
+        // OPAQUE clear: the island carries its own background
         unsafe {
             use windows::Win32::Graphics::Direct2D::Common::D2D1_COLOR_F;
             bt.BeginDraw();
             bt.Clear(Some(&D2D1_COLOR_F {
-                r: 0.0,
-                g: 0.0,
-                b: 0.0,
-                a: 0.0,
+                r: clear[0],
+                g: clear[1],
+                b: clear[2],
+                a: 1.0,
             }));
             let rc = RECTL {
                 left: 0,
@@ -986,7 +1053,7 @@ impl WindowlessPeer {
             }
         }
         self.ensure_activated();
-        self.send(EM_REQUESTRESIZE, 0, 0);
+        let _ = self.send(EM_REQUESTRESIZE, 0, 0);
         let px = self.shared().host.natural;
         Ok((px.cx as f32, px.cy as f32))
     }
@@ -1038,9 +1105,12 @@ impl WindowlessPeer {
         s.host.ev(HostEvent::Invalidate);
     }
 
-    /// The host's read-only gate (separate from disabled input routing).
+    /// The host's read-only gate (separate from disabled input routing) —
+    /// pushes ES_READONLY behavior into the service so native editing,
+    /// selection changes through keys, and paste all stop.
     pub(crate) fn set_read_only(&self, ro: bool) {
         self.shared_mut().host.read_only = ro;
+        let _ = self.send(EM_SETREADONLY, ro as usize, 0);
     }
 
     /// The peer's host hwnd (assigned when the window exists).
@@ -1096,6 +1166,24 @@ impl WindowlessPeer {
                 .map_err(|e| UiError::Platform(format!("query_iid: {e}")))?;
             Ok(p)
         }
+    }
+}
+
+/// One synchronous `TxSendMessage` outcome: the HRESULT carries
+/// processing/fallback information (`S_OK` = the service handled it,
+/// `S_FALSE` = the host should process it), the LRESULT is the message's
+/// own result.
+pub(crate) struct NativeSend {
+    pub hr: HRESULT,
+    pub lr: isize,
+}
+
+impl NativeSend {
+    /// `S_FALSE` → the service did not consume the key; the framework may
+    /// interpret it (submit/shortcut). During IME composition a confirm
+    /// key is consumed (`S_OK`), so it never submits.
+    pub(crate) fn consumed(&self) -> bool {
+        self.hr != S_FALSE
     }
 }
 
@@ -1163,6 +1251,12 @@ impl crate::node::TextPeer for WindowlessPeer {
 
     fn release(&mut self) {
         // text services release first (may call back into the host)
+        // return the surface's bytes to the aggregate budget before the
+        // native objects go — accounting mirrors allocation
+        self.byte_budget
+            .fetch_sub(self.bmp_bytes.get(), Ordering::Relaxed);
+        self.bmp_bytes.set(0);
+        self.bmp_target.borrow_mut().take();
         drop(self.tx.take());
         unsafe {
             HostBox::Release(self.host);
@@ -1177,6 +1271,9 @@ impl crate::node::TextPeer for WindowlessPeer {
 
 impl Drop for WindowlessPeer {
     fn drop(&mut self) {
+        self.byte_budget
+            .fetch_sub(self.bmp_bytes.get(), Ordering::Relaxed);
+        self.bmp_bytes.set(0);
         if !self.host.is_null() {
             drop(self.tx.take());
             unsafe {

@@ -35,13 +35,32 @@ impl DipRect {
     pub(crate) fn contains(&self, p: Point) -> bool {
         p.x >= self.x && p.x < self.x + self.w && p.y >= self.y && p.y < self.y + self.h
     }
-    fn win(&self) -> RECT {
+    pub(crate) fn win(&self) -> RECT {
         RECT {
             left: self.x.round() as i32,
             top: self.y.round() as i32,
             right: (self.x + self.w).round() as i32,
             bottom: (self.y + self.h).round() as i32,
         }
+    }
+}
+
+/// THE editor content transform — the ONE place the pill-chrome →
+/// content-surface inset is defined. Shared by layout (peer host bounds),
+/// render (bitmap draw destination), pointer hit→peer-local conversion,
+/// caret placement, and the peer's own client/screen conversions (which
+/// read the same `host.bounds`). Nothing else may invent editor insets.
+pub(crate) const EDITOR_INSET_X: f32 = 6.0;
+pub(crate) const EDITOR_INSET_Y: f32 = 5.0;
+
+/// Chrome rect → content rect (DIP). The peer's native surface covers
+/// exactly this area; native coordinates are content-local.
+pub(crate) fn editor_content_rect(r: DipRect) -> DipRect {
+    DipRect {
+        x: r.x + EDITOR_INSET_X,
+        y: r.y + EDITOR_INSET_Y,
+        w: (r.w - 2.0 * EDITOR_INSET_X).max(0.0),
+        h: (r.h - 2.0 * EDITOR_INSET_Y).max(0.0),
     }
 }
 
@@ -466,13 +485,14 @@ impl LayoutCache {
             _ => Default::default(),
         };
         // peer bounds update (no recreate) — editors keep native state.
-        // The format-space origin IS where msftedit draws (lprcBounds in
-        // TxDrawD2D does not translate the formatted content), so hand the
-        // CONTENT rect — inset inside the chrome — not the chrome rect.
+        // `editor_content_rect` is THE transform — the peer's host bounds,
+        // draw destination, pointer/caret spaces all agree because they
+        // share this mapping.
         if let Some(peer) = peer_of(ctx, id)
             && matches!(n.data, NodeData::Editor { .. })
         {
-            peer.borrow().apply_bounds(rect.win(), self.scale);
+            peer.borrow()
+                .apply_bounds(editor_content_rect(rect).win(), self.scale);
         }
         rects.insert(id, rect);
         order.push(id);

@@ -266,8 +266,8 @@ impl<S: 'static> Rig<S> {
         let app = App::new(state, update, view);
         let mut rt = runtime_for(
             app,
-            Box::new(move |multiline, _ts| {
-                Ok(Box::new(FakePeer::new(pf.clone(), multiline))
+            Box::new(move |spec| {
+                Ok(Box::new(FakePeer::new(pf.clone(), spec.multiline))
                     as Box<dyn crate::node::TextPeer>)
             }),
             Theme::light(),
@@ -1784,8 +1784,9 @@ fn executor_rejection_fences_registration() {
     );
     let mut rt = runtime_for(
         app,
-        Box::new(move |ml, _ts| {
-            Ok(Box::new(FakePeer::new(pf.clone(), ml)) as Box<dyn crate::node::TextPeer>)
+        Box::new(move |spec| {
+            Ok(Box::new(FakePeer::new(pf.clone(), spec.multiline))
+                as Box<dyn crate::node::TextPeer>)
         }),
         Theme::light(),
         Appearance { dark: false },
@@ -2263,8 +2264,9 @@ fn scope_adapter_captures_rc_and_root_msg_need_not_send() {
     let pf = peers.clone();
     let mut rt = runtime_for(
         app,
-        Box::new(move |ml, _ts| {
-            Ok(Box::new(FakePeer::new(pf.clone(), ml)) as Box<dyn crate::node::TextPeer>)
+        Box::new(move |spec| {
+            Ok(Box::new(FakePeer::new(pf.clone(), spec.multiline))
+                as Box<dyn crate::node::TextPeer>)
         }),
         Theme::light(),
         Appearance { dark: false },
@@ -2971,13 +2973,14 @@ fn peer_factory_failure_tears_down_orderly() {
     let pf2 = pf.clone();
     let mut rt = runtime_for(
         app,
-        Box::new(move |ml, _ts| {
+        Box::new(move |spec| {
             let mut n = f2.lock().unwrap();
             if *n == 0 {
                 return Err(crate::UiError::Platform("peer create failed".into()));
             }
             *n -= 1;
-            Ok(Box::new(FakePeer::new(pf2.clone(), ml)) as Box<dyn crate::node::TextPeer>)
+            Ok(Box::new(FakePeer::new(pf2.clone(), spec.multiline))
+                as Box<dyn crate::node::TextPeer>)
         }),
         Theme::light(),
         Appearance { dark: false },
@@ -3150,9 +3153,10 @@ fn native_probe_richedit_paints_text() {
         1,
         &lib,
         PROBE_HWND.with(|h| *h.borrow()),
-        1.5625,
+        1.25,
         &cfg,
         sink,
+        std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)),
     )
     .expect("peer create");
     let binding = crate::text::BindingToken::mint();
@@ -3233,7 +3237,7 @@ fn native_probe_richedit_paints_text() {
         // NOTE: no PushAxisAlignedClip — msftedit's TxDrawD2D output is
         // suppressed while an axis clip is pushed (observed on an
         // ID2D1HwndRenderTarget); the peer's lprcBounds confines the view.
-        peer.draw(&rt, (34.0, 167.0, 735.0, 189.0))
+        peer.draw(&rt, (34.0, 167.0, 735.0, 189.0), 0, [1.0, 1.0, 1.0, 1.0])
             .expect("TxDrawD2D");
         rt.EndDraw(None, None).expect("EndDraw");
 
