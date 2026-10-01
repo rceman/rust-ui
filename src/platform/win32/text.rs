@@ -216,6 +216,17 @@ fn alloc_native_timer(
     None
 }
 
+/// Explicit TextServices activation state — in-place activation (draw/
+/// measure) and UI activation (focus-owned UI: caret, selection visibility,
+/// IME target) are SEPARATE contracts; a measured peer is never implicitly
+/// UI-active.
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub(crate) enum Activation {
+    Inactive,
+    InPlace,
+    Ui,
+}
+
 /// Peer-visible state the host callbacks need — the msftedit reference is
 /// kept per peer so the DLL ref guard outlives every COM object the peer
 /// built.
@@ -707,8 +718,11 @@ pub(crate) struct WindowlessPeer {
     sink: std::sync::Arc<std::sync::Mutex<Vec<super::NativeSinkItem>>>,
     /// multiline vs single-line init
     multiline: bool,
-    /// OnTxInPlaceActivate once the peer has real (non-empty) bounds
-    activated: Cell<bool>,
+    /// THE TextServices activation state — NOT one boolean (F04):
+    /// InPlace = formatted against the px client space (measure/draw);
+    /// Ui = additionally UI-active — focus owner only (msftedit allows a
+    /// single UI-active control per container).
+    activation: Cell<Activation>,
     /// msftedit-derived single-line height in DIP — `natural_size` reports
     /// cy = line_count × line; dividing by EM_GETLINECOUNT gives the real
     /// metric regardless of content. 0 = unmeasured.
@@ -892,7 +906,7 @@ impl WindowlessPeer {
                 binding: None,
                 sink,
                 multiline: cfg.multiline,
-                activated: Cell::new(false),
+                activation: Cell::new(Activation::Inactive),
                 line_h: Cell::new(0.0),
             };
             Ok(peer)
@@ -905,6 +919,19 @@ impl WindowlessPeer {
     /// is captured raw (the safe binding drops it) — it's the documented
     /// processed/fallback signal.
     pub(crate) fn send(&self, msg: u32, wparam: usize, lparam: isize) -> UiResult<NativeSend> {
+        // focus arrival is the ONLY driver of UI activation — the backend
+        // owns focus; a measured/drawn peer is never implicitly UI-active
+        if msg == WM_SETFOCUS {
+            self.set_ui_active(true)?;
+        }
+        let out = self.send_raw(msg, wparam, lparam);
+        if msg == WM_KILLFOCUS {
+            self.set_ui_active(false)?;
+        }
+        out
+    }
+
+    fn send_raw(&self, msg: u32, wparam: usize, lparam: isize) -> UiResult<NativeSend> {
         unsafe {
             let mut res = LRESULT(0);
             let vtbl = Interface::vtable(self.tx());
@@ -981,7 +1008,7 @@ impl WindowlessPeer {
     /// conversion at this seam. The format space stays the peer's LOCAL
     /// client rect (px); one transform at the seam, nothing to cache.
     pub(crate) fn draw(&self, rt: &ID2D1RenderTarget, bounds: LogicalRect) -> UiResult<()> {
-        self.ensure_activated();
+        self.ensure_in_place()?;
         if !(bounds.width > 0.0
             && bounds.height > 0.0
             && bounds.x.is_finite()
@@ -1010,11 +1037,20 @@ impl WindowlessPeer {
                 // REQRESIZE regardless of clip height
                 s.host.bounds.height = 4000.0;
             }
+            // freshness: a stale extent must never masquerade as a fresh
+            // measurement — reset before requesting so a dropped
+            // notification is an error, not last pass's numbers
+            s.host.natural = SIZE::default();
         }
-        self.ensure_activated();
-        let _ = self.send(EM_REQUESTRESIZE, 0, 0);
+        self.ensure_in_place()?;
+        self.send(EM_REQUESTRESIZE, 0, 0)?;
         let sc = self.shared().host.scale;
         let px = self.shared().host.natural;
+        if px.cy <= 0 {
+            return Err(UiError::Platform(
+                "EM_REQUESTRESIZE produced no fresh extent".into(),
+            ));
+        }
         // per-line metric from msftedit itself — cy / EM_GETLINECOUNT is
         // content-independent; layout's cap uses this, not a magic DIP.
         // Client units are px — `px_to_dip` is THE seam.
@@ -1039,42 +1075,129 @@ impl WindowlessPeer {
     /// would latch a 0×0 space and draw nothing). The client rect is a live
     /// property (`TxGetClientRect` reads `host.bounds`) — never relatched,
     /// matching the proven mascot contract.
-    pub(crate) fn apply_bounds(&self, bounds: LogicalRect, scale: ScaleFactor) {
+    pub(crate) fn apply_bounds(&self, bounds: LogicalRect, scale: ScaleFactor) -> UiResult {
         let prev = self.shared().host.scale;
         self.shared_mut().host.bounds = bounds;
         self.shared_mut().host.scale = scale;
-        if self.activated.get() && prev != scale {
+        if self.activation.get() != Activation::Inactive && prev != scale {
             // the service latches its view in *physical px* at activation —
             // a scale change re-interprets the same DIP bounds as different
-            // px, so the peer must deactivate+reactivate or every draw
-            // lands at the stale scale's coordinates (the row-1 defect).
+            // px, so the peer must relatch or every draw lands at the stale
+            // scale's coordinates (the row-1 defect). Relatch preserves the
+            // NATIVE editing state: the COM object stays alive, so text,
+            // undo history and composition survive by contract; the
+            // selection/active-end direction is snapshotted and restored
+            // because deactivate is free to collapse it.
+            let was_ui = self.activation.get() == Activation::Ui;
+            let sel = self.selection_utf16().ok();
             unsafe {
-                let _ = self.tx().OnTxUIDeactivate();
-                let _ = self.tx().OnTxInPlaceDeactivate();
+                if was_ui {
+                    self.tx()
+                        .OnTxUIDeactivate()
+                        .map_err(|e| UiError::Platform(format!("OnTxUIDeactivate: {e}")))?;
+                }
+                self.tx()
+                    .OnTxInPlaceDeactivate()
+                    .map_err(|e| UiError::Platform(format!("OnTxInPlaceDeactivate: {e}")))?;
             }
-            self.activated.set(false);
+            self.activation.set(Activation::Inactive);
+            self.ensure_in_place()?;
+            if let Some((anchor, focus)) = sel {
+                self.restore_selection_utf16(anchor, focus)?;
+            }
+            if was_ui {
+                self.set_ui_active(true)?;
+            }
+        } else {
+            self.ensure_in_place()?;
         }
-        self.ensure_activated();
+        Ok(())
     }
 
-    /// Activate in-place + UI once bounds are non-empty. Idempotent.
-    fn ensure_activated(&self) {
-        if self.activated.get() || self.tx.is_none() {
-            return;
+    /// Re-apply a directional (anchor, focus) selection after a relatch —
+    /// SetStart/SetEnd + the tomSelStartActive flag restore direction.
+    fn restore_selection_utf16(&self, anchor: usize, focus: usize) -> UiResult {
+        unsafe {
+            let mut doc_raw: *mut c_void = std::ptr::null_mut();
+            let vt = Interface::vtable(self.tx());
+            (vt.base__.base__.QueryInterface)(
+                self.tx().as_raw(),
+                &ITextDocument::IID as *const GUID,
+                &mut doc_raw,
+            )
+            .ok()
+            .map_err(|e| UiError::Platform(format!("QI(ITextDocument): {e}")))?;
+            let doc = ITextDocument::from_raw(doc_raw);
+            let sel: ITextSelection = doc
+                .GetSelection()
+                .map_err(|e| UiError::Platform(format!("GetSelection: {e}")))?;
+            sel.SetStart(anchor as i32)
+                .and_then(|_| sel.SetEnd(focus as i32))
+                .map_err(|e| UiError::Platform(format!("restore selection: {e}")))?;
+            let mut flags = sel
+                .GetFlags()
+                .map_err(|e| UiError::Platform(format!("GetFlags: {e}")))?;
+            if anchor != focus {
+                if focus < anchor {
+                    flags |= tomSelStartActive.0;
+                } else {
+                    flags &= !tomSelStartActive.0;
+                }
+                sel.SetFlags(flags)
+                    .map_err(|e| UiError::Platform(format!("SetFlags: {e}")))?;
+            }
+            Ok(())
+        }
+    }
+
+    /// Activate IN PLACE once bounds are non-empty. Checked — the state
+    /// only advances when msftedit accepts the activation.
+    /// Idempotent. UI activation is a separate transition (focus-driven).
+    fn ensure_in_place(&self) -> UiResult {
+        if self.activation.get() != Activation::Inactive || self.tx.is_none() {
+            return Ok(());
         }
         let b = self.shared().host.bounds;
         if b.width <= 0.0 || b.height <= 0.0 {
-            return;
+            return Ok(());
         }
         let sc = self.shared().host.scale;
         // activation rect in the host's px units (see the unit contract at
         // the top of the file / space.rs)
         let mut local: RECT = LogicalRect::local(b.width, b.height).physical(sc).into();
         unsafe {
-            let _ = self.tx().OnTxInPlaceActivate(&mut local);
-            let _ = self.tx().OnTxUIActivate();
+            self.tx()
+                .OnTxInPlaceActivate(&mut local)
+                .map_err(|e| UiError::Platform(format!("OnTxInPlaceActivate: {e}")))?;
         }
-        self.activated.set(true);
+        self.activation.set(Activation::InPlace);
+        Ok(())
+    }
+
+    /// UI activation — the focus-owner transition. Checked: the state
+    /// advances only when the service accepts. Called by `send` when the
+    /// backend routes WM_SETFOCUS/WM_KILLFOCUS to this peer.
+    fn set_ui_active(&self, on: bool) -> UiResult {
+        match (self.activation.get(), on) {
+            (Activation::InPlace, true) => {
+                unsafe {
+                    self.tx()
+                        .OnTxUIActivate()
+                        .map_err(|e| UiError::Platform(format!("OnTxUIActivate: {e}")))?;
+                }
+                self.activation.set(Activation::Ui);
+            }
+            (Activation::Ui, false) => {
+                unsafe {
+                    self.tx()
+                        .OnTxUIDeactivate()
+                        .map_err(|e| UiError::Platform(format!("OnTxUIDeactivate: {e}")))?;
+                }
+                self.activation.set(Activation::InPlace);
+            }
+            _ => {}
+        }
+        Ok(())
     }
 
     /// Theme colors — CFE_AUTOCOLOR resolves `COLOR_WINDOWTEXT` through

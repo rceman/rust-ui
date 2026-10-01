@@ -3277,7 +3277,7 @@ fn native_probe_richedit_paints_text() {
         .expect("initialize");
         // app order: measure (scratch extent, activates), then real bounds
         let (_, h_dip) = peer.natural_size(400.0).expect("natural_size");
-        peer.apply_bounds(island_dip, ScaleFactor(scale));
+        peer.apply_bounds(island_dip, ScaleFactor(scale)).unwrap();
         // typed-after-mount must land identically to mount-time text
         let _ = peer.send(0x0007 /*WM_SETFOCUS*/, 0, 0);
         for c in " xy".encode_utf16() {
@@ -3364,7 +3364,7 @@ fn native_probe_richedit_paints_text() {
             binding,
         )
         .expect("initialize");
-        peer.apply_bounds(island_dip, ScaleFactor(a));
+        peer.apply_bounds(island_dip, ScaleFactor(a)).unwrap();
         unsafe {
             rt.BeginDraw();
             rt.Clear(Some(&D2D1_COLOR_F {
@@ -3392,7 +3392,7 @@ fn native_probe_richedit_paints_text() {
         assert!(ink_a > 40, "live-change leg: no ink at scale A");
 
         // now the scale change — same island DIP, new scale
-        peer.apply_bounds(island_dip, ScaleFactor(b));
+        peer.apply_bounds(island_dip, ScaleFactor(b)).unwrap();
         unsafe {
             rt.BeginDraw();
             rt.Clear(Some(&D2D1_COLOR_F {
@@ -3424,6 +3424,80 @@ fn native_probe_richedit_paints_text() {
         eprintln!("[probe] live-scale {a}->{b}: in_b={in_b} stray={stray}");
         assert!(in_b > 40, "no ink inside the B-scaled island");
         assert_eq!(stray, 0, "scale change left ghost ink at stale coordinates");
+    }
+
+    // ---- F04: relatch preserves the native editing state --------------
+    // text, directional selection, undo and UI-activation must all survive
+    // a scale relatch — retaining the COM object is the contract, and the
+    // selection snapshot/restore covers the direction msftedit collapses.
+    {
+        let sink = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let mut peer = crate::platform::win32::WindowlessPeer::create(
+            11,
+            &lib,
+            hwnd,
+            ScaleFactor(1.0),
+            &cfg(),
+            sink,
+            std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
+            std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+        )
+        .expect("peer create");
+        let binding = crate::text::BindingToken::mint();
+        crate::node::TextPeer::initialize(
+            &mut peer,
+            "State",
+            crate::text::TextRevision::mint(),
+            binding,
+        )
+        .expect("initialize");
+        peer.apply_bounds(island_dip, ScaleFactor(1.0)).unwrap();
+        // focus -> UI-active, then type + drag a selection (anchor!=focus)
+        peer.send(0x0007 /*WM_SETFOCUS*/, 0, 0).unwrap();
+        for c in " XY".encode_utf16() {
+            peer.send(0x0102 /*WM_CHAR*/, c as usize, 0).unwrap();
+        }
+        // select the last two chars: shift+left,left
+        for _ in 0..2 {
+            peer.send(0x0100 /*WM_KEYDOWN*/, 0x10 /*VK_SHIFT*/ as usize, 0)
+                .unwrap();
+            peer.send(0x0100, 0x25 /*VK_LEFT*/ as usize, 0).unwrap();
+            peer.send(0x0101, 0x25, 0).unwrap();
+            peer.send(0x0101, 0x10, 0).unwrap();
+        }
+        let sel_before = peer.selection_utf16().expect("sel before");
+        let text_before = peer.text().expect("text before");
+        // undo exists for the typed edits
+        let can_undo_before = peer
+            .send(0x00C6 /*EM_CANUNDO*/, 0, 0)
+            .map(|s| s.lr != 0)
+            .unwrap_or(false);
+
+        peer.apply_bounds(island_dip, ScaleFactor(1.5)).unwrap();
+
+        assert_eq!(peer.text().unwrap(), text_before, "text lost on relatch");
+        assert_eq!(
+            peer.selection_utf16().unwrap(),
+            sel_before,
+            "directional selection lost on relatch"
+        );
+        let can_undo_after = peer.send(0x00C6, 0, 0).map(|s| s.lr != 0).unwrap_or(false);
+        assert_eq!(
+            can_undo_before, can_undo_after,
+            "undo history changed across relatch"
+        );
+        // a fresh measurement must produce a fresh result (not stale state)
+        let (_, h2) = peer.natural_size(400.0).expect("fresh natural_size");
+        assert!(h2 > 0.0, "fresh measurement returned empty extent");
+        // multiline growth: Enter arrives as VK_RETURN keydown (plain-text
+        // mode filters bare CR chars)
+        for _ in 0..12 {
+            peer.send(0x0100, 0x0D /*VK_RETURN*/ as usize, 0).unwrap();
+            peer.send(0x0101, 0x0D, 0).unwrap();
+            peer.send(0x0102, 'x' as usize, 0).unwrap();
+        }
+        let (_, grown) = peer.natural_size(300.0).expect("grown measure");
+        assert!(grown > h2, "multiline growth not reflected in measurement");
     }
 
     // ---- round-trip: DIP -> px -> DIP --------------------------------

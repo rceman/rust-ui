@@ -340,7 +340,7 @@ impl LayoutCache {
                 &mut rects,
                 &mut order,
                 KIND_COLUMN,
-            );
+            )?;
             y += *size + space_px(Space::Sm);
         }
         Ok((rects, order))
@@ -358,17 +358,18 @@ impl LayoutCache {
         rects: &mut HashMap<NodeId, LogicalRect>,
         order: &mut Vec<NodeId>,
         parent_axis: u8,
-    ) where
+    ) -> UiResult
+    where
         M: 'static,
         U: Fn(&mut S, M, &mut UpdateCtx<'_, M>),
         V: Fn(&S, &mut crate::Ui<'_, '_, M>),
     {
         let Some(n) = rt.arena.get(id) else {
-            return;
+            return Ok(());
         };
         if n.visibility == Visibility::Hidden {
             // footprint retained — no rect/order entry
-            return;
+            return Ok(());
         }
         let kind = match &n.data {
             NodeData::Container { kind, .. } => *kind,
@@ -386,14 +387,17 @@ impl LayoutCache {
         if let Some(peer) = peer_of(ctx, id)
             && let NodeData::Editor { patch, .. } = &n.data
         {
+            // relatch errors surface through the layout result — a failed
+            // deactivation must not leave a stale-scale view silently
             peer.borrow()
-                .apply_bounds(editor_content_rect(rect, &editor_chrome(patch)), self.scale);
+                .apply_bounds(editor_content_rect(rect, &editor_chrome(patch)), self.scale)
+                .map_err(|e| crate::UiError::Platform(format!("apply_bounds: {e}")))?;
         }
         rects.insert(id, rect);
         order.push(id);
         let children = n.children.clone();
         if children.is_empty() {
-            return;
+            return Ok(());
         }
         let mut measurer = super::render::measure_fn();
         let pad = node_insets(ctx, id, n);
@@ -459,7 +463,7 @@ impl LayoutCache {
                         rects,
                         order,
                         kind,
-                    );
+                    )?;
                     y += *sz + gap;
                 }
             }
@@ -492,7 +496,7 @@ impl LayoutCache {
                         rects,
                         order,
                         kind,
-                    );
+                    )?;
                     x += *sz + gap;
                 }
             }
@@ -500,10 +504,11 @@ impl LayoutCache {
             // (declaration order paints later siblings on top).
             _ => {
                 for cid in ids {
-                    self.walk(rt, ctx, cid, inner, rects, order, kind);
+                    self.walk(rt, ctx, cid, inner, rects, order, kind)?;
                 }
             }
         }
+        Ok(())
     }
 }
 
