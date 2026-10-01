@@ -25,7 +25,7 @@ mod probe {
     use windows::Win32::UI::Input::KeyboardAndMouse::*;
     use windows::Win32::UI::TextServices::*;
     use windows::Win32::UI::WindowsAndMessaging::*;
-    windows::core::link!("kernel32.dll" "system" fn WPM(h: HANDLE, base: *const c_void, buf: *const c_void, sz: usize, written: *mut usize) -> BOOL);
+    windows::core::link!("kernel32.dll" "system" fn WriteProcessMemory(h: HANDLE, base: *const c_void, buf: *const c_void, sz: usize, written: *mut usize) -> BOOL);
     use windows::core::*;
 
     pub fn set_pmv2() {
@@ -36,32 +36,34 @@ mod probe {
 
     /// Find a visible top-level window whose title contains `part`.
     pub fn find_window(part: &str) -> Result<HWND> {
+        struct Ctx {
+            needle: String,
+            found: HWND,
+        }
         unsafe {
-            let mut found = HWND::default();
-            let mut needle = part.to_string();
+            let mut ctx = Ctx {
+                needle: part.to_string(),
+                found: HWND::default(),
+            };
             extern "system" fn cb(h: HWND, l: LPARAM) -> BOOL {
+                let ctx = unsafe { &mut *(l.0 as *mut Ctx) };
                 let mut buf = [0u16; 512];
                 let n = unsafe { GetWindowTextW(h, &mut buf) };
                 let title = String::from_utf16_lossy(&buf[..n as usize]);
-                let needle = unsafe { &*(l.0 as *const String) };
                 if !title.is_empty()
-                    && title.contains(needle.as_str())
+                    && title.contains(ctx.needle.as_str())
                     && unsafe { IsWindowVisible(h).as_bool() }
                 {
-                    unsafe { *(l.0 as *mut HWND) = h };
+                    ctx.found = h;
                     return BOOL(0);
                 }
                 BOOL(1)
             }
-            let _ = EnumWindows(Some(cb), LPARAM(&mut needle as *mut String as isize));
-            let _ = &mut found;
-            // re-enum to actually capture — above lambda wrote through l
-            let mut f2 = HWND::default();
-            let _ = EnumWindows(Some(cb), LPARAM(&mut f2 as *mut HWND as isize));
-            if f2.is_invalid() {
+            let _ = EnumWindows(Some(cb), LPARAM(&mut ctx as *mut Ctx as isize));
+            if ctx.found.is_invalid() {
                 Err(Error::new(E_FAIL.into(), "window not found"))
             } else {
-                Ok(f2)
+                Ok(ctx.found)
             }
         }
     }
@@ -155,27 +157,25 @@ mod probe {
     }
 
     /// Synthetic WM_DPICHANGED — regression-class evidence only (not a real
-    /// monitor transition).
-    pub fn dpi_changed(hwnd: HWND, pid: u32, dpi: u32) -> Result<()> {
+    /// monitor transition). `SendMessage` marshals the suggested RECT for
+    /// this known system message (PostMessage refuses cross-process pointer
+    /// lparams — the prior VirtualAllocEx path silently no-opped).
+    pub fn dpi_changed(hwnd: HWND, _pid: u32, dpi: u32) -> Result<()> {
         unsafe {
-            let hp = OpenProcess(PROCESS_ALL_ACCESS, false, pid)?;
-            let mem = VirtualAllocEx(hp, None, 16, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-            if mem.is_null() {
-                return Err(Error::new(E_FAIL.into(), "VirtualAllocEx"));
-            }
             let s = rust_ui::ScaleFactor::from_dpi(dpi);
-            let rect = [0i32, 0, s.to_physical(500.0), s.to_physical(470.0)];
-            let mut written = 0usize;
-            WPM(hp, mem, rect.as_ptr() as *const c_void, 16, &mut written);
-            PostMessageW(
-                Some(hwnd),
+            let rect = RECT {
+                left: 0,
+                top: 0,
+                right: s.to_physical(500.0),
+                bottom: s.to_physical(470.0),
+            };
+            SendMessageW(
+                hwnd,
                 0x02E0, // WM_DPICHANGED
-                WPARAM(((dpi << 16) | dpi) as usize),
-                LPARAM(mem as isize),
-            )?;
-            std::thread::sleep(std::time::Duration::from_millis(900));
-            let _ = VirtualFreeEx(hp, mem, 0, MEM_RELEASE);
-            let _ = CloseHandle(hp);
+                Some(WPARAM(((dpi << 16) | dpi) as usize)),
+                Some(LPARAM(&rect as *const RECT as isize)),
+            );
+            std::thread::sleep(std::time::Duration::from_millis(300));
             Ok(())
         }
     }
@@ -284,15 +284,22 @@ mod probe {
                 IME_CMODE_NATIVE | IME_CMODE_FULLSHAPE | IME_CMODE_ROMAN,
                 IME_SENTENCE_MODE(0),
             );
-            let mut cm = IME_CONVERSION_MODE(0);
-            let mut sm = IME_SENTENCE_MODE(0);
-            let _ = ImmGetConversionStatus(himc, Some(&mut cm), Some(&mut sm));
+            // NOTE: cross-process ImmGetContext returns NULL (IMC is
+            // per-thread); under TSF the real preedit lives in the target's
+            // TSF stack anyway — keystrokes below exercise THAT path.
             foreground(hwnd);
+            std::thread::sleep(std::time::Duration::from_millis(300));
+            // force the IME open in hiragana mode — VK_DBE_HIRAGANA is the
+            // native MS-IME input-mode switch for the focused thread
+            let mut k = INPUT::default();
+            k.r#type = INPUT_KEYBOARD;
+            k.Anonymous.ki.wVk = VIRTUAL_KEY(0xF2); // VK_DBE_HIRAGANA
+            let _ = SendInput(&[k], std::mem::size_of::<INPUT>() as i32);
+            k.Anonymous.ki.dwFlags = KEYEVENTF_KEYUP;
+            let _ = SendInput(&[k], std::mem::size_of::<INPUT>() as i32);
             std::thread::sleep(std::time::Duration::from_millis(300));
             // real keystrokes — the OS IME turns ASCII into hiragana preedit
             for ch in keys.chars() {
-                let vk = ch as u32 as u16; // ASCII lowercase == VK
-                let _ = vk;
                 let mut inp = INPUT::default();
                 inp.r#type = INPUT_KEYBOARD;
                 inp.Anonymous.ki.wVk = VIRTUAL_KEY(ch.to_ascii_uppercase() as u16);
@@ -309,14 +316,24 @@ mod probe {
             enter.Anonymous.ki.dwFlags = KEYEVENTF_KEYUP;
             let _ = SendInput(&[enter], std::mem::size_of::<INPUT>() as i32);
             std::thread::sleep(std::time::Duration::from_millis(600));
-            // restore English
+            // restore English — drop the COM object BEFORE CoUninitialize
             let _ = mgr.ChangeCurrentLanguage(0x409);
-            let _ = ImmReleaseContext(hwnd, himc);
-            let _ = CoUninitialize();
+            drop(mgr);
+            CoUninitialize();
+            // verify: the peer's committed text gained non-ASCII kana —
+            // real composition+commit, not raw ASCII passthrough
+            let text = uia_value(hwnd, "draft")?
+                .unwrap_or_default();
+            let kana = text.chars().any(|c| ('\u{3040}'..='\u{30ff}').contains(&c));
+            if !kana {
+                return Err(Error::new(
+                    E_FAIL.into(),
+                    "IME acceptance failed: no hiragana/katakana in committed text",
+                ));
+            }
             Ok(format!(
-                "{{\"kind\":\"ime\",\"evidence\":\"acceptance\",\"keys\":\"{keys}\",\"open_status\":{},\"conv_status\":{}}}",
+                "{{\"kind\":\"ime\",\"evidence\":\"acceptance\",\"keys\":\"{keys}\",\"imc_open\":{},\"committed\":true}}",
                 opened.as_bool(),
-                conv.as_bool()
             ))
         }
     }

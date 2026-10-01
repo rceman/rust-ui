@@ -156,3 +156,38 @@ UIA tree.
 **Contract implication:** peer creation must tolerate a temporarily
 invalid host hwnd; the backend owns the repair pass — consumers of
 `peer_factory` never see it.
+
+## 10. msftedit's host space is physical px, not DIP — probe environment hid it
+
+`TxDrawD2D`'s `lprcBounds`, `TxGetClientRect`, caret coords and pointer
+lparams are all interpreted by msftedit in the host DC's physical-pixel
+units. Under a Per-Monitor-V2 process at 125% the service divides the
+bounds by `dcDpi/96`; a DPI-unaware 96-DPI probe sees px==DIP and the
+contract looks like "everything is DIP". The symptom was mount-time-text
+peers drawing exactly one row above their pill — `arg/scale` on screen.
+
+**Consequence:** the coordinate contract is now typed and single-sourced —
+`crate::geom` owns `ScaleFactor`/`Logical*`/`Physical*` spaces and the
+rounding policy; `platform/win32/space.rs` owns the Win32 seams; every
+host callback converts explicitly at the boundary. The regression probe
+runs PMv2 at 96/120/144/192.
+
+**Contract implication:** documented in `docs/PLATFORM_CONTRACTS.md` and
+institutionalized via Gate 16 environment-equivalence + Gate 20
+duplicated-authority audit rules.
+
+## 11. Synthetic `PostMessageW` cannot deliver `WM_DPICHANGED`
+
+`WM_DPICHANGED` carries a `const RECT*` lparam; `PostMessageW` refuses
+cross-process pointer parameters (`0x80070487`). The earlier
+VirtualAllocEx + WriteProcessMemory + PostMessage approach in the
+evidence harness silently no-opped — `Out-Null` swallowed the return.
+
+**Consequence:** `native_probe.exe dpichange` uses `SendMessageW` — the
+window manager marshals the suggested RECT for this known system message.
+Verified: the composer applied a 750x750-px suggested rect at synthetic
+144 DPI and relaid out under `ScaleFactor(1.5)`.
+
+**Contract implication:** synthetic WM_DPICHANGED = deterministic
+regression evidence only; a real monitor transition remains a distinct
+acceptance class (recorded in PLATFORM_CONTRACTS.md).
