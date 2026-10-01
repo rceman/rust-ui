@@ -82,6 +82,36 @@ impl CornerRadii {
             None
         }
     }
+    /// Proportional normalization — the CSS rule: when the radii sharing
+    /// one edge exceed it, ALL corners scale down by the same factor so
+    /// the authored proportions survive. One factor across every pair
+    /// keeps the shape stable; independent per-corner clamps distort it.
+    pub fn normalized(&self, w: f32, h: f32) -> Self {
+        let (tl, tr, br, bl) = (
+            self.top_left.0.max(0.0),
+            self.top_right.0.max(0.0),
+            self.bottom_right.0.max(0.0),
+            self.bottom_left.0.max(0.0),
+        );
+        let pair = |a: f32, b: f32, edge: f32| {
+            if a + b > edge && a + b > 0.0 {
+                edge / (a + b)
+            } else {
+                1.0
+            }
+        };
+        let s = 1.0f32
+            .min(pair(tl, tr, w))
+            .min(pair(bl, br, w))
+            .min(pair(tl, bl, h))
+            .min(pair(tr, br, h));
+        CornerRadii {
+            top_left: Dp(tl * s),
+            top_right: Dp(tr * s),
+            bottom_right: Dp(br * s),
+            bottom_left: Dp(bl * s),
+        }
+    }
 }
 
 #[derive(Copy, Clone, Default, PartialEq, Debug)]
@@ -487,6 +517,50 @@ impl TextStylePatch {
     }
 }
 
+/// The capability-limited patch for native editable text
+/// (`docs/STYLE_CUSTOMIZATION_MODEL.md` "Native editable text boundary").
+/// `chrome` maps to the painted frame around the peer (background/border/
+/// radii/padding/shadow); only `foreground` reaches the peer through the
+/// typed adapter — selection, caret, IME colors and fonts stay OS-owned.
+/// There are deliberately no size/weight fields on native text.
+#[derive(Copy, Clone, Default, PartialEq, Debug)]
+pub struct TextInputStylePatch {
+    pub chrome: BoxStylePatch,
+    pub foreground: Option<Color>,
+}
+
+impl TextInputStylePatch {
+    pub fn new() -> Self {
+        Self::default()
+    }
+    /// peer foreground — routed through the typed adapter; v0.1 requires
+    /// it to resolve fully opaque
+    pub fn foreground(mut self, c: Color) -> Self {
+        self.foreground = Some(c);
+        self
+    }
+    /// chrome shorthand — the peer backing derives from this background
+    pub fn background(mut self, c: Color) -> Self {
+        self.chrome.background = Some(c);
+        self
+    }
+    pub fn border_bottom_width(mut self, w: Dp) -> Self {
+        self.chrome.border.bottom.width = Some(w);
+        self
+    }
+    pub fn border_bottom_color(mut self, c: Color) -> Self {
+        self.chrome.border.bottom.color = Some(c);
+        self
+    }
+    /// fieldwise merge — `None` preserves, `Some` wins
+    pub fn merge(&mut self, o: &TextInputStylePatch) {
+        self.chrome.merge(&o.chrome);
+        if o.foreground.is_some() {
+            self.foreground = o.foreground;
+        }
+    }
+}
+
 #[derive(Copy, Clone, Default, PartialEq, Debug)]
 pub struct VisualStylePatch {
     pub box_style: BoxStylePatch,
@@ -611,20 +685,35 @@ impl ActionStyle {
             focus_visible: None,
         }
     }
+    /// repeated state setters MERGE fieldwise — `Some` fields overwrite
+    /// and `None` preserves an earlier call, matching the patch contract
+    /// (`docs/STYLE_CUSTOMIZATION_MODEL.md` §6)
     pub fn hover(mut self, patch: BoxStylePatch) -> Self {
-        self.hover = Some(patch);
+        match &mut self.hover {
+            Some(h) => h.merge(&patch),
+            None => self.hover = Some(patch),
+        }
         self
     }
     pub fn pressed(mut self, patch: BoxStylePatch) -> Self {
-        self.pressed = Some(patch);
+        match &mut self.pressed {
+            Some(h) => h.merge(&patch),
+            None => self.pressed = Some(patch),
+        }
         self
     }
     pub fn disabled(mut self, patch: BoxStylePatch) -> Self {
-        self.disabled = Some(patch);
+        match &mut self.disabled {
+            Some(h) => h.merge(&patch),
+            None => self.disabled = Some(patch),
+        }
         self
     }
     pub fn focus_visible(mut self, patch: BoxStylePatch) -> Self {
-        self.focus_visible = Some(patch);
+        match &mut self.focus_visible {
+            Some(h) => h.merge(&patch),
+            None => self.focus_visible = Some(patch),
+        }
         self
     }
     /// Resolve the effective `BoxStyle` for the given interaction state:
@@ -1004,8 +1093,10 @@ pub fn resolve_button(
     if let Some(b) = recipe_branch {
         v = *b;
     }
-    // recipe focus overlay (the ring) — part of the recipe's overlay stage,
-    // before any consumer patch
+    // recipe focus overlay — a recipe layer BEFORE consumer patches: a
+    // consumer border patch may restyle it, but the painter draws the
+    // required Focus ring independently (enforcement lives at render, so
+    // no patch can erase focus visibility)
     if focus_visible
         && state != StyleState::Disabled
         && let Some(fv) = &recipe.focus_visible
@@ -1031,6 +1122,34 @@ pub fn resolve_button(
     v
 }
 
+/// Native editor chrome recipe — the pill frame around the peer:
+/// Background-role surface, Border-role 1dp outline, 6dp radii, and the
+/// safety padding the peer surface insets by. Authored chrome patches
+/// overlay this; the peer island remains opaque and unclipped.
+pub fn text_input_chrome_recipe() -> BoxStyle {
+    BoxStyle {
+        background: Color::Role(ColorRole::Background),
+        border: Border::all(BorderSide::new(Dp(1.0), Color::Role(ColorRole::Border))),
+        radii: CornerRadii::all(Dp(6.0)),
+        padding: Insets {
+            top: Dp(5.0),
+            right: Dp(6.0),
+            bottom: Dp(5.0),
+            left: Dp(6.0),
+        },
+        shadow: None,
+    }
+}
+
+/// Resolve native editor chrome — recipe + authored patch. The paired
+/// safety inset the peer sits inside derives from the RESOLVED authored
+/// values (pre-normalization radii, per the approved rule).
+pub fn resolve_text_input_chrome(patch: &TextInputStylePatch) -> BoxStyle {
+    let mut b = text_input_chrome_recipe();
+    b.patch(&patch.chrome);
+    b
+}
+
 /// Surface recipe — muted panel chrome with border + radii + padding.
 pub fn surface_recipe() -> BoxStyle {
     BoxStyle {
@@ -1045,6 +1164,118 @@ pub fn surface_recipe() -> BoxStyle {
 /// Label recipe — foreground role + body text.
 pub fn label_recipe() -> TextStyle {
     TextStyle::default()
+}
+
+// ---------------------------------------------------------------------------
+// style preflight — finite numbers, nonnegative geometry, positive text size,
+/// checked before ANY native mutation at commit time
+// ---------------------------------------------------------------------------
+
+fn dp_ok(d: &Dp) -> bool {
+    d.0.is_finite() && d.0 >= 0.0
+}
+fn insets_ok(i: &Insets) -> bool {
+    dp_ok(&i.top) && dp_ok(&i.right) && dp_ok(&i.bottom) && dp_ok(&i.left)
+}
+fn radii_ok(r: &CornerRadii) -> bool {
+    dp_ok(&r.top_left)
+        && dp_ok(&r.top_right)
+        && dp_ok(&r.bottom_right)
+        && dp_ok(&r.bottom_left)
+}
+fn border_ok(b: &Border) -> bool {
+    [&b.top, &b.right, &b.bottom, &b.left]
+        .iter()
+        .all(|s| dp_ok(&s.width))
+}
+fn shadow_ok(s: &Shadow) -> bool {
+    s.offset_x.0.is_finite()
+        && s.offset_y.0.is_finite()
+        && s.blur_sigma.0.is_finite()
+        && s.blur_sigma.0 >= 0.0
+}
+fn text_ok(t: &TextStyle) -> bool {
+    match t.size {
+        TextSize::Body => true,
+        TextSize::Exact(d) => d.0.is_finite() && d.0 > 0.0,
+    }
+}
+
+/// resolved `BoxStyle` — checked before paint/layout use
+pub(crate) fn box_style_ok(s: &BoxStyle) -> bool {
+    insets_ok(&s.padding) && radii_ok(&s.radii) && border_ok(&s.border)
+        && s.shadow.as_ref().is_none_or(|sh| shadow_ok(sh))
+}
+/// resolved `VisualStyle`
+pub(crate) fn visual_style_ok(s: &VisualStyle) -> bool {
+    box_style_ok(&s.box_style) && text_ok(&s.text_style)
+}
+/// sparse box patch — every authored field checked
+pub(crate) fn box_patch_ok(p: &BoxStylePatch) -> bool {
+    let dp_opt = |d: &Option<Dp>| d.is_none_or(|d| dp_ok(&d));
+    let sides_ok = [&p.border.top, &p.border.right, &p.border.bottom, &p.border.left]
+        .iter()
+        .all(|s| dp_opt(&s.width));
+    let radii_ok = [&p.radii.top_left, &p.radii.top_right, &p.radii.bottom_right, &p.radii.bottom_left]
+        .iter()
+        .all(|r| dp_opt(r));
+    let pad_ok = [&p.padding.top, &p.padding.right, &p.padding.bottom, &p.padding.left]
+        .iter()
+        .all(|i| dp_opt(i));
+    let sh_ok = match &p.shadow {
+        ShadowPatch::Set(s) => shadow_ok(s),
+        _ => true,
+    };
+    sides_ok && radii_ok && pad_ok && sh_ok
+}
+/// sparse text patch — Exact sizes must be finite+positive
+pub(crate) fn text_patch_ok(p: &TextStylePatch) -> bool {
+    p.size.is_none_or(|d| d.0.is_finite() && d.0 > 0.0)
+}
+/// sparse visual patch
+pub(crate) fn visual_patch_ok(p: &VisualStylePatch) -> bool {
+    box_patch_ok(&p.box_style) && text_patch_ok(&p.text_style)
+}
+/// full `ButtonStylePatch` — base plus every state branch
+pub(crate) fn button_patch_ok(p: &ButtonStylePatch) -> bool {
+    visual_patch_ok(&p.styles.base)
+        && [&p.styles.hover, &p.styles.pressed, &p.styles.disabled, &p.styles.focus_visible]
+            .iter()
+            .all(|s| s.is_none_or(|s| visual_patch_ok(&s)))
+}
+/// `TextInputStylePatch` — chrome fields validated; foreground opaque
+/// checks happen against the resolved color (role → palette) at commit.
+pub(crate) fn text_input_patch_ok(p: &TextInputStylePatch) -> bool {
+    box_patch_ok(&p.chrome)
+}
+
+/// v0.1 opacity rule: peer backing (chrome background) and the editable
+/// foreground must resolve fully opaque — translucent values would let
+/// live editing pixels blend through and are `UiError::Unsupported`.
+pub(crate) fn text_input_opaque(b: &BoxStyle, fg: Color, dark: bool) -> bool {
+    resolve_color(b.background, dark)[3] >= 1.0 && resolve_color(fg, dark)[3] >= 1.0
+}
+
+/// `ActionStyle` — base + optional state patches
+pub(crate) fn action_style_ok(s: &ActionStyle) -> bool {
+    box_style_ok(&s.base)
+        && [&s.hover, &s.pressed, &s.disabled, &s.focus_visible]
+            .iter()
+            .all(|p| p.is_none_or(|p| box_patch_ok(&p)))
+}
+
+/// OS/accessibility enforcement — applied AFTER all recipe+consumer
+/// layers. Forced-colors/high-contrast: decorative shadow resolves to
+/// `None` (the approved contract); required focus visibility lives in the
+/// focus enforcement layer and survives. Colors keep their role
+/// resolution — under forced colors the OS-level palette follows.
+pub(crate) fn os_enforce_box(b: &mut BoxStyle, forced_colors: bool) {
+    if forced_colors {
+        b.shadow = None;
+    }
+}
+pub(crate) fn os_enforce_visual(v: &mut VisualStyle, forced_colors: bool) {
+    os_enforce_box(&mut v.box_style, forced_colors);
 }
 
 /// Does a box patch touch any field that feeds layout insets (padding) or

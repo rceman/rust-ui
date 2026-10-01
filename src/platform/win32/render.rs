@@ -336,6 +336,7 @@ impl Renderer {
         self.hwnd = be.hwnd;
         // resolved theme darkness — the app-selected mode, not raw OS state
         let dark = be.rt.theme.dark;
+        let forced = be.rt.appearance().forced_colors;
         let dpi = self.dpi;
         // COM add-ref as the interface we paint through — ends the &mut
         // self borrow so peer draws can read renderer state
@@ -442,7 +443,13 @@ impl Renderer {
                         bottom: r.y + r.h,
                     };
                     unsafe {
-                        paint_box(&target, &br, bs, dark)?;
+                        paint_box(&target, &br, bs, dark, forced)?;
+                        // focus ENFORCEMENT — independent ring layer the
+                        // style resolution can't erase (Focus role,
+                        // outside the box); see Action arm for the same
+                        if be.focus == Some(id) && !*disabled {
+                            paint_focus_ring(&target, &br, dark)?;
+                        }
                         let wide: Vec<u16> = text.as_ref().encode_utf16().collect();
                         let fmt = fmt_for(&vs.text_style, 0)?;
                         let lay = dwrite()?.factory.CreateTextLayout(
@@ -466,28 +473,18 @@ impl Renderer {
                         );
                     }
                 }
-                NodeData::Editor { .. } => {
-                    // border + content — the peer draws its own text/selection
+                NodeData::Editor {
+                    patch, disabled, ..
+                } => {
+                    // authored chrome paints the frame (the peer draws its
+                    // own text/selection inside the safety inset)
+                    let mut chrome = super::layout::editor_chrome(patch);
+                    crate::style::os_enforce_box(&mut chrome, forced);
                     unsafe {
-                        let bc = target.CreateSolidColorBrush(
-                            &role_color(crate::theme::ColorRole::Border, dark),
-                            None,
-                        )?;
-                        let geo: ID2D1RoundedRectangleGeometry = target
-                            .GetFactory()?
-                            .CreateRoundedRectangleGeometry(&D2D1_ROUNDED_RECT {
-                                rect: clip,
-                                radiusX: 6.0,
-                                radiusY: 6.0,
-                            })?;
-                        if be.focus == Some(id) {
-                            let ring = target.CreateSolidColorBrush(
-                                &role_color(crate::theme::ColorRole::Focus, dark),
-                                None,
-                            )?;
-                            target.DrawGeometry(&geo, &ring, 1.5, None);
-                        } else {
-                            target.DrawGeometry(&geo, &bc, 1.0, None);
+                        paint_box(&target, &clip, &chrome, dark, forced)?;
+                        // focus ENFORCEMENT — same independent ring layer
+                        if be.focus == Some(id) && !*disabled {
+                            paint_focus_ring(&target, &clip, dark)?;
                         }
                     }
                     // NOTE: no axis-aligned clip around the peer draw —
@@ -500,7 +497,7 @@ impl Renderer {
                     {
                         // `editor_content_rect` is THE pill→content
                         // transform — shared with layout/pointer/caret.
-                        let c = super::layout::editor_content_rect(r);
+                        let c = super::layout::editor_content_rect(r, &chrome);
                         let dark_c = role_color(crate::theme::ColorRole::Background, dark);
                         peer.borrow().draw(
                             &target,
@@ -533,7 +530,7 @@ impl Renderer {
                     // box_ = authored full style
                     if let Some(bs) = props.resolved_box(*kind) {
                         unsafe {
-                            paint_box(&target, &clip, &bs, dark)?;
+                            paint_box(&target, &clip, &bs, dark, forced)?;
                         }
                     }
                 }
@@ -547,27 +544,11 @@ impl Renderer {
                         be.focus == Some(id),
                     );
                     unsafe {
-                        paint_box(&target, &clip, &bs, dark)?;
-                        // recipe focus ring — real Focus role outside the box
+                        paint_box(&target, &clip, &bs, dark, forced)?;
+                        // focus ENFORCEMENT — the ring lives at paint, a
+                        // layer consumer patches can never erase
                         if be.focus == Some(id) && !*disabled {
-                            let ring = target.CreateSolidColorBrush(
-                                &role_color(crate::theme::ColorRole::Focus, dark),
-                                None,
-                            )?;
-                            let outer = D2D1_ROUNDED_RECT {
-                                rect: D2D_RECT_F {
-                                    left: clip.left - 2.0,
-                                    top: clip.top - 2.0,
-                                    right: clip.right + 2.0,
-                                    bottom: clip.bottom + 2.0,
-                                },
-                                radiusX: 7.0,
-                                radiusY: 7.0,
-                            };
-                            let og: ID2D1RoundedRectangleGeometry = target
-                                .GetFactory()?
-                                .CreateRoundedRectangleGeometry(&outer)?;
-                            target.DrawGeometry(&og, &ring, 1.5, None);
+                            paint_focus_ring(&target, &clip, dark)?;
                         }
                     }
                 }
@@ -827,7 +808,11 @@ unsafe fn box_geometry(
 ) -> Result<ID2D1Geometry> {
     unsafe {
         let f = target.GetFactory()?;
-        if let Some(crate::geom::Dp(u)) = radii.uniform() {
+        // proportional radius normalization — adjacent pairs sharing an
+        // edge scale down by ONE factor (CSS rule); independent per-corner
+        // clamps distort authored proportions
+        let norm = radii.normalized(r.right - r.left, r.bottom - r.top);
+        if let Some(crate::geom::Dp(u)) = norm.uniform() {
             let g = f.CreateRoundedRectangleGeometry(&D2D1_ROUNDED_RECT {
                 rect: *r,
                 radiusX: u,
@@ -838,13 +823,11 @@ unsafe fn box_geometry(
         let g = f.CreatePathGeometry()?;
         let sink = g.Open()?;
         sink.SetFillMode(D2D1_FILL_MODE_WINDING);
-        let hw = (r.right - r.left) / 2.0;
-        let hh = (r.bottom - r.top) / 2.0;
         let (tl, tr, br, bl) = (
-            radii.top_left.0.min(hw).min(hh),
-            radii.top_right.0.min(hw).min(hh),
-            radii.bottom_right.0.min(hw).min(hh),
-            radii.bottom_left.0.min(hw).min(hh),
+            norm.top_left.0,
+            norm.top_right.0,
+            norm.bottom_right.0,
+            norm.bottom_left.0,
         );
         sink.BeginFigure(
             Vector2 {
@@ -1089,7 +1072,18 @@ fn paint_box(
     r: &D2D_RECT_F,
     style: &BoxStyle,
     dark: bool,
+    forced: bool,
 ) -> Result<()> {
+    // OS enforcement — forced-colors/high-contrast suppresses decorative
+    // shadow after all recipe/consumer layers (approved contract)
+    let mut enforced;
+    let style = if forced && style.shadow.is_some() {
+        enforced = *style;
+        enforced.shadow = None;
+        &enforced
+    } else {
+        style
+    };
     unsafe {
         if let Some(sh) = &style.shadow {
             draw_shadow(target, r, &style.radii, sh, dark)?;
@@ -1123,16 +1117,19 @@ fn paint_box(
                 }
             } else {
                 // non-uniform: each side painted as a strip clipped to the
-                // rounded silhouette (PushLayer geometric mask)
+                // rounded silhouette (PushLayer geometric mask). The
+                // `mask` geometry stays owned — the params borrow a clone
+                // that is released right after PopLayer (ManuallyDrop in
+                // the field type is an ABI detail, not a leak license).
                 let mask = box_geometry(target, r, &style.radii)?;
-                let params = D2D1_LAYER_PARAMETERS {
+                let mut params = D2D1_LAYER_PARAMETERS {
                     contentBounds: D2D_RECT_F {
                         left: f32::MIN,
                         top: f32::MIN,
                         right: f32::MAX,
                         bottom: f32::MAX,
                     },
-                    geometricMask: std::mem::ManuallyDrop::new(Some(mask)),
+                    geometricMask: std::mem::ManuallyDrop::new(Some(mask.clone())),
                     maskAntialiasMode: D2D1_ANTIALIAS_MODE_ALIASED,
                     maskTransform: Matrix3x2::identity(),
                     opacity: 1.0,
@@ -1140,13 +1137,18 @@ fn paint_box(
                     layerOptions: D2D1_LAYER_OPTIONS_NONE,
                 };
                 target.PushLayer(&params, None);
+                // non-overlapping corner partition: left/right strips own
+                // the full height INCLUDING the corner cells; top/bottom
+                // strips sit between them. Translucent side colors never
+                // double-blend at a corner.
+                let (lw, rw) = (style.border.left.width.0, style.border.right.width.0);
                 let strips = [
                     (
                         style.border.top,
                         D2D_RECT_F {
-                            left: r.left,
+                            left: r.left + lw,
                             top: r.top,
-                            right: r.right,
+                            right: r.right - rw,
                             bottom: r.top + style.border.top.width.0,
                         },
                     ),
@@ -1162,9 +1164,9 @@ fn paint_box(
                     (
                         style.border.bottom,
                         D2D_RECT_F {
-                            left: r.left,
+                            left: r.left + lw,
                             top: r.bottom - style.border.bottom.width.0,
-                            right: r.right,
+                            right: r.right - rw,
                             bottom: r.bottom,
                         },
                     ),
@@ -1190,6 +1192,8 @@ fn paint_box(
                     target.FillRectangle(&sr, &b);
                 }
                 target.PopLayer();
+                // release the params' clone now that the layer is popped
+                std::mem::ManuallyDrop::drop(&mut params.geometricMask);
             }
         }
     }
@@ -1203,6 +1207,35 @@ fn shrink_radii(r: &CornerRadii, d: f32) -> CornerRadii {
         bottom_right: crate::geom::Dp((r.bottom_right.0 - d).max(0.0)),
         bottom_left: crate::geom::Dp((r.bottom_left.0 - d).max(0.0)),
     }
+}
+
+/// Required focus indicator — painted OUTSIDE the box in the Focus role.
+/// This is the enforcement layer: it runs at render after every style
+/// layer resolved, so no consumer patch can erase focus visibility.
+unsafe fn paint_focus_ring(
+    target: &ID2D1RenderTarget,
+    r: &D2D_RECT_F,
+    dark: bool,
+) -> Result<()> {
+    unsafe {
+        let ring =
+            target.CreateSolidColorBrush(&role_color(crate::theme::ColorRole::Focus, dark), None)?;
+        let outer = D2D1_ROUNDED_RECT {
+            rect: D2D_RECT_F {
+                left: r.left - 2.0,
+                top: r.top - 2.0,
+                right: r.right + 2.0,
+                bottom: r.bottom + 2.0,
+            },
+            radiusX: 7.0,
+            radiusY: 7.0,
+        };
+        let og: ID2D1RoundedRectangleGeometry = target
+            .GetFactory()?
+            .CreateRoundedRectangleGeometry(&outer)?;
+        target.DrawGeometry(&og, &ring, 1.5, None);
+    }
+    Ok(())
 }
 
 fn resolve_color_f(c: crate::style::Color, dark: bool) -> D2D1_COLOR_F {

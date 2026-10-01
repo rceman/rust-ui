@@ -36,7 +36,9 @@ pub struct PeerSpec {
     pub multiline: bool,
     pub read_only: bool,
     pub disabled: bool,
-    pub style: crate::style::TextStyle,
+    /// resolved editable foreground — the ONLY style input a native peer
+    /// receives (selection/caret/IME colors and fonts stay OS-owned)
+    pub foreground: crate::style::Color,
 }
 
 /// Backend surface the retained core talks to. Windowless rich-text peers
@@ -63,10 +65,10 @@ pub(crate) trait TextPeer {
         base: crate::text::TextRevision,
         requested: crate::text::TextRevision,
     ) -> UiResult;
-    /// Re-style live text: a changed surgical TextStylePatch resolves to a
-    /// full style and re-applies the peer's char format (fg/size/weight).
-    /// Default no-op — core tests use peers that don't style.
-    fn apply_text_style(&mut self, _style: &crate::style::TextStyle) {}
+    /// Re-style live text: a changed `foreground` re-applies the peer's
+    /// char format. Capability-limited — no size/weight knobs reach the
+    /// peer. Default no-op — core tests use peers that don't style.
+    fn apply_foreground(&mut self, _fg: crate::style::Color) {}
     /// The node's effective editability changed — push it into native
     /// behavior (EM_SETREADONLY gates edits inside msftedit, not just in
     /// the input router). The runtime passes `read_only || disabled`.
@@ -343,9 +345,9 @@ pub(crate) enum NodeData {
         max_lines: Option<u32>,
         placeholder: Option<Rc<str>>,
         accessible_label: Option<Rc<str>>,
-        /// surgical text style — native peers consume fg/size/weight only;
-        /// face stays the system editable face (one render path)
-        patch: crate::style::TextStylePatch,
+        /// capability-limited chrome+foreground patch — chrome paints the
+        /// frame, only `foreground` reaches the peer (approved boundary)
+        patch: crate::style::TextInputStylePatch,
         sync: TextPeerSync,
     },
     Custom {
@@ -385,9 +387,53 @@ pub(crate) struct Node {
     pub dirty: u8,
 }
 
-/// Compare committed payloads for the dirty classification — factories-only
-/// updates produce NO dirty bits; same-value props are cheap.
-pub(crate) fn dirty_diff(old: &NodeData, new: &NodeData) -> u8 {
+/// Diff two RESOLVED box styles into dirty classes: padding/border-width/
+/// radii changes may reflow content (LAYOUT); background/border-color/
+/// shadow are paint-only. Identical output = no bits.
+fn box_dirty(a: &crate::style::BoxStyle, b: &crate::style::BoxStyle, out: &mut u8) {
+    const LAYOUT: u8 = 0b0000_0001;
+    const PAINT: u8 = 0b0000_0010;
+    if a == b {
+        return;
+    }
+    *out |= PAINT;
+    if a.padding != b.padding || a.radii != b.radii {
+        *out |= LAYOUT;
+    }
+    // border widths consume insets — colors don't
+    let bw = |b: &crate::style::BoxStyle| {
+        [
+            b.border.top.width,
+            b.border.right.width,
+            b.border.bottom.width,
+            b.border.left.width,
+        ]
+    };
+    if bw(a) != bw(b) {
+        *out |= LAYOUT;
+    }
+}
+
+/// Resolved `VisualStyle` diff — text metrics feed layout too.
+fn visual_dirty(a: &crate::style::VisualStyle, b: &crate::style::VisualStyle, out: &mut u8) {
+    const LAYOUT: u8 = 0b0000_0001;
+    const PAINT: u8 = 0b0000_0010;
+    if a == b {
+        return;
+    }
+    *out |= PAINT;
+    if a.text_style.size != b.text_style.size || a.text_style.weight != b.text_style.weight {
+        *out |= LAYOUT;
+    }
+    box_dirty(&a.box_style, &b.box_style, out);
+}
+
+/// Compare committed payloads for the dirty classification — decisions use
+/// RESOLVED concrete output (theme/state applied, OS enforcement applied),
+/// not authored descriptors: two authored forms producing identical
+/// output are a strict no-op; a shadow-only change is paint-only and
+/// never requests layout.
+pub(crate) fn dirty_diff(old: &NodeData, new: &NodeData, dark: bool, forced: bool) -> u8 {
     const LAYOUT: u8 = 0b0000_0001;
     const PAINT: u8 = 0b0000_0010;
     const SEMANTICS: u8 = 0b0000_1000;
@@ -399,22 +445,26 @@ pub(crate) fn dirty_diff(old: &NodeData, new: &NodeData) -> u8 {
             if ak != bk {
                 return LAYOUT | PAINT | SEMANTICS;
             }
-            // split: visual props (patch/full) -> PAINT, structural -> LAYOUT;
-            // a patch that touches padding also consumes content insets
-            let (av, bv) = (a.visual_clone(), b.visual_clone());
             let (al, bl) = (a.layout_clone(), b.layout_clone());
             let mut d = 0;
             if al != bl {
                 d |= LAYOUT;
             }
-            if av != bv {
-                d |= PAINT;
-                // patch affecting padding/radii feeds layout insets
-                if crate::style::patch_touches_layout(&a.patch)
-                    || crate::style::patch_touches_layout(&b.patch)
-                    || a.full != b.full
-                {
-                    d |= LAYOUT;
+            // resolved boxes — recipe+patch+full, OS-enforced
+            let mut ra = a.resolved_box(*ak);
+            let mut rb = b.resolved_box(*bk);
+            if let Some(v) = &mut ra {
+                crate::style::os_enforce_box(v, forced);
+            }
+            if let Some(v) = &mut rb {
+                crate::style::os_enforce_box(v, forced);
+            }
+            match (ra, rb) {
+                (Some(ra), Some(rb)) => box_dirty(&ra, &rb, &mut d),
+                (ra, rb) => {
+                    if ra.is_some() != rb.is_some() {
+                        d |= PAINT | LAYOUT;
+                    }
                 }
             }
             d
@@ -424,32 +474,32 @@ pub(crate) fn dirty_diff(old: &NodeData, new: &NodeData) -> u8 {
                 text: at,
                 wrap: aw,
                 color_role: ac,
-                ..
+                patch: ap,
             },
             NodeData::Label {
                 text: bt,
                 wrap: bw,
                 color_role: bc,
-                ..
+                patch: bp,
             },
         ) => {
             if at != bt || aw != bw {
                 LAYOUT | PAINT
             } else {
+                // resolved label text = recipe + patch
+                let mut ra = crate::style::label_recipe();
+                ra.patch(ap);
+                let mut rb = crate::style::label_recipe();
+                rb.patch(bp);
                 let mut d = 0;
                 if ac != bc {
                     d |= PAINT;
                 }
-                match (old, new) {
-                    (NodeData::Label { patch: ap, .. }, NodeData::Label { patch: bp, .. }) => {
-                        if ap != bp {
-                            d |= PAINT;
-                            if ap.size != bp.size || ap.weight != bp.weight {
-                                d |= LAYOUT; // metrics change
-                            }
-                        }
+                if ra != rb {
+                    d |= PAINT;
+                    if ra.size != rb.size || ra.weight != rb.weight {
+                        d |= LAYOUT;
                     }
-                    _ => {}
                 }
                 d
             }
@@ -478,11 +528,53 @@ pub(crate) fn dirty_diff(old: &NodeData, new: &NodeData) -> u8 {
             if at != bt || asz != bsz {
                 d |= LAYOUT;
             }
-            if at != bt || av != bv || ast != bst || am != bm {
+            if at != bt || av != bv || am != bm {
                 d |= PAINT;
             }
             if ad != bd || atp != btp {
                 d |= SEMANTICS;
+            }
+            // RESOLVED normal-state styles — recipe+patch applied, then
+            // OS enforcement: two authored forms producing the same
+            // concrete output are a strict no-op
+            let mut ra = crate::style::resolve_button(
+                *av,
+                *asz,
+                ast,
+                crate::style::StyleState::Normal,
+                false,
+                dark,
+            );
+            crate::style::os_enforce_visual(&mut ra, forced);
+            let mut rb = crate::style::resolve_button(
+                *bv,
+                *bsz,
+                bst,
+                crate::style::StyleState::Normal,
+                false,
+                dark,
+            );
+            crate::style::os_enforce_visual(&mut rb, forced);
+            visual_dirty(&ra, &rb, &mut d);
+            // state branches' metrics feed layout too — padding in hover/
+            // pressed/disabled/focus branches
+            for st in [
+                crate::style::StyleState::Hover,
+                crate::style::StyleState::Pressed,
+                crate::style::StyleState::Disabled,
+            ] {
+                let ra = crate::style::resolve_button(*av, *asz, ast, st, false, dark);
+                let rb = crate::style::resolve_button(*bv, *bsz, bst, st, false, dark);
+                if ra.box_style.padding != rb.box_style.padding
+                    || ra.box_style.border.top.width != rb.box_style.border.top.width
+                    || ra.box_style.border.right.width != rb.box_style.border.right.width
+                    || ra.box_style.border.bottom.width != rb.box_style.border.bottom.width
+                    || ra.box_style.border.left.width != rb.box_style.border.left.width
+                {
+                    d |= PAINT | LAYOUT;
+                } else if ra != rb {
+                    d |= PAINT;
+                }
             }
             d
         }
@@ -495,6 +587,7 @@ pub(crate) fn dirty_diff(old: &NodeData, new: &NodeData) -> u8 {
                 placeholder: aph,
                 accessible_label: aal,
                 submit: asu,
+                patch: ap,
                 ..
             },
             NodeData::Editor {
@@ -505,6 +598,7 @@ pub(crate) fn dirty_diff(old: &NodeData, new: &NodeData) -> u8 {
                 placeholder: bph,
                 accessible_label: bal,
                 submit: bsu,
+                patch: bp,
                 ..
             },
         ) => {
@@ -515,16 +609,16 @@ pub(crate) fn dirty_diff(old: &NodeData, new: &NodeData) -> u8 {
             if aph != bph || asnap.committed != bsnap.committed {
                 d |= PAINT;
             }
-            match (old, new) {
-                (NodeData::Editor { patch: ap, .. }, NodeData::Editor { patch: bp, .. }) => {
-                    if ap != bp {
-                        d |= PAINT;
-                        if ap.size != bp.size || ap.weight != bp.weight {
-                            d |= LAYOUT; // peer metrics change
-                        }
-                    }
+            if ap != bp {
+                // foreground -> peer repaint; chrome -> resolved box diff
+                if ap.foreground != bp.foreground {
+                    d |= PAINT;
                 }
-                _ => {}
+                let mut ca = crate::style::resolve_text_input_chrome(ap);
+                let mut cb = crate::style::resolve_text_input_chrome(bp);
+                crate::style::os_enforce_box(&mut ca, forced);
+                crate::style::os_enforce_box(&mut cb, forced);
+                box_dirty(&ca, &cb, &mut d);
             }
             if aro != bro || ad != bd || aal != bal || asu != bsu {
                 d |= SEMANTICS;
@@ -563,24 +657,28 @@ pub(crate) fn dirty_diff(old: &NodeData, new: &NodeData) -> u8 {
             },
         ) => {
             let mut d = 0;
-            if ast != bst {
+            // resolved normal-state box — padding/border widths feed the
+            // action's content insets; colors/shadow are paint-only
+            let ra = ast.resolve(*ad, false, false, false);
+            let rb = bst.resolve(*bd, false, false, false);
+            box_dirty(&ra, &rb, &mut d);
+            // state branches can also carry metrics-bearing fields — only
+            // when a branch's patch actually changed
+            for (ap, bp) in [ast.hover, ast.pressed, ast.disabled, ast.focus_visible]
+                .iter()
+                .zip([bst.hover, bst.pressed, bst.disabled, bst.focus_visible].iter())
+            {
+                if ap == bp {
+                    continue;
+                }
                 d |= PAINT;
-                // base padding feeds content insets — a changed base or any
-                // patch that touches padding may change child rects
-                if ast.base != bst.base
-                    || [ast.hover, ast.pressed, ast.disabled, ast.focus_visible]
-                        .iter()
-                        .chain([bst.hover, bst.pressed, bst.disabled, bst.focus_visible].iter())
-                        .flatten()
-                        .any(crate::style::patch_touches_layout)
+                if ap.is_some_and(|p| crate::style::patch_touches_layout(&p))
+                    || bp.is_some_and(|p| crate::style::patch_touches_layout(&p))
                 {
                     d |= LAYOUT;
                 }
             }
-            if ad != bd {
-                d |= SEMANTICS;
-            }
-            if al != bl {
+            if ad != bd || al != bl {
                 d |= SEMANTICS;
             }
             d

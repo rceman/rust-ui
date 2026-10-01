@@ -50,17 +50,50 @@ impl DipRect {
 /// render (bitmap draw destination), pointer hit→peer-local conversion,
 /// caret placement, and the peer's own client/screen conversions (which
 /// read the same `host.bounds`). Nothing else may invent editor insets.
-pub(crate) const EDITOR_INSET_X: f32 = 6.0;
-pub(crate) const EDITOR_INSET_Y: f32 = 5.0;
+
+/// A node's resolved editor chrome — recipe + authored patch.
+pub(crate) fn editor_chrome(patch: &crate::style::TextInputStylePatch) -> crate::style::BoxStyle {
+    crate::style::resolve_text_input_chrome(patch)
+}
+
+/// The mechanical safety inset the rectangular peer sits inside
+/// (approved rule — uses RESOLVED authored radii, pre-normalization):
+///   left   = border.left.width   + padding.left   + max(top_left, bottom_left)
+///   right  = border.right.width  + padding.right  + max(top_right, bottom_right)
+///   top    = border.top.width    + padding.top    + max(top_left, top_right)
+///   bottom = border.bottom.width + padding.bottom + max(bottom_left, bottom_right)
+/// Shadow is ignored here (painted chrome only, never peer geometry).
+pub(crate) fn editor_inset(c: &crate::style::BoxStyle) -> crate::style::Insets {
+    let m = f32::max;
+    crate::style::Insets {
+        left: crate::geom::Dp(
+            c.border.left.width.0 + c.padding.left.0 + m(c.radii.top_left.0, c.radii.bottom_left.0),
+        ),
+        right: crate::geom::Dp(
+            c.border.right.width.0
+                + c.padding.right.0
+                + m(c.radii.top_right.0, c.radii.bottom_right.0),
+        ),
+        top: crate::geom::Dp(
+            c.border.top.width.0 + c.padding.top.0 + m(c.radii.top_left.0, c.radii.top_right.0),
+        ),
+        bottom: crate::geom::Dp(
+            c.border.bottom.width.0
+                + c.padding.bottom.0
+                + m(c.radii.bottom_left.0, c.radii.bottom_right.0),
+        ),
+    }
+}
 
 /// Chrome rect → content rect (DIP). The peer's native surface covers
 /// exactly this area; native coordinates are content-local.
-pub(crate) fn editor_content_rect(r: DipRect) -> DipRect {
+pub(crate) fn editor_content_rect(r: DipRect, c: &crate::style::BoxStyle) -> DipRect {
+    let i = editor_inset(c);
     DipRect {
-        x: r.x + EDITOR_INSET_X,
-        y: r.y + EDITOR_INSET_Y,
-        w: (r.w - 2.0 * EDITOR_INSET_X).max(0.0),
-        h: (r.h - 2.0 * EDITOR_INSET_Y).max(0.0),
+        x: r.x + i.left.0,
+        y: r.y + i.top.0,
+        w: (r.w - i.left.0 - i.right.0).max(0.0),
+        h: (r.h - i.top.0 - i.bottom.0).max(0.0),
     }
 }
 
@@ -211,23 +244,27 @@ where
         NodeData::Editor {
             multiline,
             max_lines,
+            patch,
             ..
         } => {
+            let chrome = editor_chrome(patch);
+            let ins = editor_inset(&chrome);
+            let inset_v = ins.top.0 + ins.bottom.0;
             if let Some(peer) = peer_of(ctx, id) {
                 let (_, h) = peer
                     .borrow()
-                    .natural_size(avail_w)
+                    .natural_size((avail_w - ins.left.0 - ins.right.0).max(0.0))
                     .unwrap_or((avail_w, 22.0));
                 let line = 20.0;
-                // cap applies to CONTENT height; the chrome inset (12) sits
-                // on top — a single-line editor needs ~20+12 = 32 DIP or the
+                // cap applies to CONTENT height; the safety inset sits on
+                // top — a single-line editor needs ~line+inset DIP or the
                 // inner strip is too short for the line and draws nothing
                 let cap = if *multiline {
                     max_lines.map(|n| n as f32 * line).unwrap_or(f32::MAX)
                 } else {
                     line
                 };
-                (avail_w, h.min(cap) + 12.0)
+                (avail_w, h.min(cap) + inset_v)
             } else {
                 (avail_w, if *multiline { 96.0 } else { 32.0 })
             }
@@ -489,10 +526,10 @@ impl LayoutCache {
         // draw destination, pointer/caret spaces all agree because they
         // share this mapping.
         if let Some(peer) = peer_of(ctx, id)
-            && matches!(n.data, NodeData::Editor { .. })
+            && let NodeData::Editor { patch, .. } = &n.data
         {
             peer.borrow()
-                .apply_bounds(editor_content_rect(rect).win(), self.scale);
+                .apply_bounds(editor_content_rect(rect, &editor_chrome(patch)).win(), self.scale);
         }
         rects.insert(id, rect);
         order.push(id);

@@ -689,7 +689,7 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
             submit: SubmitPolicy::default(),
             max_lines: None,
             accessible_label: None,
-            patch: crate::style::TextStylePatch::default(),
+            patch: crate::style::TextInputStylePatch::default(),
             visibility: Visibility::Visible,
             layout: LayoutSpec::default(),
             factories: EventFactorySet::default(),
@@ -711,7 +711,7 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
             submit: SubmitPolicy::None,
             max_lines: None,
             accessible_label: None,
-            patch: crate::style::TextStylePatch::default(),
+            patch: crate::style::TextInputStylePatch::default(),
             visibility: Visibility::Visible,
             layout: LayoutSpec::default(),
             factories: EventFactorySet::default(),
@@ -1171,9 +1171,9 @@ pub struct TextInputBuilder<'a, 'ui, 'b, M: 'static> {
     submit: SubmitPolicy,
     max_lines: Option<u32>,
     accessible_label: Option<Rc<str>>,
-    /// surgical text patch — fg/size/weight map onto the native peer's
-    /// char format; face is fixed (one editable render path)
-    patch: crate::style::TextStylePatch,
+    /// capability-limited patch — chrome paints the frame, `foreground`
+    /// is the only peer-routed field (approved boundary: no size/weight)
+    patch: crate::style::TextInputStylePatch,
     visibility: Visibility,
     layout: LayoutSpec,
     factories: EventFactorySet,
@@ -1181,10 +1181,12 @@ pub struct TextInputBuilder<'a, 'ui, 'b, M: 'static> {
 }
 
 impl<'a, 'ui, 'b, M: 'static> TextInputBuilder<'a, 'ui, 'b, M> {
-    /// SURGICAL text patch — covers fg/size/weight of the editable content
-    /// (the peer still owns its own paint; face is the system editable face)
-    pub fn style(mut self, p: crate::style::TextStylePatch) -> Self {
-        self.patch = p;
+    /// capability-limited patch — chrome (`background`/`border`/`radii`/
+    /// `padding`/`shadow`) paints the frame; `foreground` is routed to the
+    /// peer through the typed adapter. Repeated `.style(..)` merges
+    /// fieldwise — `None` preserves, `Some` wins.
+    pub fn style(mut self, p: crate::style::TextInputStylePatch) -> Self {
+        self.patch.merge(&p);
         self
     }
     pub fn placeholder(mut self, p: &str) -> Self {

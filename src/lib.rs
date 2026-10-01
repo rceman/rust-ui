@@ -28,8 +28,8 @@ pub use runtime::UpdateCtx;
 pub use style::{
     Action, ActionStyle, Border, BorderPatch, BorderSide, BorderSidePatch, BoxProps, BoxStyle,
     BoxStylePatch, ButtonStylePatch, Color, CornerRadii, CornerRadiiPatch, Insets, InsetsPatch,
-    Shadow, ShadowPatch, StateStyles, StyleState, TextSize, TextStyle, TextStylePatch, TextWeight,
-    VisualStyle, VisualStylePatch,
+    Shadow, ShadowPatch, StateStyles, StyleState, TextInputStylePatch, TextSize, TextStyle,
+    TextStylePatch, TextWeight, VisualStyle, VisualStylePatch,
 };
 pub use tasks::{
     BoxFuture, CancelToken, Executor, Job, ProxySendError, SendError, TaskSender, TaskStartError,
@@ -103,6 +103,9 @@ pub enum UiDiagnostic {
     UnhandledTextConflict,
     /// actionable/focusable/native-peer content inside `ui.action`
     InvalidComposition,
+    /// a staged style carried a non-finite/negative/invalid value —
+    /// rejected at commit preflight before any native mutation
+    InvalidStyle,
 }
 
 impl std::fmt::Display for UiDiagnostic {
@@ -114,6 +117,9 @@ impl std::fmt::Display for UiDiagnostic {
             UiDiagnostic::UnhandledTextConflict => "text conflict without on_conflict handler",
             UiDiagnostic::InvalidComposition => {
                 "invalid composition (actionable/peer inside action)"
+            }
+            UiDiagnostic::InvalidStyle => {
+                "invalid style (non-finite/negative/out-of-range value)"
             }
         };
         f.write_str(s)

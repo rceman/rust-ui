@@ -147,6 +147,9 @@ pub(crate) struct HostShared {
     pub cf: Box<CHARFORMATW>,
     pub pf: Box<PARAFORMAT>,
     pub fg: COLORREF,
+    /// consumer authored a custom foreground — theme flips must not
+    /// stomp it (they still update selection colors)
+    pub fg_explicit: bool,
     pub sel_bg: COLORREF,
     pub sel_fg: COLORREF,
     /// system-caret state recorded from Tx*Caret calls
@@ -681,19 +684,16 @@ impl WindowlessPeer {
     /// it over ALL existing text. The stack copy is what EM_SETCHARFORMAT
     /// consumes — the host borrow never crosses a `send` (msftedit calls
     /// back into the host synchronously).
-    pub(crate) fn apply_format(&mut self, fg: COLORREF, size_twips: i32, bold: bool) {
+    /// Push the resolved editable foreground over ALL content. The only
+    /// style a native peer accepts — size/weight/face stay OS-owned.
+    /// `explicit` records whether this is an authored color (theme flips
+    /// preserve it) or the palette role (theme flips update it).
+    pub(crate) fn apply_format(&mut self, fg: COLORREF, fg_explicit: bool) {
         let cf = {
             let mut sh = self.shared_mut();
+            sh.host.fg_explicit = fg_explicit;
             sh.host.cf.crTextColor = fg;
-            sh.host.cf.yHeight = size_twips;
             sh.host.fg = fg;
-            let mut e = sh.host.cf.dwEffects.0;
-            if bold {
-                e |= CFE_BOLD.0;
-            } else {
-                e &= !CFE_BOLD.0;
-            }
-            sh.host.cf.dwEffects = CFE_EFFECTS(e);
             *sh.host.cf
         };
         let _ = self.send(EM_SETCHARFORMAT, SCF_ALL as usize, &cf as *const _ as isize);
@@ -744,6 +744,7 @@ impl WindowlessPeer {
                     ..Default::default()
                 }),
                 fg: colorref(cfg.fg),
+                fg_explicit: cfg.fg_explicit,
                 sel_bg: colorref(cfg.sel_bg),
                 sel_fg: colorref(cfg.sel_fg),
                 caret_pos: POINT::default(),
@@ -1096,12 +1097,17 @@ impl WindowlessPeer {
 
     /// Theme colors — CFE_AUTOCOLOR resolves `COLOR_WINDOWTEXT` through
     /// `TxGetSysColor` at draw time; no run-format rewrite needed.
+    /// Theme palette flip — updates role-resolved fg + selection colors.
+    /// A peer with an explicitly authored foreground keeps it (the
+    /// consumer's style is authoritative over the role palette).
     pub(crate) fn set_colors(&self, fg: [f32; 4], sel_bg: [f32; 4], sel_fg: [f32; 4]) {
         let mut s = self.shared_mut();
-        s.host.fg = colorref(fg);
+        if !s.host.fg_explicit {
+            s.host.fg = colorref(fg);
+            s.host.cf.crTextColor = colorref(fg);
+        }
         s.host.sel_bg = colorref(sel_bg);
         s.host.sel_fg = colorref(sel_fg);
-        s.host.cf.crTextColor = colorref(fg);
         s.host.ev(HostEvent::Invalidate);
     }
 
@@ -1194,6 +1200,8 @@ pub(crate) struct PeerConfig {
     pub face: String,
     pub size_twips: i32,
     pub fg: [f32; 4],
+    /// consumer authored a custom foreground — theme flips preserve it
+    pub fg_explicit: bool,
     pub sel_bg: [f32; 4],
     pub sel_fg: [f32; 4],
     /// bold flag folded into CHARFORMAT dwEffects (CFM_BOLD)

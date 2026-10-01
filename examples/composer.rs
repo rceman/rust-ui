@@ -242,17 +242,18 @@ impl Spike {
         ui.column(Column::new().gap(Space::Sm).padding(Space::Md), |ui| {
             ui.label("composer spike");
             ui.group("draft", |ui| {
-                // SURGICAL on an editor — the authored patch reaches the
-                // windowless RichEdit char format (bold + a real size)
+                // capability-limited editor patch — chrome + foreground
+                // only; size/weight are OS-owned (approved boundary)
                 ui.text_input(&self.draft)
                     .placeholder("draft")
                     .label("draft")
                     .style(if self.draft_bold {
-                        TextStylePatch::new()
-                            .weight(TextWeight::Bold)
-                            .size(dp(16.0))
+                        TextInputStylePatch::new()
+                            .foreground(Color::rgb(180, 60, 40))
+                            .border_bottom_color(Color::rgb(180, 60, 40))
+                            .border_bottom_width(dp(2.0))
                     } else {
-                        TextStylePatch::new()
+                        TextInputStylePatch::new()
                     })
                     .on_edit(Msg::DraftEdited)
                     .on_conflict(Msg::DraftConflict)

@@ -271,7 +271,7 @@ impl<S: 'static> Rig<S> {
                     as Box<dyn crate::node::TextPeer>)
             }),
             Theme::light(),
-            Appearance { dark: false },
+            Appearance { dark: false, forced_colors: false },
         );
         rt.executor = Some(Arc::new(exec.clone()));
         Rig { rt, peers, exec }
@@ -1789,7 +1789,7 @@ fn executor_rejection_fences_registration() {
                 as Box<dyn crate::node::TextPeer>)
         }),
         Theme::light(),
-        Appearance { dark: false },
+        Appearance { dark: false, forced_colors: false },
     );
     rt.executor = Some(Arc::new(RejectAll));
     rt.review_for_test().unwrap();
@@ -2269,7 +2269,7 @@ fn scope_adapter_captures_rc_and_root_msg_need_not_send() {
                 as Box<dyn crate::node::TextPeer>)
         }),
         Theme::light(),
-        Appearance { dark: false },
+        Appearance { dark: false, forced_colors: false },
     );
     rt.review_for_test().unwrap();
     let btn = rt.root_children()[0];
@@ -2983,7 +2983,7 @@ fn peer_factory_failure_tears_down_orderly() {
                 as Box<dyn crate::node::TextPeer>)
         }),
         Theme::light(),
-        Appearance { dark: false },
+        Appearance { dark: false, forced_colors: false },
     );
     let r = rt.review_for_test();
     assert!(matches!(r, Err(crate::UiError::Platform(_))));
@@ -3145,6 +3145,7 @@ fn native_probe_richedit_paints_text() {
         face: "Segoe UI".into(),
         size_twips: 280,
         fg: [0.94, 0.94, 0.94, 1.0],
+        fg_explicit: false,
         sel_bg: [0.2, 0.4, 0.8, 1.0],
         sel_fg: [1.0, 1.0, 1.0, 1.0],
         bold: false,
@@ -3909,4 +3910,275 @@ fn rid_safearray_roundtrip() {
             eprintln!("rid[{i}] = {out}");
         }
     }
+}
+
+/// P6 lifecycle: a retained provider reference must stay live across
+/// reorder/disable for the same NodeId, die on remove, stay dead after a
+/// same-slot new-generation recreate, and everything dies on close.
+#[cfg(windows)]
+#[test]
+fn uia_retained_provider_lifecycle() {
+    use crate::platform::win32::uia::{ChildBuild, UiaRoot};
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::Accessibility::*;
+    use windows::core::Interface;
+
+    let root = UiaRoot::new(HWND::default(), "t").expect("root");
+    let mk = |slot: u32, generation: u64, name: &str, enabled: bool| ChildBuild {
+        id: crate::NodeId { slot, generation },
+        name: name.into(),
+        ct: UIA_ButtonControlTypeId,
+        localized: "Button",
+        rect: UiaRect {
+            left: 0.0,
+            top: 0.0,
+            width: 10.0,
+            height: 10.0,
+        },
+        actionable: true,
+        enabled,
+        peer_node: false,
+        native: None,
+    };
+    let simple_of = |f: &IRawElementProviderFragment| -> IRawElementProviderSimple {
+        f.cast().expect("simple")
+    };
+
+    // mount A,B,C
+    root.rebuild(vec![
+        mk(0, 0, "a", true),
+        mk(1, 0, "b", true),
+        mk(2, 0, "c", true),
+    ])
+    .unwrap();
+    let rf: IRawElementProviderFragment = root.provider().cast().unwrap();
+    let b = unsafe {
+        rf.Navigate(NavigateDirection_FirstChild)
+            .unwrap()
+            .Navigate(NavigateDirection_NextSibling)
+            .unwrap()
+    }; // slot 1
+    assert_eq!(
+        uia_variant_string(&unsafe { simple_of(&b).GetPropertyValue(UIA_NamePropertyId).unwrap() }),
+        "b"
+    );
+
+    // reorder C,A,B — same NodeIds survive; retained B must still be live
+    root.rebuild(vec![
+        mk(2, 0, "c", true),
+        mk(0, 0, "a", true),
+        mk(1, 0, "b", true),
+    ])
+    .unwrap();
+    assert!(unsafe { simple_of(&b).GetPropertyValue(UIA_NamePropertyId) }.is_ok());
+
+    // disable B — the retained fragment must report enabled=false live
+    root.rebuild(vec![
+        mk(2, 0, "c", true),
+        mk(0, 0, "a", true),
+        mk(1, 0, "b", false),
+    ])
+    .unwrap();
+    let en = unsafe { simple_of(&b).GetPropertyValue(UIA_IsEnabledPropertyId).unwrap() };
+    assert!(unsafe { !en.Anonymous.Anonymous.Anonymous.boolVal.as_bool() });
+    // disabled node cannot take focus
+    assert!(unsafe { b.SetFocus() }.is_err(), "disabled must reject SetFocus");
+
+    // remove B — retained reference dies permanently
+    root.rebuild(vec![mk(2, 0, "c", true), mk(0, 0, "a", true)])
+        .unwrap();
+    assert!(unsafe { simple_of(&b).GetPropertyValue(UIA_NamePropertyId) }.is_err());
+
+    // same-slot new-generation recreate — old B ref must NOT resolve to
+    // the replacement; the new provider answers
+    root.rebuild(vec![mk(2, 0, "c", true), mk(0, 0, "a", true), mk(1, 1, "b2", true)])
+        .unwrap();
+    assert!(unsafe { simple_of(&b).GetPropertyValue(UIA_NamePropertyId) }.is_err());
+    let last = unsafe { rf.Navigate(NavigateDirection_LastChild).unwrap() };
+    assert_eq!(
+        uia_variant_string(
+            &unsafe { simple_of(&last).GetPropertyValue(UIA_NamePropertyId).unwrap() }
+        ),
+        "b2"
+    );
+
+    // close — everything dies
+    root.close();
+    assert!(unsafe { simple_of(&last).GetPropertyValue(UIA_NamePropertyId) }.is_err());
+    assert!(unsafe { rf.Navigate(NavigateDirection_FirstChild) }.is_err());
+}
+
+/// P8: style preflight — non-finite/negative/invalid authored values are
+/// rejected at commit BEFORE any native mutation.
+#[test]
+fn invalid_style_rejected_at_commit() {
+    use crate::geom::Dp;
+    let mut rig = Rig::new((), |_: &mut (), _m: Msg, _u: &mut UpdateCtx<Msg>| {}, |_: &(), ui| {
+        let mut p = crate::style::ButtonStylePatch::new();
+        p.styles.base.box_style.padding.left = Some(Dp(f32::NAN));
+        ui.button("b").style(p);
+    });
+    match rig.view() {
+        Err(crate::UiError::InvalidUi(crate::UiDiagnostic::InvalidStyle)) => {}
+        r => panic!("expected InvalidStyle, got {r:?}"),
+    }
+    // negative border width also rejects
+    let mut rig2 = Rig::new((), |_: &mut (), _m: Msg, _u: &mut UpdateCtx<Msg>| {}, |_: &(), ui| {
+        let mut p = crate::style::ButtonStylePatch::new();
+        p.styles.base.box_style.border.top.width = Some(Dp(-1.0));
+        ui.button("b").style(p);
+    });
+    match rig2.view() {
+        Err(crate::UiError::InvalidUi(crate::UiDiagnostic::InvalidStyle)) => {}
+        r => panic!("expected InvalidStyle, got {r:?}"),
+    }
+    // zero/nonpositive exact text size rejects
+    let mut rig3 = Rig::new((), |_: &mut (), _m: Msg, _u: &mut UpdateCtx<Msg>| {}, |_: &(), ui| {
+        ui.label("x")
+            .style(crate::style::TextStylePatch::new().size(Dp(0.0)));
+    });
+    match rig3.view() {
+        Err(crate::UiError::InvalidUi(crate::UiDiagnostic::InvalidStyle)) => {}
+        r => panic!("expected InvalidStyle, got {r:?}"),
+    }
+}
+
+/// P8: proportional radius normalization — adjacent pairs sharing an edge
+/// scale by ONE factor so authored proportions survive; oversized pairs
+/// never exceed the edge.
+#[test]
+fn radii_normalize_proportionally() {
+    use crate::geom::Dp;
+    use crate::style::CornerRadii;
+    // tl=40 tr=80 on a 60-wide rect — pair sum 120 > 60 -> factor 0.5
+    // applied to BOTH (and every other pair's factor too)
+    let r = CornerRadii {
+        top_left: Dp(40.0),
+        top_right: Dp(80.0),
+        bottom_right: Dp(0.0),
+        bottom_left: Dp(0.0),
+    };
+    let n = r.normalized(60.0, 100.0);
+    assert!((n.top_left.0 - 20.0).abs() < 1e-4);
+    assert!((n.top_right.0 - 40.0).abs() < 1e-4);
+    // ratio preserved
+    assert!((n.top_right.0 / n.top_left.0 - 2.0).abs() < 1e-4);
+    // within-bounds radii pass through untouched
+    let small = CornerRadii::all(Dp(4.0));
+    assert_eq!(small.normalized(100.0, 100.0), small);
+}
+
+/// P8: repeated `.style()` / state setters merge fieldwise — a later call
+/// must not erase earlier `Some` fields.
+#[test]
+fn repeated_style_setters_merge_fieldwise() {
+    use crate::geom::Dp;
+    use crate::style::*;
+    // ButtonStylePatch hover: two calls merge
+    let p = ButtonStylePatch::new()
+        .hover(VisualStylePatch {
+            box_style: BoxStylePatch {
+                background: Some(Color::rgb(1, 1, 1)),
+                ..Default::default()
+            },
+            ..Default::default()
+        })
+        .hover(VisualStylePatch {
+            text_style: TextStylePatch {
+                foreground: Some(Color::rgb(2, 2, 2)),
+                ..Default::default()
+            },
+            ..Default::default()
+        });
+    let h = p.styles.hover.unwrap();
+    assert_eq!(h.box_style.background, Some(Color::rgb(1, 1, 1)));
+    assert_eq!(h.text_style.foreground, Some(Color::rgb(2, 2, 2)));
+    // ActionStyle state setters merge
+    let a = ActionStyle::new(BoxStyle::new())
+        .hover(BoxStylePatch {
+            padding: crate::style::InsetsPatch {
+                left: Some(Dp(3.0)),
+                ..Default::default()
+            },
+            ..Default::default()
+        })
+        .hover(BoxStylePatch {
+            background: Some(Color::rgb(9, 9, 9)),
+            ..Default::default()
+        });
+    let h = a.hover.unwrap();
+    assert_eq!(h.padding.left, Some(Dp(3.0)));
+    assert_eq!(h.background, Some(Color::rgb(9, 9, 9)));
+    // resolved action keeps BOTH merged fields
+    let r = a.resolve(false, false, true, false);
+    assert_eq!(r.padding.left, Dp(3.0));
+    assert_eq!(r.background, Color::rgb(9, 9, 9));
+}
+
+/// P8: dirty classification compares RESOLVED output — a patch whose net
+/// effect equals the current resolved style produces zero dirty work;
+/// shadow-only changes are paint, never layout.
+#[test]
+fn resolved_dirty_classification() {
+    use crate::geom::Dp;
+    use crate::node::NodeData;
+    use crate::style::*;
+    const LAYOUT: u8 = 0b0000_0001;
+    const PAINT: u8 = 0b0000_0010;
+    let surface = |patch: BoxStylePatch| NodeData::Container {
+        kind: crate::node::KIND_SURFACE,
+        props: crate::node::ContainerProps {
+            gap: None,
+            align: None,
+            justify: None,
+            padding: None,
+            patch,
+            full: None,
+        },
+    };
+    // same authored descriptor -> no dirty
+    let p = BoxStylePatch::new();
+    assert_eq!(crate::node::dirty_diff(&surface(p), &surface(p), false, false), 0);
+    // a patch authoring the SAME resolved value as the recipe -> no dirty
+    let mut same = BoxStylePatch::new();
+    same.padding.top = Some(Dp(12.0));
+    same.padding.right = Some(Dp(12.0));
+    same.padding.bottom = Some(Dp(12.0));
+    same.padding.left = Some(Dp(12.0));
+    assert_eq!(
+        crate::node::dirty_diff(&surface(p), &surface(same), false, false),
+        0,
+        "patch resolving to identical output must be a no-op"
+    );
+    // shadow-only change -> PAINT, never LAYOUT
+    let mut sh = BoxStylePatch::new();
+    sh.shadow = ShadowPatch::Set(Shadow {
+        color: Color::rgb(0, 0, 0),
+        offset_x: Dp(0.0),
+        offset_y: Dp(2.0),
+        blur_sigma: Dp(4.0),
+    });
+    let d = crate::node::dirty_diff(&surface(p), &surface(sh), false, false);
+    assert_eq!(d & PAINT, PAINT);
+    assert_eq!(d & LAYOUT, 0, "shadow-only must not request layout");
+    // border WIDTH change -> LAYOUT; border COLOR change -> PAINT only
+    let mut bw = BoxStylePatch::new();
+    bw.border.top.width = Some(Dp(3.0));
+    assert_eq!(
+        crate::node::dirty_diff(&surface(p), &surface(bw), false, false),
+        LAYOUT | PAINT
+    );
+    let mut bc = BoxStylePatch::new();
+    bc.border.top.color = Some(Color::rgb(9, 9, 9));
+    assert_eq!(
+        crate::node::dirty_diff(&surface(p), &surface(bc), false, false),
+        PAINT,
+        "color-only border change is paint-only"
+    );
+    // forced-colors suppresses a set shadow -> resolved equal -> no work
+    assert_eq!(
+        crate::node::dirty_diff(&surface(p), &surface(sh), false, true),
+        0,
+        "shadow change under forced-colors resolves to identical output"
+    );
 }

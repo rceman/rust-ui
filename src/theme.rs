@@ -19,6 +19,9 @@ pub enum ThemeMode {
 #[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
 pub struct Appearance {
     pub dark: bool,
+    /// OS forced-colors / high-contrast — drives the enforcement layer
+    /// (decorative shadows resolve to None; focus visibility enforced)
+    pub forced_colors: bool,
 }
 
 #[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
@@ -138,6 +141,9 @@ impl Theme {
     }
 
     pub fn appearance(&self) -> Appearance {
-        Appearance { dark: self.dark }
+        Appearance {
+            dark: self.dark,
+            forced_colors: false,
+        }
     }
 }

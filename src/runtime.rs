@@ -308,6 +308,17 @@ where
                 self.scratch_nodes = tx.nodes;
                 return Err(UiError::InvalidUi(d));
             }
+            // style preflight — invalid values reject as InvalidStyle;
+            // representable-but-unsupported (nonopaque peer backing or
+            // foreground on native text) reject as Unsupported. Both land
+            // BEFORE any native mutation.
+            if let Some(e) = validate_styles(&tx, self.theme.dark) {
+                if let UiError::InvalidUi(d) = e {
+                    self.diagnostics.push(d);
+                }
+                self.scratch_nodes = tx.nodes;
+                return Err(e);
+            }
             // foreign-lease preflight: a staged editor whose lease is
             // occupied by a binding this runtime never mounted belongs to a
             // different runtime — reject BEFORE any peer mutation
@@ -536,16 +547,16 @@ where
         } = &data
             && let Some(pf) = &self.peer_factory
         {
-            // recipe defaults + the surgical patch -> resolved text style;
-            // behavior gates ride the spec so a mounted peer never starts
-            // writable when the node says otherwise
-            let mut ts = crate::style::TextStyle::default();
-            ts.patch(patch);
+            // capability boundary: the peer receives ONLY the resolved
+            // editable foreground — authored value or the Foreground role
+            let foreground = patch
+                .foreground
+                .unwrap_or(crate::style::Color::Role(crate::theme::ColorRole::Foreground));
             peer = Some(pf(crate::node::PeerSpec {
                 multiline,
                 read_only: *read_only,
                 disabled: *disabled,
-                style: ts,
+                foreground,
             })?);
         }
 
@@ -636,7 +647,11 @@ where
         let commit_err: Option<UiError> = {
             let n = self.arena.get_mut(id).unwrap();
             let old_data = std::mem::replace(&mut n.data, data);
-            n.dirty = crate::node::dirty_diff(&old_data, &n.data);
+            // dirty classification compares RESOLVED styles — two authored
+            // descriptions producing identical concrete output are a no-op
+            let dark = self.theme.dark;
+            let forced = self.appearance.forced_colors;
+            n.dirty = crate::node::dirty_diff(&old_data, &n.data, dark, forced);
             if n.layout != layout || old_vis != visibility {
                 n.dirty |= Self::DIRTY_LAYOUT;
             }
@@ -667,9 +682,11 @@ where
                             p.set_read_only(*read_only || *disabled);
                         }
                         if patch_changed {
-                            let mut ts = crate::style::TextStyle::default();
-                            ts.patch(patch);
-                            p.apply_text_style(&ts);
+                            p.apply_foreground(
+                                patch.foreground.unwrap_or(crate::style::Color::Role(
+                                    crate::theme::ColorRole::Foreground,
+                                )),
+                            );
                         }
                         if let NodeData::Editor { snapshot, sync, .. } = &mut n.data {
                             match sync.commit(p.as_mut(), snapshot) {
@@ -1249,6 +1266,61 @@ fn validate_bindings(tx: &Tx) -> Option<UiDiagnostic> {
             && !seen.insert(lid)
         {
             return Some(UiDiagnostic::DuplicateTextBinding);
+        }
+    }
+    None
+}
+
+/// Style preflight — every staged style is validated BEFORE any native
+/// mutation: finite numbers, nonnegative geometry, positive text sizes,
+/// valid radii/shadow -> `InvalidUi(InvalidStyle)`; a nonopaque editor
+/// backing/foreground (impossible platform capability) -> `Unsupported`.
+fn validate_styles(tx: &Tx, dark: bool) -> Option<UiError> {
+    for n in &tx.nodes {
+        let ok = match &n.data {
+            NodeData::Container { kind, props } => {
+                let patch_ok = crate::style::box_patch_ok(&props.patch);
+                let full_ok = props.full.is_none_or(|f| crate::style::box_style_ok(&f));
+                let resolved_ok = props
+                    .resolved_box(*kind)
+                    .is_none_or(|b| crate::style::box_style_ok(&b));
+                patch_ok && full_ok && resolved_ok
+            }
+            NodeData::Label { patch, .. } => crate::style::text_patch_ok(patch),
+            NodeData::Button {
+                style, variant, size, ..
+            } => {
+                crate::style::button_patch_ok(style)
+                    && crate::style::visual_style_ok(&crate::style::resolve_button(
+                        *variant,
+                        *size,
+                        style,
+                        crate::style::StyleState::Normal,
+                        false,
+                        false,
+                    ))
+            }
+            NodeData::Editor { patch, .. } => {
+                if !crate::style::text_input_patch_ok(patch) {
+                    return Some(UiError::InvalidUi(UiDiagnostic::InvalidStyle));
+                }
+                // opaque rule — checked against the RESOLVED colors
+                let chrome = crate::style::resolve_text_input_chrome(patch);
+                let fg = patch
+                    .foreground
+                    .unwrap_or(crate::style::Color::Role(crate::theme::ColorRole::Foreground));
+                if !crate::style::text_input_opaque(&chrome, fg, dark) {
+                    return Some(UiError::Unsupported(
+                        "native text requires opaque backing and foreground".into(),
+                    ));
+                }
+                true
+            }
+            NodeData::Action { style, .. } => crate::style::action_style_ok(style),
+            _ => true,
+        };
+        if !ok {
+            return Some(UiError::InvalidUi(UiDiagnostic::InvalidStyle));
         }
     }
     None

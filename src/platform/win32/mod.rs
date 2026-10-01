@@ -109,27 +109,27 @@ impl PeerCtx {
             let id = ctx.next_id.fetch_add(1, Ordering::SeqCst);
             let (appearance, theme) = ctx.colors.borrow().clone();
             let (fg, sel_bg, sel_fg) = palette(&theme, &appearance);
-            // resolved text style -> the peer's CHARFORMAT inputs
-            let size_pt = match spec.style.size {
-                crate::style::TextSize::Body => 14.0,
-                crate::style::TextSize::Exact(d) => d.0,
-            };
+            // capability boundary: the peer receives ONLY the resolved
+            // foreground — font face/size/weight/selection stay OS-owned
+            let explicit = spec.foreground
+                != crate::style::Color::Role(crate::theme::ColorRole::Foreground);
             let cfg = PeerConfig {
                 multiline: spec.multiline,
                 // disabled peers mount read-only — inert until enabled
                 read_only: spec.read_only || spec.disabled,
                 face: "Segoe UI".into(),
-                size_twips: (size_pt * 20.0) as i32,
-                fg: if spec.style.foreground
-                    == crate::style::Color::Role(crate::theme::ColorRole::Foreground)
-                {
-                    fg
+                size_twips: (14.0f32 * 20.0) as i32,
+                fg: if explicit {
+                    crate::style::resolve_color(spec.foreground, theme.dark)
                 } else {
-                    crate::style::resolve_color(spec.style.foreground, theme.dark)
+                    fg
                 },
+                // role-resolved foreground follows the palette; an
+                // authored color is explicit and survives theme flips
+                fg_explicit: explicit,
                 sel_bg,
                 sel_fg,
-                bold: spec.style.weight == crate::style::TextWeight::Bold,
+                bold: false,
             };
             let peer = WindowlessPeer::create(
                 id,
@@ -186,24 +186,19 @@ impl crate::node::TextPeer for PeerHandle {
             self.ctx.registry.lock().unwrap().remove(&slot);
         }
     }
-    /// Surgical patch changed on a mounted editor — resolve against the
-    /// live appearance and push the new char format over all content.
-    fn apply_text_style(&mut self, style: &crate::style::TextStyle) {
+    /// Authored `foreground` changed on a mounted editor — the ONLY style
+    /// routed into the peer. Resolved against the live appearance, pushed
+    /// over all content via the char format.
+    fn apply_foreground(&mut self, fg: crate::style::Color) {
         let (_, theme) = self.ctx.colors.borrow().clone();
-        let c = crate::style::resolve_color(style.foreground, theme.dark);
+        let explicit = fg != crate::style::Color::Role(crate::theme::ColorRole::Foreground);
+        let c = crate::style::resolve_color(fg, theme.dark);
         let fg = windows::Win32::Foundation::COLORREF(
             ((c[0] * 255.0) as u32)
                 | (((c[1] * 255.0) as u32) << 8)
                 | (((c[2] * 255.0) as u32) << 16),
         );
-        let pt = match style.size {
-            crate::style::TextSize::Body => 14.0,
-            crate::style::TextSize::Exact(d) => d.0,
-        };
-        let bold = style.weight == crate::style::TextWeight::Bold;
-        self.peer
-            .borrow_mut()
-            .apply_format(fg, (pt * 20.0) as i32, bold);
+        self.peer.borrow_mut().apply_format(fg, explicit);
     }
     /// Read-only flips ride into the native service — ES_READONLY blocks
     /// edits at the msftedit level, not just the input router. The runtime
@@ -818,11 +813,12 @@ where
         }
         // the caret reports peer-local DIP — same content transform as
         // draw/pointer so the caret lands where the glyph is
+        let chrome = self.editor_chrome_of(node);
         let Some(r) = self
             .rects
             .get(&node)
             .copied()
-            .map(layout::editor_content_rect)
+            .map(|r| layout::editor_content_rect(r, &chrome))
         else {
             return;
         };
@@ -1156,8 +1152,10 @@ where
             // native peer? forward the raw message + focus on down
             if self.peer_for(id).is_some() {
                 // peer-local = content-local — THE shared transform
-                let r =
-                    layout::editor_content_rect(self.rects.get(&id).copied().unwrap_or_default());
+                let r = layout::editor_content_rect(
+                    self.rects.get(&id).copied().unwrap_or_default(),
+                    &self.editor_chrome_of(id),
+                );
                 let local = Point {
                     x: pos.x - r.x,
                     y: pos.y - r.y,
@@ -1236,6 +1234,17 @@ where
 
     /// Registry lookup that also proves generation identity — a slot reuse
     /// never routes input to a stale peer's replacement.
+    /// A node's resolved editor chrome (recipe + authored patch) — the
+    /// transform contract's style input.
+    pub(crate) fn editor_chrome_of(&self, node: NodeId) -> crate::style::BoxStyle {
+        match self.rt.arena.get(node).map(|n| &n.data) {
+            Some(crate::node::NodeData::Editor { patch, .. }) => {
+                layout::editor_chrome(patch)
+            }
+            _ => crate::style::text_input_chrome_recipe(),
+        }
+    }
+
     pub(crate) fn peer_for(&self, node: NodeId) -> Option<Rc<RefCell<WindowlessPeer>>> {
         self.peer_ctx
             .registry
@@ -1498,7 +1507,10 @@ where
         if let Some(id) = hit
             && self.peer_for(id).is_some()
         {
-            let r = layout::editor_content_rect(self.rects.get(&id).copied().unwrap_or_default());
+            let r = layout::editor_content_rect(
+                self.rects.get(&id).copied().unwrap_or_default(),
+                &self.editor_chrome_of(id),
+            );
             let lp = (((pos.y - r.y) as isize) << 16) | ((pos.x - r.x) as isize & 0xffff);
             let _ = self.deliver_native(id, WM_MOUSEMOVE, 0, lp);
             self.service_peer_events()?;
@@ -2044,7 +2056,10 @@ where
 /// OS appearance: HKCU Themes\Personalize\AppsUseLightTheme (DWORD).
 fn os_appearance() -> Appearance {
     use windows::Win32::System::Registry::*;
+    use windows::Win32::UI::Accessibility::{HCF_HIGHCONTRASTON, HIGHCONTRASTW};
+    use windows::Win32::UI::WindowsAndMessaging::{SPI_GETHIGHCONTRAST, SystemParametersInfoW};
     let mut dark = false;
+    let mut forced = false;
     unsafe {
         let mut key = HKEY::default();
         if RegOpenKeyExW(
@@ -2073,8 +2088,23 @@ fn os_appearance() -> Appearance {
             }
             let _ = RegCloseKey(key);
         }
+        let mut hc = HIGHCONTRASTW::default();
+        hc.cbSize = std::mem::size_of::<HIGHCONTRASTW>() as u32;
+        if SystemParametersInfoW(
+            SPI_GETHIGHCONTRAST,
+            0,
+            Some(&mut hc as *mut _ as *mut c_void),
+            Default::default(),
+        )
+        .is_ok()
+        {
+            forced = hc.dwFlags.contains(HCF_HIGHCONTRASTON);
+        }
     }
-    Appearance { dark }
+    Appearance {
+        dark,
+        forced_colors: forced,
+    }
 }
 
 /// Effective reduced motion: Reduce=true, NoPreference=false, System reads
