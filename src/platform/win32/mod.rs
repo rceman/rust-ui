@@ -61,6 +61,10 @@ pub(crate) struct PerfCounters {
     pub animation_timer_fires: AtomicU64,
     pub native_caret_redraws: AtomicU64,
     pub native_timer_fires: AtomicU64,
+    /// EN_CHANGE notifications suppressed while a composition was active —
+    /// preedit leaking into the committed channel is a defect we count,
+    /// not a value we route
+    pub preedit_commits_suppressed: AtomicU64,
 }
 
 impl PerfCounters {
@@ -72,6 +76,7 @@ impl PerfCounters {
             animation_timer_fires: AtomicU64::new(0),
             native_caret_redraws: AtomicU64::new(0),
             native_timer_fires: AtomicU64::new(0),
+            preedit_commits_suppressed: AtomicU64::new(0),
         }
     }
 }
@@ -244,6 +249,29 @@ pub(crate) const WM_PUMP: u32 = WM_APP + 7;
 /// generation-fenced UIA actions routed through the UI thread
 pub(crate) const WM_UIA_PRESS: u32 = WM_APP + 8;
 pub(crate) const WM_UIA_FOCUS: u32 = WM_APP + 9;
+
+/// The Enter-fork decision — Submit (semantic only, peer never sees the
+/// key) or Edit (delivered to the peer, never also submits).
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+enum SubmitDecision {
+    Submit,
+    Edit,
+}
+
+/// THE Win32 modifier read — real keyboard state at event time, the one
+/// place `GetKeyState` is consulted for semantic events.
+fn modifiers_now() -> Modifiers {
+    unsafe {
+        use windows::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, VK_CONTROL, VK_LWIN, VK_MENU, VK_SHIFT};
+        let down = |vk: u16| GetKeyState(vk as i32) < 0;
+        Modifiers {
+            shift: down(VK_SHIFT.0),
+            ctrl: down(VK_CONTROL.0),
+            alt: down(VK_MENU.0),
+            logo: down(VK_LWIN.0) || down(windows::Win32::UI::Input::KeyboardAndMouse::VK_RWIN.0),
+        }
+    }
+}
 
 // ---------------------------------------------------------------------------
 // the backend object — one per run loop
@@ -798,21 +826,36 @@ where
             let p = peer.borrow();
             (
                 p.text()?,
-                p.selection_utf16().unwrap_or((0, 0)).0,
-                p.selection_utf16().unwrap_or((0, 0)).1,
+                p.selection_utf16()?.0,
+                p.selection_utf16()?.1,
                 p.node(),
                 p.peer_rev(),
                 p.binding(),
             )
         };
+        // EN_CHANGE during an active composition means preedit leaked into
+        // the committed channel — the runtime contract is committed-only,
+        // so a preedit notification is suppressed, never routed to
+        // TextValue or Submit.
+        if self.rt.composition_active(node) {
+            self.counters
+                .preedit_commits_suppressed
+                .fetch_add(1, Ordering::Relaxed);
+            return Ok(());
+        }
         let result = crate::text::TextRevision::mint();
         if let Some(binding) = binding {
-            // UTF-8 positions of the selection at THIS commit — indices stay
-            // consistent because we never normalize CR/LF
+            // UTF-8 positions of the selection at THIS commit — a failed
+            // index conversion is a typed failure, never (0,0)/end-of-text
+            let to_utf8 = |i: usize| {
+                crate::text::utf16_index_to_utf8(&text, i).ok_or_else(|| {
+                    UiError::Platform(format!("selection offset {i} not representable"))
+                })
+            };
             let sel = TextSelection {
                 revision: result,
-                anchor: crate::text::utf16_index_to_utf8(&text, anchor).unwrap_or(text.len()),
-                focus: crate::text::utf16_index_to_utf8(&text, focus).unwrap_or(text.len()),
+                anchor: to_utf8(anchor)?,
+                focus: to_utf8(focus)?,
             };
             self.rt.edit_event(
                 node,
@@ -1060,11 +1103,22 @@ where
                     // hover, pressed, focus, or activation state attaches
                     NodeData::Button { .. }
                     | NodeData::Editor { .. }
-                    | NodeData::Custom { .. }
                     | NodeData::Action { .. }
                         if n.interactive() =>
                     {
                         return Some(id);
+                    }
+                    // CustomRender owns its own hit geometry — the rect is
+                    // only the bounding box; an actionable custom shape can
+                    // refuse a hit inside its bounds
+                    NodeData::Custom { render, .. } if n.interactive() => {
+                        let local = Point {
+                            x: p.x - r.x,
+                            y: p.y - r.y,
+                        };
+                        if render.hit_test(local, *r) {
+                            return Some(id);
+                        }
                     }
                     _ => {}
                 }
@@ -1107,7 +1161,7 @@ where
                         PointerEvent {
                             position: pos,
                             button,
-                            modifiers: Modifiers::default(),
+                            modifiers: modifiers_now(),
                         },
                         crate::node::PointerPhase::Leave,
                     ),
@@ -1122,7 +1176,7 @@ where
                         PointerEvent {
                             position: pos,
                             button,
-                            modifiers: Modifiers::default(),
+                            modifiers: modifiers_now(),
                         },
                         crate::node::PointerPhase::Enter,
                     ),
@@ -1176,7 +1230,7 @@ where
                         PointerEvent {
                             position: pos,
                             button,
-                            modifiers: Modifiers::default(),
+                            modifiers: modifiers_now(),
                         },
                         crate::node::PointerPhase::Down,
                     )
@@ -1196,7 +1250,7 @@ where
                         PointerEvent {
                             position: pos,
                             button,
-                            modifiers: Modifiers::default(),
+                            modifiers: modifiers_now(),
                         },
                         crate::node::PointerPhase::Up,
                     )
@@ -1272,6 +1326,23 @@ where
         if let Some(focus) = self.focus
             && self.peer_for(focus).is_some()
         {
+            // SUBMIT CONTRACT — the canonical boundary is: plain Enter
+            // submits, Shift+Enter edits (newline). The decision is made
+            // BEFORE delivery because a submitting Enter must NOT reach
+            // msftedit (it would insert a newline AND submit — two effects
+            // for one keypress, which the contract forbids).
+            if msg == WM_KEYDOWN && ev == Key::Enter && !self.rt.composition_active(focus) {
+                match self.submit_decision(focus) {
+                    SubmitDecision::Submit => {
+                        self.push_input(focus, NodeEvent::Submit)?;
+                        return self.turn();
+                    }
+                    SubmitDecision::Edit => {
+                        // editing Enter (newline / modifier-not-met) — falls
+                        // through to normal delivery, never also submits
+                    }
+                }
+            }
             // send first — the consumed signal decides availability; a
             // deferred delivery reports no result, and an active
             // composition owns the keyboard either way
@@ -1284,14 +1355,12 @@ where
                 None => true,
             };
             if msg == WM_KEYDOWN && !self.rt.composition_active(focus) {
-                // unconsumed → policy decides; consumed → only the
-                // documented override (multiline plain-Enter) submits
-                let sub = if !consumed {
-                    self.check_submit(focus, ev)
-                } else {
-                    self.check_submit_override(focus, ev)
-                };
-                if let Some(sub) = sub {
+                // unconsumed → policy decides; a consumed key is editing
+                // alone (the Enter/submit fork happened BEFORE delivery —
+                // a consumed Enter was never a submit candidate)
+                if !consumed
+                    && let Some(sub) = self.check_submit(focus, ev)
+                {
                     self.push_input(focus, sub)?;
                 }
             }
@@ -1312,7 +1381,7 @@ where
                         focus,
                         NodeEvent::Key(KeyEvent {
                             key: ev,
-                            modifiers: Modifiers::default(),
+                            modifiers: modifiers_now(),
                         }),
                     )?;
                     return self.turn();
@@ -1322,64 +1391,43 @@ where
         Ok(())
     }
 
-    /// Editor Enter semantics per SubmitPolicy — IME-committed Enter never
-    /// reaches here (it's consumed inside the composition).
+    /// The Enter decision — one authority for the submit/edit fork.
+    /// IME-committed Enter never reaches here (composition owns it).
+    fn submit_decision(&self, node: NodeId) -> SubmitDecision {
+        let Some(n) = self.rt.arena.get(node) else {
+            return SubmitDecision::Edit;
+        };
+        let NodeData::Editor {
+            submit, multiline, ..
+        } = &n.data
+        else {
+            return SubmitDecision::Edit;
+        };
+        let shift = unsafe {
+            windows::Win32::UI::Input::KeyboardAndMouse::GetKeyState(VK_SHIFT.0 as i32)
+        } < 0;
+        let ctrl = unsafe {
+            windows::Win32::UI::Input::KeyboardAndMouse::GetKeyState(VK_CONTROL.0 as i32)
+        } < 0;
+        match (submit, multiline, shift, ctrl) {
+            (SubmitPolicy::Enter, true, true, _) => SubmitDecision::Edit, // newline
+            (SubmitPolicy::Enter, _, false, _) => SubmitDecision::Submit,
+            (SubmitPolicy::ModifierEnter, _, _, true) => SubmitDecision::Submit,
+            _ => SubmitDecision::Edit,
+        }
+    }
+
+    /// Non-Enter keys that arrived unconsumed — reserved for future
+    /// semantic keys; today only Enter has policy.
     fn check_submit(&self, node: NodeId, key: Key) -> Option<NodeEvent> {
         if key != Key::Enter {
             return None;
         }
-        let n = self.rt.arena.get(node)?;
-        if let NodeData::Editor {
-            submit, multiline, ..
-        } = &n.data
-        {
-            match (submit, multiline) {
-                (SubmitPolicy::Enter, false) => Some(NodeEvent::Submit),
-                // multiline: Shift+Enter edits, plain Enter submits
-                (SubmitPolicy::Enter, true) => {
-                    let shift = unsafe {
-                        windows::Win32::UI::Input::KeyboardAndMouse::GetKeyState(VK_SHIFT.0 as i32)
-                    } < 0;
-                    (!shift).then_some(NodeEvent::Submit)
-                }
-                (SubmitPolicy::ModifierEnter, _) => {
-                    let ctrl = unsafe {
-                        windows::Win32::UI::Input::KeyboardAndMouse::GetKeyState(
-                            VK_CONTROL.0 as i32,
-                        )
-                    } < 0;
-                    ctrl.then_some(NodeEvent::Submit)
-                }
-                _ => None,
-            }
-        } else {
-            None
+        match self.submit_decision(node) {
+            SubmitDecision::Submit => Some(NodeEvent::Submit),
+            SubmitDecision::Edit => None,
         }
     }
-
-    /// The consumed-key override: for `multiline + SubmitPolicy::Enter`,
-    /// plain Enter both inserts a newline (consumed by msftedit) AND
-    /// submits — the documented semantic. Every other consumed key is the
-    /// peer's alone.
-    fn check_submit_override(&self, node: NodeId, key: Key) -> Option<NodeEvent> {
-        if key != Key::Enter {
-            return None;
-        }
-        let n = self.rt.arena.get(node)?;
-        if let NodeData::Editor {
-            submit: SubmitPolicy::Enter,
-            multiline: true,
-            ..
-        } = &n.data
-        {
-            let shift = unsafe {
-                windows::Win32::UI::Input::KeyboardAndMouse::GetKeyState(VK_SHIFT.0 as i32)
-            } < 0;
-            return (!shift).then_some(NodeEvent::Submit);
-        }
-        None
-    }
-
     /// Focus next/previous eligible node (Tab/Shift-Tab traversal).
     pub(crate) fn focus_step(&mut self, back: bool) -> UiResult {
         let eligible: Vec<NodeId> = self
@@ -1528,7 +1576,7 @@ where
                         PointerEvent {
                             position: self.mouse,
                             button: None,
-                            modifiers: Modifiers::default(),
+                            modifiers: modifiers_now(),
                         },
                         crate::node::PointerPhase::Leave,
                     ),

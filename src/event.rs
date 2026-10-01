@@ -54,6 +54,9 @@ pub enum Key {
     ArrowUp,
     ArrowDown,
     Char(char),
+    /// A key outside the portable set — the payload is the PLATFORM's raw
+    /// keycode (a Windows VK on Win32), explicitly platform-scoped and
+    /// not part of the shared semantic vocabulary.
     Other(u32),
 }
 
