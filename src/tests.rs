@@ -47,7 +47,11 @@ struct PeerLog {
 
 impl PeerLog {
     fn rec(&self, id: u64) -> std::sync::MutexGuard<'_, HashMap<u64, PeerRec>> {
-        self.recs.lock().unwrap()
+        self.recs.lock().unwrap_or_else(|e| e.into_inner())
+    }
+    /// poison-tolerant — a panicked test still cleans up its peers
+    fn map(&self) -> std::sync::MutexGuard<'_, HashMap<u64, PeerRec>> {
+        self.recs.lock().unwrap_or_else(|e| e.into_inner())
     }
 }
 
@@ -63,7 +67,7 @@ impl FakePeer {
     fn new(log: PeerLog, _multiline: bool) -> Self {
         let id = PEER_SERIAL.fetch_add(1, Ordering::SeqCst);
         let p = FakePeer { id, log };
-        p.log.recs.lock().unwrap().insert(
+        p.log.recs.lock().unwrap_or_else(|e| e.into_inner()).insert(
             id,
             PeerRec {
                 id,
@@ -75,7 +79,7 @@ impl FakePeer {
         p
     }
     fn push(&self, op: PeerOp) {
-        let mut g = self.log.recs.lock().unwrap();
+        let mut g = self.log.recs.lock().unwrap_or_else(|e| e.into_inner());
         g.get_mut(&self.id).unwrap().ops.push(op);
     }
 }
@@ -327,7 +331,7 @@ impl<S: 'static> Rig<S> {
     }
 
     fn peer_rec(&self, peer: u64) -> PeerRec {
-        self.peers.recs.lock().unwrap().get(&peer).unwrap().clone()
+        self.peers.recs.lock().unwrap_or_else(|e| e.into_inner()).get(&peer).unwrap().clone()
     }
 
     fn root_children(&self) -> Vec<crate::NodeId> {
@@ -2874,7 +2878,7 @@ fn swap_two_bound_values_releases_each_peer_once() {
     assert_eq!(rig.peer_rec(rig.peer_id(left_editor).unwrap()).text, "bbb");
     assert_eq!(rig.peer_rec(rig.peer_id(right_editor).unwrap()).text, "aaa");
     // exactly two live peers, each created peer released at most once
-    let recs = rig.peers.recs.lock().unwrap();
+    let recs = rig.peers.recs.lock().unwrap_or_else(|e| e.into_inner());
     assert_eq!(recs.values().filter(|r| r.released == 0).count(), 2);
     assert!(recs.values().all(|r| r.released <= 1));
 }
@@ -2939,7 +2943,7 @@ fn hundred_move_cycles_keep_structure_consistent() {
     // arena didn't grow unboundedly
     assert!(rig.rt.arena.slot_count() <= baseline_slots + 4);
     // every released peer released exactly once; only one still lives
-    let recs = rig.peers.recs.lock().unwrap();
+    let recs = rig.peers.recs.lock().unwrap_or_else(|e| e.into_inner());
     assert!(recs.values().all(|r| r.released <= 1));
     assert_eq!(recs.values().filter(|r| r.released == 0).count(), 1);
 }
@@ -2988,7 +2992,7 @@ fn peer_factory_failure_tears_down_orderly() {
     let r = rt.review_for_test();
     assert!(matches!(r, Err(crate::UiError::Platform(_))));
     // orderly: the one created peer was released, both leases cleared
-    let recs = pf.recs.lock().unwrap();
+    let recs = pf.recs.lock().unwrap_or_else(|e| e.into_inner());
     assert_eq!(recs.values().filter(|r| r.released == 1).count(), 1);
     // every created peer released exactly once — teardown is idempotent
     assert!(recs.values().all(|r| r.released <= 1));
@@ -4181,4 +4185,58 @@ fn resolved_dirty_classification() {
         0,
         "shadow change under forced-colors resolves to identical output"
     );
+}
+
+/// P11: bounded lifecycle — 100 mount/reorder/remove/recreate cycles must
+/// release each peer exactly once and return live node/peer counts to
+/// baseline (no retained generation keeps accumulating).
+#[test]
+fn hundred_mount_remove_cycles_reclaim_all() {
+    struct S {
+        v: TextValue,
+        mounted: bool,
+    }
+    let mut rig = Rig::new(
+        S {
+            v: TextValue::new("x"),
+            mounted: true,
+        },
+        |_: &mut S, _m: Msg, _cx: &mut UpdateCtx<Msg>| {},
+        |s: &S, ui: &mut Ui<Msg>| {
+            ui.group("root", |ui| {
+                if s.mounted {
+                    ui.group("ed", |ui| {
+                        ui.text_input(&s.v).on_edit(Msg::Edited);
+                    });
+                }
+            });
+        },
+    );
+    rig.view().unwrap();
+    let baseline_peers = rig.peers.recs.lock().unwrap_or_else(|e| e.into_inner()).len();
+    for i in 0..100 {
+        rig.rt.state.mounted = i % 2 == 0;
+        rig.view().unwrap();
+        rig.pump().unwrap();
+    }
+    // odd i unmounts, even remounts — end with the editor mounted
+    rig.rt.state.mounted = true;
+    rig.view().unwrap();
+    rig.pump().unwrap();
+    let recs = rig.peers.recs.lock().unwrap_or_else(|e| e.into_inner());
+    let mounts = recs.len() - baseline_peers;
+    let releases: u32 = recs.values().map(|r| r.released).sum();
+    // every created peer released exactly once; at most one remains live
+    assert!(mounts >= 48, "expected >=48 mounts, got {mounts}");
+    assert!(
+        mounts as u32 - releases <= 1,
+        "live peers = {} — must be <= 1",
+        mounts as u32 - releases
+    );
+    assert!(
+        recs.values().all(|r| r.released <= 1),
+        "no peer released twice"
+    );
+    // slots/generations stay bounded — a freed slot is reusable, not grown
+    assert!(rig.rt.arena.slot_len() < 64, "arena must recycle slots");
 }

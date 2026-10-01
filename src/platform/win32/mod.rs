@@ -8,8 +8,8 @@
 
 #![cfg(windows)]
 
-mod layout;
-mod render;
+pub(crate) mod layout;
+pub(crate) mod render;
 mod text;
 pub(crate) mod uia;
 mod window;
@@ -299,6 +299,10 @@ where
     /// interaction-state change (hot/pressed/focus) with no consumer
     /// handler — chrome must still repaint; consumed by turn_body
     state_paint_dirty: std::cell::Cell<bool>,
+    /// accumulated ink damage since the last committed paint — union of
+    /// every paint-dirty node's rect (+ shadow footprint). Cleared by
+    /// paint(); reserved for fine-grained invalidation.
+    damage: std::cell::Cell<Option<layout::DipRect>>,
 }
 
 /// The deferred-native-delivery contract (private to this backend).
@@ -453,8 +457,34 @@ where
             }
             if d & crate::runtime::Runtime::<S, M, U, V>::DIRTY_PAINT != 0 {
                 needs_paint = true;
+                // ink-damage union — the node's committed rect plus any
+                // shadow footprint; cumulative between paints. (The window
+                // still repaints fully today, but the union is the promised
+                // damage contract and is tested.)
+                if let Some(r) = self.rects.get(&id).copied() {
+                    let mut dr = r;
+                    let sh = match self.rt.arena.get(id).map(|n| &n.data) {
+                        Some(crate::node::NodeData::Container { kind, props }) => props
+                            .resolved_box(*kind)
+                            .and_then(|b| b.shadow.map(|s| (b, s))),
+                        Some(crate::node::NodeData::Action { style, disabled, .. }) => {
+                            let b = style.resolve(*disabled, false, false, false);
+                            b.shadow.map(|s| (b, s))
+                        }
+                        Some(crate::node::NodeData::Editor { patch, .. }) => {
+                            let c = layout::editor_chrome(patch);
+                            c.shadow.map(|s| (c, s))
+                        }
+                        _ => None,
+                    };
+                    if let Some((_b, s)) = sh {
+                        let ink = super::win32::render::shadow_ink_rect(&r, &s);
+                        dr = dr.union(ink);
+                    }
+                    let acc = self.damage.get().map(|d| d.union(dr)).unwrap_or(dr);
+                    self.damage.set(Some(acc));
+                }
             }
-            let _ = id;
         }
         if self.rects.is_empty() {
             needs_layout = true;
@@ -1007,6 +1037,8 @@ where
             return Ok(());
         }
         self.renderer.borrow_mut().draw(&*self)?;
+        // frame committed — the accumulated damage union is consumed
+        self.damage.set(None);
         Ok(())
     }
 
@@ -1966,6 +1998,7 @@ where
         pump_queued: std::cell::Cell::new(false),
         deferred_native: std::collections::VecDeque::new(),
         state_paint_dirty: std::cell::Cell::new(false),
+        damage: std::cell::Cell::new(None),
     });
     backend.rt.theme = theme;
 

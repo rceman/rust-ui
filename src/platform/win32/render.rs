@@ -73,8 +73,37 @@ struct Dwrite {
     factory: IDWriteFactory,
     formats: [Option<IDWriteTextFormat>; 3],
     /// (size_bits, weight_ordinal) -> format — Exact sizes land here, the
-    /// fixed table covers the two base recipes (14pt normal / semibold)
-    cache: std::sync::Mutex<std::collections::HashMap<(u32, u32), IDWriteTextFormat>>,
+    /// fixed table covers the two base recipes (14pt normal / semibold).
+    /// Bounded FIFO: arbitrary Exact sizes cannot grow it forever.
+    cache: std::sync::Mutex<FormatCache>,
+}
+
+const FORMAT_CACHE_MAX: usize = 64;
+
+#[derive(Default)]
+struct FormatCache {
+    map: std::collections::HashMap<(u32, u32), IDWriteTextFormat>,
+    order: std::collections::VecDeque<(u32, u32)>,
+}
+
+impl FormatCache {
+    fn get(&self, k: &(u32, u32)) -> Option<IDWriteTextFormat> {
+        self.map.get(k).cloned()
+    }
+    fn insert(&mut self, k: (u32, u32), v: IDWriteTextFormat) {
+        if self.map.contains_key(&k) {
+            self.map.insert(k, v);
+            return;
+        }
+        while self.map.len() >= FORMAT_CACHE_MAX {
+            let Some(old) = self.order.pop_front() else {
+                break;
+            };
+            self.map.remove(&old);
+        }
+        self.order.push_back(k);
+        self.map.insert(k, v);
+    }
 }
 
 fn dwrite() -> UiResult<&'static Dwrite> {
@@ -104,7 +133,7 @@ fn dwrite() -> UiResult<&'static Dwrite> {
         Ok(Dwrite {
             factory,
             formats: [Some(f0), Some(f1), None],
-            cache: std::sync::Mutex::new(std::collections::HashMap::new()),
+            cache: std::sync::Mutex::new(FormatCache::default()),
         })
     })
     .as_ref()
@@ -130,7 +159,7 @@ fn fmt_for(ts: &crate::style::TextStyle, _slot_hint: usize) -> UiResult<IDWriteT
     }
     let key = (size.to_bits(), wkey);
     if let Some(f) = d.cache.lock().unwrap().get(&key) {
-        return Ok(f.clone());
+        return Ok(f);
     }
     let weight = match ts.weight {
         crate::style::TextWeight::Normal => DWRITE_FONT_WEIGHT_NORMAL,
@@ -208,6 +237,8 @@ pub(crate) struct Renderer {
     /// changes — peer-compatible surfaces key on this so device loss or a
     /// DPI move deterministically invalidates every cached bitmap
     pub(crate) target_gen: std::cell::Cell<u64>,
+    /// bounded shadow raster cache — dies with the target it paints into
+    shadow_cache: RefCell<ShadowCache>,
     tip: RefCell<Option<Tip>>,
     /// tooltip fade clock — 150ms chrome fade (chrome only, never text)
     tip_fade_start: RefCell<Option<std::time::Instant>>,
@@ -225,6 +256,7 @@ impl Renderer {
             hwnd: HWND::default(),
             dpi: 96.0,
             target_gen: std::cell::Cell::new(0),
+            shadow_cache: RefCell::new(ShadowCache::default()),
             tip: RefCell::new(None),
             tip_fade_start: RefCell::new(None),
         })
@@ -238,10 +270,11 @@ impl Renderer {
         if let Some(t) = &self.target {
             unsafe { t.SetDpi(dpi, dpi) };
         }
-        // peer surfaces rasterize at target DPI — a scale change means
-        // every cached bitmap is stale; the generation bump forces
-        // re-rasterization on next paint
+        // peer surfaces + shadow rasters key on target DPI — a scale
+        // change means every cached bitmap is stale; the generation bump
+        // forces re-rasterization on next paint
         self.target_gen.set(self.target_gen.get() + 1);
+        self.shadow_cache.borrow_mut().clear();
     }
 
     pub(crate) fn resize(&mut self) {
@@ -294,9 +327,10 @@ impl Renderer {
                 .CreateHwndRenderTarget(&props, &hp)
                 .map_err(|e| UiError::Platform(format!("CreateHwndRenderTarget: {e}")))?;
             self.target = Some(t);
-            // device/target recreation invalidates every peer surface —
-            // compatible bitmaps die with their parent target
+            // device/target recreation invalidates every peer surface and
+            // shadow raster — compatible bitmaps die with their target
             self.target_gen.set(self.target_gen.get() + 1);
+            self.shadow_cache.borrow_mut().clear();
             Ok(self.target.as_ref().unwrap())
         }
     }
@@ -443,7 +477,7 @@ impl Renderer {
                         bottom: r.y + r.h,
                     };
                     unsafe {
-                        paint_box(&target, &br, bs, dark, forced)?;
+                        paint_box(&target, &br, bs, dark, forced, dpi, &self.shadow_cache, self.target_gen.get())?;
                         // focus ENFORCEMENT — independent ring layer the
                         // style resolution can't erase (Focus role,
                         // outside the box); see Action arm for the same
@@ -481,7 +515,7 @@ impl Renderer {
                     let mut chrome = super::layout::editor_chrome(patch);
                     crate::style::os_enforce_box(&mut chrome, forced);
                     unsafe {
-                        paint_box(&target, &clip, &chrome, dark, forced)?;
+                        paint_box(&target, &clip, &chrome, dark, forced, dpi, &self.shadow_cache, self.target_gen.get())?;
                         // focus ENFORCEMENT — same independent ring layer
                         if be.focus == Some(id) && !*disabled {
                             paint_focus_ring(&target, &clip, dark)?;
@@ -530,7 +564,7 @@ impl Renderer {
                     // box_ = authored full style
                     if let Some(bs) = props.resolved_box(*kind) {
                         unsafe {
-                            paint_box(&target, &clip, &bs, dark, forced)?;
+                            paint_box(&target, &clip, &bs, dark, forced, dpi, &self.shadow_cache, self.target_gen.get())?;
                         }
                     }
                 }
@@ -544,7 +578,7 @@ impl Renderer {
                         be.focus == Some(id),
                     );
                     unsafe {
-                        paint_box(&target, &clip, &bs, dark, forced)?;
+                        paint_box(&target, &clip, &bs, dark, forced, dpi, &self.shadow_cache, self.target_gen.get())?;
                         // focus ENFORCEMENT — the ring lives at paint, a
                         // layer consumer patches can never erase
                         if be.focus == Some(id) && !*disabled {
@@ -918,43 +952,149 @@ unsafe fn box_geometry(
     }
 }
 
+// ---------------------------------------------------------------------------
+// bounded shadow cache — one shared raster budget across all shadows
+// ---------------------------------------------------------------------------
+
+/// one cached shadow bitmap; key = shape + sigma + color + scale + target
+/// generation so DPI moves and device recreation re-rasterize
+#[derive(Hash, Eq, PartialEq, Clone)]
+struct ShadowKey {
+    target_gen: u64,
+    w: u32,
+    h: u32,
+    pad: u32,
+    radii: [u32; 4], // normalized radii bit patterns (DIP)
+    sigma: u32,
+    color: u32,
+    scale: u32,
+}
+
+#[derive(Default)]
+struct ShadowCache {
+    map: std::collections::HashMap<ShadowKey, (ID2D1Bitmap, usize)>,
+    order: std::collections::VecDeque<ShadowKey>,
+    bytes: usize,
+}
+
+const SHADOW_CACHE_MAX_ENTRIES: usize = 48;
+const SHADOW_CACHE_MAX_BYTES: usize = 32 * 1024 * 1024;
+/// single shadow raster ceiling — checked, not assumed
+const SHADOW_MAX_DIM: u32 = 4096;
+
+impl ShadowCache {
+    fn get(&self, k: &ShadowKey) -> Option<&ID2D1Bitmap> {
+        self.map.get(k).map(|(b, _)| b)
+    }
+    fn insert(&mut self, k: ShadowKey, bmp: ID2D1Bitmap, bytes: usize) {
+        // FIFO eviction under both bounds — cache is reuse, not storage
+        while self.map.len() >= SHADOW_CACHE_MAX_ENTRIES
+            || self.bytes + bytes > SHADOW_CACHE_MAX_BYTES
+        {
+            let Some(old) = self.order.pop_front() else {
+                break;
+            };
+            if let Some((_, sz)) = self.map.remove(&old) {
+                self.bytes = self.bytes.saturating_sub(sz);
+            }
+        }
+        self.bytes += bytes;
+        self.order.push_back(k.clone());
+        self.map.insert(k, (bmp, bytes));
+    }
+    /// target/device loss or DPI change — everything derived dies
+    fn clear(&mut self) {
+        self.map.clear();
+        self.order.clear();
+        self.bytes = 0;
+    }
+}
+
 /// Outer shadow: rasterize the rounded-rect silhouette into a CPU alpha
-/// mask, box-blur it (3 passes ~= Gaussian at `blur_sigma`), premultiply
-/// with the shadow color and draw it as a bitmap offset by (dx, dy). This
-/// is a real blur — no D2D1.1 device-context effect dependency.
+/// mask at DEVICE pixels (dpi-aware), box-blur it (3 passes ~= Gaussian at
+/// `blur_sigma`), subtract the solid interior so translucent fills never
+/// expose shadow ink under the box, premultiply with the shadow color and
+/// draw it as a bitmap offset by (dx, dy). Raster results are cached
+/// bounded per renderer/target generation — the same resolved shadow on
+/// consecutive frames does zero raster work.
 fn draw_shadow(
     target: &ID2D1RenderTarget,
     r: &D2D_RECT_F,
     radii: &CornerRadii,
     shadow: &Shadow,
     dark: bool,
+    dpi: f32,
+    cache: &RefCell<ShadowCache>,
+    target_gen: u64,
 ) -> Result<()> {
     let sigma = shadow.blur_sigma.0.max(0.0);
     let [sr, sg, sb, sa] = crate::style::resolve_color(shadow.color, dark);
-    if sa <= 0.0 {
+    if sa <= 0.0 || !shadow.offset_x.0.is_finite() || !shadow.offset_y.0.is_finite() {
         return Ok(());
     }
-    // rasterization scale: 1 DIP = 1 mask pixel (D2D upscales for the DIP
-    // target — the blur is in logical space per the contract)
-    let pad = (sigma * 3.0).ceil().max(1.0);
-    let w = (r.right - r.left).ceil() as usize + 2 * pad as usize;
-    let h = (r.bottom - r.top).ceil() as usize + 2 * pad as usize;
-    if w == 0 || h == 0 {
+    let scale = (dpi / 96.0).max(0.01);
+    // DIP->device px: blur pad + extent in physical pixels (checked)
+    let pad_dip = (sigma * 3.0).max(1.0);
+    let pad = (pad_dip * scale).ceil() as usize;
+    let rw = (r.right - r.left).max(0.0);
+    let rh = (r.bottom - r.top).max(0.0);
+    let w = (rw * scale).ceil() as usize + 2 * pad;
+    let h = (rh * scale).ceil() as usize + 2 * pad;
+    if w == 0 || h == 0 || w > SHADOW_MAX_DIM as usize || h > SHADOW_MAX_DIM as usize {
         return Ok(());
     }
-    let bw = (r.right - r.left).max(0.0) / 2.0;
-    let bh = (r.bottom - r.top).max(0.0) / 2.0;
+    let Some(n_px) = w.checked_mul(h) else {
+        return Ok(());
+    };
+    let bytes = n_px.checked_mul(4).unwrap_or(usize::MAX);
+    if bytes > SHADOW_CACHE_MAX_BYTES {
+        return Ok(());
+    }
+    // normalized radii are part of the raster key — authored proportions
+    let norm = radii.normalized(rw, rh);
+    let cbits = |v: f32| (v.clamp(0.0, 1.0) * 255.0) as u32;
+    let key = ShadowKey {
+        target_gen,
+        w: w as u32,
+        h: h as u32,
+        pad: pad as u32,
+        radii: [
+            norm.top_left.0.to_bits(),
+            norm.top_right.0.to_bits(),
+            norm.bottom_right.0.to_bits(),
+            norm.bottom_left.0.to_bits(),
+        ],
+        sigma: sigma.to_bits(),
+        color: (cbits(sa) << 24) | (cbits(sr) << 16) | (cbits(sg) << 8) | cbits(sb),
+        scale: scale.to_bits(),
+    };
+    let bw = rw / 2.0;
+    let bh = rh / 2.0;
     let (rtl, rtr, rbr, rbl) = (
-        radii.top_left.0.min(bw).min(bh),
-        radii.top_right.0.min(bw).min(bh),
-        radii.bottom_right.0.min(bw).min(bh),
-        radii.bottom_left.0.min(bw).min(bh),
+        norm.top_left.0,
+        norm.top_right.0,
+        norm.bottom_right.0,
+        norm.bottom_left.0,
     );
-    // signed distance to the per-corner rounded rect (mask space)
+    if let Some(bmp) = cache.borrow().get(&key) {
+        // cache hit — draw the rasterized shadow at its DIP footprint
+        let dest = D2D_RECT_F {
+            left: r.left + shadow.offset_x.0 - pad_dip,
+            top: r.top + shadow.offset_y.0 - pad_dip,
+            right: r.left + shadow.offset_x.0 - pad_dip + w as f32 / scale,
+            bottom: r.top + shadow.offset_y.0 - pad_dip + h as f32 / scale,
+        };
+        unsafe {
+            target.DrawBitmap(bmp, Some(&dest), 1.0, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR, None);
+        }
+        return Ok(());
+    }
+
+    // signed distance to the per-corner rounded rect — evaluated in DIP,
+    // sampled at device-pixel density (1 DIP = `scale` px)
     let sd = |px: f32, py: f32| -> f32 {
-        // pixel coords are mask-local: box spans [pad, pad+bw*2]×[pad, pad+bh*2]
-        let x = px - pad;
-        let y = py - pad;
+        let x = (px + 0.5) / scale - pad_dip;
+        let y = (py + 0.5) / scale - pad_dip;
         let rad = if y < bh {
             if x < bw { rtl } else { rtr }
         } else if x < bw {
@@ -962,27 +1102,28 @@ fn draw_shadow(
         } else {
             rbr
         };
-        // rounded-box sdf (standard)
         let qx = (x - bw).abs() - (bw - rad);
         let qy = (y - bh).abs() - (bh - rad);
         let ax = qx.max(0.0);
         let ay = qy.max(0.0);
         (ax * ax + ay * ay).sqrt() + qx.max(qy).min(0.0) - rad
     };
-    let mut mask = vec![0f32; w * h];
+    // SOLID silhouette — kept for interior exclusion
+    let mut solid = vec![0f32; n_px];
     for y in 0..h {
         for x in 0..w {
-            let d = sd(x as f32 + 0.5, y as f32 + 0.5);
-            // coverage: inside d<0; 0.5-px AA edge
-            mask[y * w + x] = (0.5 - d).clamp(0.0, 1.0);
+            let d = sd(x as f32, y as f32);
+            // AA edge half-width shrinks in DIP terms at high DPI
+            solid[y * w + x] = (0.5 - d * scale).clamp(0.0, 1.0);
         }
     }
-    // 3 box blurs approximate a Gaussian of `sigma`; kernel radius r ~ sigma
+    // 3 box blurs approximate a Gaussian of `sigma` DIP — kernel in px
+    let mut mask = solid.clone();
     if sigma > 0.0 {
-        let kr = (sigma / 1.5).max(1.0) as usize; // 3 passes of r≈σ/1.5 ≈ σ
+        let kr = ((sigma * scale) / 1.5).max(1.0) as usize;
         for _ in 0..3 {
             // horizontal
-            let mut tmp = vec![0f32; w * h];
+            let mut tmp = vec![0f32; n_px];
             for y in 0..h {
                 let mut acc = 0f32;
                 for x in 0..w + 2 * kr {
@@ -1001,7 +1142,7 @@ fn draw_shadow(
                 }
             }
             // vertical
-            let mut out = vec![0f32; w * h];
+            let mut out = vec![0f32; n_px];
             for x in 0..w {
                 let mut acc = 0f32;
                 for y in 0..h + 2 * kr {
@@ -1022,10 +1163,15 @@ fn draw_shadow(
             mask = out;
         }
     }
+    // interior exclusion — a translucent fill must not show shadow ink
+    // through the box: blurred alpha minus the solid silhouette
+    for (i, a) in mask.iter_mut().enumerate() {
+        *a = (*a - solid[i]).max(0.0) * sa;
+    }
     // premultiplied BGRA
-    let mut px = vec![0u32; w * h];
+    let mut px = vec![0u32; n_px];
     for (i, a) in mask.iter().enumerate() {
-        let a = (*a).clamp(0.0, 1.0) * sa;
+        let a = a.clamp(0.0, 1.0);
         let r8 = (sr * a * 255.0) as u32;
         let g8 = (sg * a * 255.0) as u32;
         let b8 = (sb * a * 255.0) as u32;
@@ -1049,10 +1195,10 @@ fn draw_shadow(
             },
         )?;
         let dest = D2D_RECT_F {
-            left: r.left + shadow.offset_x.0 - pad,
-            top: r.top + shadow.offset_y.0 - pad,
-            right: r.left + shadow.offset_x.0 - pad + w as f32,
-            bottom: r.top + shadow.offset_y.0 - pad + h as f32,
+            left: r.left + shadow.offset_x.0 - pad_dip,
+            top: r.top + shadow.offset_y.0 - pad_dip,
+            right: r.left + shadow.offset_x.0 - pad_dip + w as f32 / scale,
+            bottom: r.top + shadow.offset_y.0 - pad_dip + h as f32 / scale,
         };
         target.DrawBitmap(
             &bmp,
@@ -1061,6 +1207,7 @@ fn draw_shadow(
             D2D1_BITMAP_INTERPOLATION_MODE_LINEAR,
             None,
         );
+        cache.borrow_mut().insert(key, bmp, bytes);
     }
     Ok(())
 }
@@ -1073,6 +1220,9 @@ fn paint_box(
     style: &BoxStyle,
     dark: bool,
     forced: bool,
+    dpi: f32,
+    shadow_cache: &RefCell<ShadowCache>,
+    target_gen: u64,
 ) -> Result<()> {
     // OS enforcement — forced-colors/high-contrast suppresses decorative
     // shadow after all recipe/consumer layers (approved contract)
@@ -1086,7 +1236,7 @@ fn paint_box(
     };
     unsafe {
         if let Some(sh) = &style.shadow {
-            draw_shadow(target, r, &style.radii, sh, dark)?;
+            draw_shadow(target, r, &style.radii, sh, dark, dpi, shadow_cache, target_gen)?;
         }
         let bg = resolve_color_f(style.background, dark);
         let geo = box_geometry(target, r, &style.radii)?;
@@ -1236,6 +1386,20 @@ unsafe fn paint_focus_ring(
         target.DrawGeometry(&og, &ring, 1.5, None);
     }
     Ok(())
+}
+
+/// The DIP footprint a shadow's ink can reach — the box rect offset by
+/// (dx,dy) and inflated by the blur pad (3σ covers the spread). This is
+/// the per-node damage contribution for shadow changes: old and new rects
+/// union through it.
+pub(crate) fn shadow_ink_rect(r: &super::layout::DipRect, s: &Shadow) -> super::layout::DipRect {
+    let pad = (s.blur_sigma.0.max(0.0) * 3.0).max(1.0);
+    super::layout::DipRect {
+        x: r.x + s.offset_x.0 - pad,
+        y: r.y + s.offset_y.0 - pad,
+        w: r.w + 2.0 * pad,
+        h: r.h + 2.0 * pad,
+    }
 }
 
 fn resolve_color_f(c: crate::style::Color, dark: bool) -> D2D1_COLOR_F {

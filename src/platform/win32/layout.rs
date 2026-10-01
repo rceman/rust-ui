@@ -43,6 +43,16 @@ impl DipRect {
             bottom: (self.y + self.h).round() as i32,
         }
     }
+    /// smallest rect covering both — the ink-damage union primitive
+    pub(crate) fn union(&self, o: DipRect) -> DipRect {
+        let (x0, y0) = (self.x.min(o.x), self.y.min(o.y));
+        DipRect {
+            x: x0,
+            y: y0,
+            w: (self.x + self.w).max(o.x + o.w) - x0,
+            h: (self.y + self.h).max(o.y + o.h) - y0,
+        }
+    }
 }
 
 /// THE editor content transform — the ONE place the pill-chrome →
