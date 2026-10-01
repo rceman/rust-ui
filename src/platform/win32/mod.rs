@@ -29,7 +29,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use windows::Win32::Foundation::*;
-use windows::Win32::Graphics::Gdi::*;
+
 use windows::Win32::UI::Input::KeyboardAndMouse::*;
 use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::core::*;
@@ -536,15 +536,9 @@ where
         if self.rects.is_empty() {
             needs_layout = true;
         }
-        // layout is driven by the CLASSIFIED work, not by "any message
-        // arrived" — an update whose resolved output is unchanged does no
-        // layout and no paint
-        if needs_layout {
-            self.relayout()?;
-            needs_paint = true;
-            needs_uia = true;
-        }
-        // built-in chrome repaint is never dependent on consumer handlers
+        // built-in chrome state transitions feed the SAME classification —
+        // a hover/pressed change that alters metric-bearing fields must
+        // reach layout; a color-only transition only repaints
         {
             let d = self.state_dirty.replace(0);
             if d & 0b01 != 0 {
@@ -553,6 +547,14 @@ where
             if d & 0b10 != 0 {
                 needs_paint = true;
             }
+        }
+        // layout is driven by the CLASSIFIED work, not by "any message
+        // arrived" — an update whose resolved output is unchanged does no
+        // layout and no paint
+        if needs_layout {
+            self.relayout()?;
+            needs_paint = true;
+            needs_uia = true;
         }
         // live UIA state follows the committed tree — external clients see
         // name/enabled/bounds/order changes without a fresh WM_GETOBJECT.

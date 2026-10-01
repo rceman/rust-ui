@@ -37,7 +37,7 @@ use windows::Win32::UI::Input::KeyboardAndMouse::SetFocus;
 use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::core::*;
 
-use super::space::{LogicalPoint, LogicalRect, PhysicalPoint, ScaleFactor};
+use super::space::{LogicalRect, ScaleFactor};
 use crate::text::{BindingToken, TextRevision};
 use crate::{NodeId, UiError, UiResult};
 

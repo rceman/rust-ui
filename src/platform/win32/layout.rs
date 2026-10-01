@@ -10,7 +10,7 @@ use std::rc::Rc;
 
 use windows::Win32::Foundation::RECT;
 
-use crate::geom::{Align, Length, Point, Visibility};
+use crate::geom::{Align, Length, Visibility};
 use crate::node::{
     KIND_ACTION, KIND_BOX, KIND_COLUMN, KIND_GROUP, KIND_ROW, KIND_SCOPE, KIND_STACK, KIND_SURFACE,
     NodeData,

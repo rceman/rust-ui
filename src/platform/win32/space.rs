@@ -27,7 +27,7 @@ use windows::Win32::Graphics::Gdi::{ClientToScreen, ScreenToClient};
 // the types live in `crate::geom`; this module adds only the Win32 seams
 pub(crate) use crate::geom::{
     ClientPhysicalPoint, PeerLocalPoint, PeerOrigin, PhysicalPoint, PhysicalRect, PhysicalSize,
-    Point as LogicalPoint, Rect as LogicalRect, ScaleFactor, ScreenPhysicalPoint,
+    Rect as LogicalRect, ScaleFactor, ScreenPhysicalPoint,
 };
 
 // ---------------------------------------------------------------------------
