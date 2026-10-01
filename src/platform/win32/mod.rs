@@ -117,25 +117,19 @@ impl PeerCtx {
         move |spec| {
             let id = ctx.next_id.fetch_add(1, Ordering::SeqCst);
             let (appearance, theme) = ctx.colors.borrow().clone();
-            let (fg, sel_bg, sel_fg) = palette(&theme, &appearance);
+            let (_fg, sel_bg, sel_fg) = palette(&theme, &appearance);
             // capability boundary: the peer receives ONLY the resolved
-            // foreground — font face/size/weight/selection stay OS-owned
-            let explicit =
-                spec.foreground != crate::style::Color::Role(crate::theme::ColorRole::Foreground);
+            // foreground — font face/size/weight/selection stay OS-owned.
+            // The AUTHORED `Color` is stored — roles re-resolve on theme
+            // flips; literals are invariant under resolve_color.
             let cfg = PeerConfig {
                 multiline: spec.multiline,
                 // disabled peers mount read-only — inert until enabled
                 read_only: spec.read_only || spec.disabled,
                 face: "Segoe UI".into(),
                 size_twips: (14.0f32 * 20.0) as i32,
-                fg: if explicit {
-                    crate::style::resolve_color(spec.foreground, theme.dark)
-                } else {
-                    fg
-                },
-                // role-resolved foreground follows the palette; an
-                // authored color is explicit and survives theme flips
-                fg_explicit: explicit,
+                fg: crate::style::resolve_color(spec.foreground, theme.dark),
+                fg_authored: spec.foreground,
                 sel_bg,
                 sel_fg,
                 bold: false,
@@ -201,14 +195,13 @@ impl crate::node::TextPeer for PeerHandle {
     /// over all content via the char format.
     fn apply_foreground(&mut self, fg: crate::style::Color) {
         let (_, theme) = self.ctx.colors.borrow().clone();
-        let explicit = fg != crate::style::Color::Role(crate::theme::ColorRole::Foreground);
         let c = crate::style::resolve_color(fg, theme.dark);
-        let fg = windows::Win32::Foundation::COLORREF(
+        let cref = windows::Win32::Foundation::COLORREF(
             ((c[0] * 255.0) as u32)
                 | (((c[1] * 255.0) as u32) << 8)
                 | (((c[2] * 255.0) as u32) << 16),
         );
-        self.peer.borrow_mut().apply_format(fg, explicit);
+        self.peer.borrow_mut().apply_format(cref, fg);
     }
     /// Read-only flips ride into the native service — ES_READONLY blocks
     /// edits at the msftedit level, not just the input router. The runtime
@@ -474,7 +467,7 @@ where
                 let (fg, sel_bg, sel_fg) = palette(&c.1, &c.0);
                 for (_, w) in self.peer_ctx.registry.lock().unwrap().iter() {
                     if let Some(p) = w.upgrade() {
-                        p.borrow().set_colors(fg, sel_bg, sel_fg);
+                        p.borrow().set_colors(fg, sel_bg, sel_fg, c.1.dark);
                     }
                 }
             }
@@ -491,9 +484,13 @@ where
         self.sanitize_focus()?;
         let mut needs_layout = !self.rects.is_empty() && self.order.is_empty();
         let mut needs_paint = !chrome.is_empty();
+        let mut needs_uia = false;
         for (id, d) in dirty {
             if d & crate::runtime::Runtime::<S, M, U, V>::DIRTY_LAYOUT != 0 {
                 needs_layout = true;
+            }
+            if d & crate::runtime::Runtime::<S, M, U, V>::DIRTY_SEMANTICS != 0 {
+                needs_uia = true;
             }
             if d & crate::runtime::Runtime::<S, M, U, V>::DIRTY_PAINT != 0 {
                 needs_paint = true;
@@ -539,9 +536,13 @@ where
         if self.rects.is_empty() {
             needs_layout = true;
         }
-        if needs_layout || updated {
+        // layout is driven by the CLASSIFIED work, not by "any message
+        // arrived" — an update whose resolved output is unchanged does no
+        // layout and no paint
+        if needs_layout {
             self.relayout()?;
             needs_paint = true;
+            needs_uia = true;
         }
         // built-in chrome repaint is never dependent on consumer handlers
         {
@@ -554,8 +555,10 @@ where
             }
         }
         // live UIA state follows the committed tree — external clients see
-        // name/enabled/bounds/order changes without a fresh WM_GETOBJECT
-        if updated || needs_layout || needs_paint {
+        // name/enabled/bounds/order changes without a fresh WM_GETOBJECT.
+        // `updated` still counts: focus/press semantics ride app messages
+        // that need not flip a dirty bit.
+        if needs_uia || updated || needs_paint {
             self.uia_refresh()?;
         }
         if needs_paint {
@@ -1654,10 +1657,13 @@ where
         self.turn()
     }
 
-    /// `WM_SETTINGCHANGE` — resnapshot OS appearance/reduced once.
+    /// `WM_SETTINGCHANGE` — resnapshot OS appearance AND re-resolve an
+    /// authored `ReducedMotion::System` (the SPI value may have flipped
+    /// without a theme restage).
     pub(crate) fn os_change(&mut self) -> UiResult {
         let appearance = os_appearance();
         self.rt.set_appearance(appearance);
+        self.rt.refresh_reduced();
         *self.peer_ctx.colors.borrow_mut() = (appearance, self.rt.theme.clone());
         self.last_appearance = appearance;
         self.turn()
@@ -2078,15 +2084,11 @@ where
     });
     let factory_ctx = peer_ctx.clone();
     let factory = factory_ctx.make_factory();
-    let mut theme = Theme::light();
-    if theme.reduced_motion == ReducedMotion::System {
-        theme.reduced_motion = if reduced {
-            ReducedMotion::Reduce
-        } else {
-            ReducedMotion::NoPreference
-        };
-    }
-    let rt = crate::runtime::Runtime::new(
+    // the theme keeps the AUTHORED reduced-motion policy — System stays
+    // System so an OS change can re-resolve; the resolver probes SPI_*
+    let theme = Theme::light();
+    let _ = reduced; // initial probe consumed via motion_resolver below
+    let mut rt = crate::runtime::Runtime::new(
         app.state,
         app.update,
         app.view,
@@ -2096,6 +2098,18 @@ where
         appearance,
         app.mailbox,
     );
+    rt.set_forced_resolver(Box::new(sys_color));
+    rt.set_motion_resolver(Box::new(|| unsafe {
+        let mut v = windows_core::BOOL::default();
+        let _ = windows::Win32::UI::WindowsAndMessaging::SystemParametersInfoW(
+            windows::Win32::UI::WindowsAndMessaging::SPI_GETCLIENTAREAANIMATION,
+            0,
+            Some(&mut v as *mut windows_core::BOOL as *mut std::ffi::c_void),
+            windows::Win32::UI::WindowsAndMessaging::SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS(0),
+        );
+        !v.as_bool()
+    }));
+    rt.refresh_reduced();
 
     let mut backend = Box::new(Backend {
         rt,
@@ -2287,6 +2301,29 @@ fn os_appearance() -> Appearance {
         dark,
         forced_colors: forced,
     }
+}
+
+/// GetSysColor-backed forced-colors resolver — the OS palette for the
+/// shared SystemColor slots. Installed on the runtime so the classifier
+/// and renderer resolve the same concrete colors.
+fn sys_color(sc: crate::style::SystemColor) -> [f32; 4] {
+    use windows::Win32::Graphics::Gdi::{GetSysColor, SYS_COLOR_INDEX};
+    let idx = match sc {
+        crate::style::SystemColor::Window => SYS_COLOR_INDEX(5), // COLOR_WINDOW
+        crate::style::SystemColor::WindowText => SYS_COLOR_INDEX(8), // COLOR_WINDOWTEXT
+        crate::style::SystemColor::Highlight => SYS_COLOR_INDEX(13), // COLOR_HIGHLIGHT
+        crate::style::SystemColor::HighlightText => SYS_COLOR_INDEX(14), // COLOR_HIGHLIGHTTEXT
+        crate::style::SystemColor::GrayText => SYS_COLOR_INDEX(17), // COLOR_GRAYTEXT
+        crate::style::SystemColor::InactiveBorder => SYS_COLOR_INDEX(11), // COLOR_INACTIVEBORDER
+        crate::style::SystemColor::HotTrack => SYS_COLOR_INDEX(26), // COLOR_HOTLIGHT
+    };
+    let rgb = unsafe { GetSysColor(idx) };
+    [
+        (rgb & 0xff) as f32 / 255.0,
+        ((rgb >> 8) & 0xff) as f32 / 255.0,
+        ((rgb >> 16) & 0xff) as f32 / 255.0,
+        1.0,
+    ]
 }
 
 /// Effective reduced motion: Reduce=true, NoPreference=false, System reads

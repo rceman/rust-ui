@@ -3239,7 +3239,7 @@ fn native_probe_richedit_paints_text() {
         face: "Segoe UI".into(),
         size_twips: 280,
         fg: [1.0, 1.0, 1.0, 1.0],
-        fg_explicit: true,
+        fg_authored: crate::style::Color::rgba(200, 30, 30, 255),
         sel_bg: [0.2, 0.4, 0.8, 1.0],
         sel_fg: [1.0, 1.0, 1.0, 1.0],
         bold: false,
@@ -4400,7 +4400,7 @@ fn resolved_dirty_classification() {
     // same authored descriptor -> no dirty
     let p = BoxStylePatch::new();
     assert_eq!(
-        crate::node::dirty_diff(&surface(p), &surface(p), false, false),
+        crate::node::dirty_diff(&surface(p), &surface(p), false, None),
         0
     );
     // a patch authoring the SAME resolved value as the recipe -> no dirty
@@ -4410,7 +4410,7 @@ fn resolved_dirty_classification() {
     same.padding.bottom = Some(Dp(12.0));
     same.padding.left = Some(Dp(12.0));
     assert_eq!(
-        crate::node::dirty_diff(&surface(p), &surface(same), false, false),
+        crate::node::dirty_diff(&surface(p), &surface(same), false, None),
         0,
         "patch resolving to identical output must be a no-op"
     );
@@ -4422,26 +4422,29 @@ fn resolved_dirty_classification() {
         offset_y: Dp(2.0),
         blur_sigma: Dp(4.0),
     });
-    let d = crate::node::dirty_diff(&surface(p), &surface(sh), false, false);
+    let d = crate::node::dirty_diff(&surface(p), &surface(sh), false, None);
     assert_eq!(d & PAINT, PAINT);
     assert_eq!(d & LAYOUT, 0, "shadow-only must not request layout");
     // border WIDTH change -> LAYOUT; border COLOR change -> PAINT only
     let mut bw = BoxStylePatch::new();
     bw.border.top.width = Some(Dp(3.0));
     assert_eq!(
-        crate::node::dirty_diff(&surface(p), &surface(bw), false, false),
+        crate::node::dirty_diff(&surface(p), &surface(bw), false, None),
         LAYOUT | PAINT
     );
     let mut bc = BoxStylePatch::new();
     bc.border.top.color = Some(Color::rgb(9, 9, 9));
     assert_eq!(
-        crate::node::dirty_diff(&surface(p), &surface(bc), false, false),
+        crate::node::dirty_diff(&surface(p), &surface(bc), false, None),
         PAINT,
         "color-only border change is paint-only"
     );
+    // a forced-colors resolver stub — the semantic mapping under test is
+    // that enforcement rewrites roles to the resolver's concrete answer
+    let forced_stub = |_slot: crate::style::SystemColor| [0.11, 0.11, 0.11, 1.0];
     // forced-colors suppresses a set shadow -> resolved equal -> no work
     assert_eq!(
-        crate::node::dirty_diff(&surface(p), &surface(sh), false, true),
+        crate::node::dirty_diff(&surface(p), &surface(sh), false, Some(&forced_stub)),
         0,
         "shadow change under forced-colors resolves to identical output"
     );
@@ -4460,11 +4463,11 @@ fn resolved_dirty_classification() {
             crate::theme::ColorRole::DestructiveForeground,
         ));
         assert_eq!(
-            crate::node::dirty_diff(&surface(rc), &surface(lit), false, false),
+            crate::node::dirty_diff(&surface(rc), &surface(lit), false, None),
             0,
             "two roles resolving to identical concrete RGBA -> zero work"
         );
-        let d = crate::node::dirty_diff(&surface(rc), &surface(lit), true, false);
+        let d = crate::node::dirty_diff(&surface(rc), &surface(lit), true, None);
         assert_eq!(
             d & PAINT,
             PAINT,

@@ -460,7 +460,12 @@ fn visual_dirty(
 /// not authored descriptors: two authored forms producing identical
 /// output are a strict no-op; a shadow-only change is paint-only and
 /// never requests layout.
-pub(crate) fn dirty_diff(old: &NodeData, new: &NodeData, dark: bool, forced: bool) -> u8 {
+pub(crate) fn dirty_diff(
+    old: &NodeData,
+    new: &NodeData,
+    dark: bool,
+    forced: Option<&dyn Fn(crate::style::SystemColor) -> [f32; 4]>,
+) -> u8 {
     const LAYOUT: u8 = 0b0000_0001;
     const PAINT: u8 = 0b0000_0010;
     const SEMANTICS: u8 = 0b0000_1000;

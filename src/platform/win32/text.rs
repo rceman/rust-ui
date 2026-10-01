@@ -150,9 +150,10 @@ pub(crate) struct HostShared {
     pub cf: Box<CHARFORMATW>,
     pub pf: Box<PARAFORMAT>,
     pub fg: COLORREF,
-    /// consumer authored a custom foreground — theme flips must not
-    /// stomp it (they still update selection colors)
-    pub fg_explicit: bool,
+    /// the AUTHORED foreground (Color, not a resolved COLORREF) — theme
+    /// flips re-resolve roles through it; a literal `Color::Rgba` is
+    /// invariant under resolve and so correctly survives flips
+    pub fg_authored: crate::style::Color,
     pub sel_bg: COLORREF,
     pub sel_fg: COLORREF,
     /// system-caret state recorded from Tx*Caret calls
@@ -769,12 +770,12 @@ impl WindowlessPeer {
     /// back into the host synchronously).
     /// Push the resolved editable foreground over ALL content. The only
     /// style a native peer accepts — size/weight/face stay OS-owned.
-    /// `explicit` records whether this is an authored color (theme flips
-    /// preserve it) or the palette role (theme flips update it).
-    pub(crate) fn apply_format(&mut self, fg: COLORREF, fg_explicit: bool) {
+    /// `authored` is the consumer's `Color` — roles re-resolve on theme
+    /// flips; concrete literals are invariant by construction.
+    pub(crate) fn apply_format(&mut self, fg: COLORREF, authored: crate::style::Color) {
         let cf = {
             let mut sh = self.shared_mut();
-            sh.host.fg_explicit = fg_explicit;
+            sh.host.fg_authored = authored;
             sh.host.cf.crTextColor = fg;
             sh.host.fg = fg;
             *sh.host.cf
@@ -831,7 +832,7 @@ impl WindowlessPeer {
                     ..Default::default()
                 }),
                 fg: colorref(cfg.fg),
-                fg_explicit: cfg.fg_explicit,
+                fg_authored: cfg.fg_authored,
                 sel_bg: colorref(cfg.sel_bg),
                 sel_fg: colorref(cfg.sel_fg),
                 caret_pos: POINT::default(),
@@ -1215,15 +1216,15 @@ impl WindowlessPeer {
 
     /// Theme colors — CFE_AUTOCOLOR resolves `COLOR_WINDOWTEXT` through
     /// `TxGetSysColor` at draw time; no run-format rewrite needed.
-    /// Theme palette flip — updates role-resolved fg + selection colors.
-    /// A peer with an explicitly authored foreground keeps it (the
-    /// consumer's style is authoritative over the role palette).
-    pub(crate) fn set_colors(&self, fg: [f32; 4], sel_bg: [f32; 4], sel_fg: [f32; 4]) {
+    /// Theme palette flip — selection colors follow the palette and the
+    /// AUTHORED foreground re-resolves: a role tracks the new theme; an
+    /// authored literal is already concrete and stands.
+    pub(crate) fn set_colors(&self, fg: [f32; 4], sel_bg: [f32; 4], sel_fg: [f32; 4], dark: bool) {
         let mut s = self.shared_mut();
-        if !s.host.fg_explicit {
-            s.host.fg = colorref(fg);
-            s.host.cf.crTextColor = colorref(fg);
-        }
+        let resolved = crate::style::resolve_color(s.host.fg_authored, dark);
+        s.host.fg = colorref(resolved);
+        s.host.cf.crTextColor = colorref(resolved);
+        let _ = fg; // authored path is authoritative; palette fg unused here
         s.host.sel_bg = colorref(sel_bg);
         s.host.sel_fg = colorref(sel_fg);
         s.host.ev(HostEvent::Invalidate);
@@ -1337,8 +1338,8 @@ pub(crate) struct PeerConfig {
     pub face: String,
     pub size_twips: i32,
     pub fg: [f32; 4],
-    /// consumer authored a custom foreground — theme flips preserve it
-    pub fg_explicit: bool,
+    /// the consumer's authored foreground `Color` (roles re-resolve)
+    pub fg_authored: crate::style::Color,
     pub sel_bg: [f32; 4],
     pub sel_fg: [f32; 4],
     /// bold flag folded into CHARFORMAT dwEffects (CFM_BOLD)

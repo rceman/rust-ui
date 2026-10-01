@@ -119,6 +119,18 @@ where
     pub(crate) theme: Theme,
     /// actual OS appearance — independent of the selected theme
     appearance: Appearance,
+    /// platform-supplied system-color lookup used ONLY when
+    /// `appearance.forced_colors` — the classifier resolves roles to real
+    /// system RGB so a theme/HC flip diffs honestly
+    forced_resolver: Option<Box<dyn Fn(crate::style::SystemColor) -> [f32; 4]>>,
+    /// platform OS reduced-motion probe — resolves an authored
+    /// `ReducedMotion::System` at every re-resolution point; None = no OS
+    /// signal (System behaves as NoPreference)
+    motion_resolver: Option<Box<dyn Fn() -> bool>>,
+    /// the AUTHORED reduced-motion policy — `theme.reduced_motion` keeps
+    /// the authored value (System stays System) so an OS change can
+    /// re-resolve it; `sched.reduced` holds the resolved bool
+    authored_reduced: crate::theme::ReducedMotion,
     appearance_dirty: bool,
     /// how many times `view` has been evaluated
     pub(crate) view_count: u64,
@@ -192,8 +204,11 @@ where
             registry: TaskRegistry::default(),
             executor,
             sched,
-            theme,
+            theme: theme.clone(),
             appearance,
+            forced_resolver: None,
+            motion_resolver: None,
+            authored_reduced: theme.reduced_motion,
             appearance_dirty: false,
             view_count: 0,
             mounted_editors: HashMap::new(),
@@ -349,12 +364,13 @@ where
         nodes.clear();
         self.scratch_nodes = nodes;
         commit?;
-        // staged theme propagates; reduced-motion flips settle running work
+        // staged theme propagates; reduced-motion flips settle running work.
+        // The AUTHORED policy is stored (System stays System — re-resolvable
+        // on OS change); `sched.reduced` gets the resolved bool.
         if theme != self.theme {
-            let reduced = theme.reduced_motion == ReducedMotion::Reduce;
+            self.authored_reduced = theme.reduced_motion;
             self.theme = theme;
-            let evs = self.sched.set_reduced(reduced, std::time::Instant::now());
-            self.chrome_backlog.extend(evs);
+            self.apply_reduced();
         }
         Ok(())
     }
@@ -650,7 +666,11 @@ where
             // dirty classification compares RESOLVED styles — two authored
             // descriptions producing identical concrete output are a no-op
             let dark = self.theme.dark;
-            let forced = self.appearance.forced_colors;
+            let forced = self
+                .appearance
+                .forced_colors
+                .then(|| self.forced_resolver.as_deref())
+                .flatten();
             n.dirty = crate::node::dirty_diff(&old_data, &n.data, dark, forced);
             if n.layout != layout || old_vis != visibility {
                 n.dirty |= Self::DIRTY_LAYOUT;
@@ -1145,8 +1165,49 @@ where
             )
         })
     }
+    /// Install the platform's OS reduced-motion probe — authored
+    /// `ReducedMotion::System` resolves through this on every staged
+    /// theme and every WM_SETTINGCHANGE (`os_change` -> `refresh_reduced`).
+    pub(crate) fn set_motion_resolver(&mut self, f: Box<dyn Fn() -> bool>) {
+        self.motion_resolver = Some(f);
+    }
+
+    /// Resolve the authored reduced-motion policy through the platform
+    /// probe and push the result into the scheduler. Idempotent.
+    pub(crate) fn refresh_reduced(&mut self) {
+        self.apply_reduced();
+    }
+    fn apply_reduced(&mut self) {
+        let reduced = match self.authored_reduced {
+            crate::theme::ReducedMotion::Reduce => true,
+            crate::theme::ReducedMotion::NoPreference => false,
+            crate::theme::ReducedMotion::System => {
+                self.motion_resolver.as_ref().map(|f| f()).unwrap_or(false)
+            }
+        };
+        let evs = self.sched.set_reduced(reduced, std::time::Instant::now());
+        self.chrome_backlog.extend(evs);
+    }
+
+    /// Install the platform's forced-colors resolver (win32 supplies
+    /// GetSysColor; a portable runtime leaves it unset).
+    pub(crate) fn set_forced_resolver(
+        &mut self,
+        f: Box<dyn Fn(crate::style::SystemColor) -> [f32; 4]>,
+    ) {
+        self.forced_resolver = Some(f);
+    }
     pub(crate) fn appearance(&self) -> crate::theme::Appearance {
         self.appearance
+    }
+
+    /// The forced-colors resolver, live only while forced colors are on —
+    /// `None` means "authored palette stands".
+    pub(crate) fn forced_resolver(&self) -> Option<&dyn Fn(crate::style::SystemColor) -> [f32; 4]> {
+        self.appearance
+            .forced_colors
+            .then(|| self.forced_resolver.as_deref())
+            .flatten()
     }
 
     /// Window close: shut the mailbox (producers wake `Closed`), fence every

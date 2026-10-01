@@ -344,7 +344,7 @@ impl Renderer {
         self.hwnd = be.hwnd;
         // resolved theme darkness — the app-selected mode, not raw OS state
         let dark = be.rt.theme.dark;
-        let forced = be.rt.appearance().forced_colors;
+        let forced = be.rt.forced_resolver();
         let dpi = self.dpi;
         // COM add-ref as the interface we paint through — ends the &mut
         // self borrow so peer draws can read renderer state
@@ -407,7 +407,7 @@ impl Renderer {
                             r.height.max(1.0),
                         )
                     } {
-                        let c = resolve_color_f(ts.foreground, dark);
+                        let c = resolve_render(ts.foreground, dark, forced);
                         let brush = unsafe { target.CreateSolidColorBrush(&c, None)? };
                         unsafe {
                             target.DrawTextLayout(
@@ -476,7 +476,7 @@ impl Renderer {
                             (br.right - br.left - pad_l - pad_r).max(1.0),
                             (br.bottom - br.top).max(1.0),
                         )?;
-                        let fg = resolve_color_f(vs.text_style.foreground, dark);
+                        let fg = resolve_render(vs.text_style.foreground, dark, forced);
                         let fg_brush = target.CreateSolidColorBrush(&fg, None)?;
                         lay.SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER)?;
                         lay.SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER)?;
@@ -836,6 +836,26 @@ use crate::style::{BoxStyle, CornerRadii, Shadow};
 use windows_numerics::Matrix3x2;
 
 /// Resolve an authored `Color` into the target's float4.
+/// Color resolution under forced colors: roles go through the platform's
+/// system-color lookup; authored literals stay authored (an app that names
+/// an exact RGBA under HC means that RGBA).
+fn resolve_render(
+    c: crate::style::Color,
+    dark: bool,
+    sys: Option<&dyn Fn(crate::style::SystemColor) -> [f32; 4]>,
+) -> D2D1_COLOR_F {
+    if let (crate::style::Color::Role(r), Some(f)) = (c, sys) {
+        let [rr, gg, bb, aa] = f(crate::style::system_slot(r));
+        return D2D1_COLOR_F {
+            r: rr,
+            g: gg,
+            b: bb,
+            a: aa,
+        };
+    }
+    brush_color(c, dark)
+}
+
 fn brush_color(c: crate::style::Color, dark: bool) -> D2D1_COLOR_F {
     let [r, g, b, a] = crate::style::resolve_color(c, dark);
     D2D1_COLOR_F { r, g, b, a }
@@ -1259,17 +1279,17 @@ fn paint_box(
     r: &D2D_RECT_F,
     style: &BoxStyle,
     dark: bool,
-    forced: bool,
+    forced: Option<&dyn Fn(crate::style::SystemColor) -> [f32; 4]>,
     dpi: super::space::ScaleFactor,
     shadow_cache: &RefCell<ShadowCache>,
     target_gen: u64,
 ) -> Result<()> {
-    // OS enforcement — forced-colors/high-contrast suppresses decorative
-    // shadow after all recipe/consumer layers (approved contract)
+    // OS enforcement — forced colors map roles to the real system
+    // palette and suppress decorative shadow (shared authority)
     let mut enforced;
-    let style = if forced && style.shadow.is_some() {
+    let style = if forced.is_some() {
         enforced = *style;
-        enforced.shadow = None;
+        crate::style::os_enforce_box(&mut enforced, forced);
         &enforced
     } else {
         style
@@ -1296,7 +1316,7 @@ fn paint_box(
         if style.border.any() {
             if let Some(side) = style.border.uniform() {
                 if side.width.0 > 0.0 {
-                    let c = brush_color(side.color, dark);
+                    let c = resolve_render(side.color, dark, forced);
                     if c.a > 0.0 {
                         let b = target.CreateSolidColorBrush(&c, None)?;
                         // midline stroke: inset by half the width so the
@@ -1335,72 +1355,129 @@ fn paint_box(
                     opacityBrush: std::mem::ManuallyDrop::new(None),
                     layerOptions: D2D1_LAYER_OPTIONS_NONE,
                 };
-                // non-overlapping corner partition: left/right strips own
-                // the full height INCLUDING the corner cells; top/bottom
-                // strips sit between them. Translucent side colors never
-                // double-blend at a corner.
-                let (lw, rw) = (style.border.left.width.0, style.border.right.width.0);
-                let strips = [
-                    (
-                        style.border.top,
-                        D2D_RECT_F {
-                            left: r.left + lw,
-                            top: r.top,
-                            right: r.right - rw,
-                            bottom: r.top + style.border.top.width.0,
-                        },
-                    ),
-                    (
-                        style.border.right,
-                        D2D_RECT_F {
-                            left: r.right - style.border.right.width.0,
-                            top: r.top,
-                            right: r.right,
-                            bottom: r.bottom,
-                        },
-                    ),
-                    (
-                        style.border.bottom,
-                        D2D_RECT_F {
-                            left: r.left + lw,
-                            top: r.bottom - style.border.bottom.width.0,
-                            right: r.right - rw,
-                            bottom: r.bottom,
-                        },
-                    ),
-                    (
-                        style.border.left,
-                        D2D_RECT_F {
-                            left: r.left,
-                            top: r.top,
-                            right: r.left + style.border.left.width.0,
-                            bottom: r.bottom,
-                        },
-                    ),
-                ];
                 // RAII-paired layer: EVERY fallible allocation happens
                 // BEFORE PushLayer — a `?` between push/pop would strand
-                // the layer and leak the params' borrowed mask clone
-                let brushes: [Option<ID2D1SolidColorBrush>; 4] = strips
-                    .iter()
-                    .map(|(side, _)| {
-                        if side.width.0 <= 0.0 {
-                            return Ok(None);
-                        }
-                        let c = brush_color(side.color, dark);
-                        if c.a <= 0.0 {
-                            return Ok(None);
-                        }
-                        target.CreateSolidColorBrush(&c, None).map(Some)
-                    })
-                    .collect::<Result<Vec<_>>>()?
-                    .try_into()
-                    .unwrap();
-                target.PushLayer(&params, None);
-                for ((_, sr), b) in strips.iter().zip(brushes.iter()) {
-                    if let Some(b) = b {
-                        target.FillRectangle(sr, b);
+                // the layer and leak the params' borrowed mask clone.
+                // The corner partition is the DIAGONAL bisector: each side
+                // is a trapezoid whose inner edge runs between the
+                // adjacent inner corners — corner cells split on the
+                // diagonal, so arbitrarily thick opposing sides can never
+                // overlap.
+                let (lw, tw, rw, bw) = (
+                    style.border.left.width.0,
+                    style.border.top.width.0,
+                    style.border.right.width.0,
+                    style.border.bottom.width.0,
+                );
+                let trapezoids: [[Vector2; 4]; 4] = [
+                    // top side: outer top edge, inner edge inset by lw/rw
+                    [
+                        Vector2 {
+                            X: r.left,
+                            Y: r.top,
+                        },
+                        Vector2 {
+                            X: r.right,
+                            Y: r.top,
+                        },
+                        Vector2 {
+                            X: r.right - rw,
+                            Y: r.top + tw,
+                        },
+                        Vector2 {
+                            X: r.left + lw,
+                            Y: r.top + tw,
+                        },
+                    ],
+                    // right side: outer right edge, inner inset by tw/bw
+                    [
+                        Vector2 {
+                            X: r.right,
+                            Y: r.top,
+                        },
+                        Vector2 {
+                            X: r.right,
+                            Y: r.bottom,
+                        },
+                        Vector2 {
+                            X: r.right - rw,
+                            Y: r.bottom - bw,
+                        },
+                        Vector2 {
+                            X: r.right - rw,
+                            Y: r.top + tw,
+                        },
+                    ],
+                    // bottom side
+                    [
+                        Vector2 {
+                            X: r.right,
+                            Y: r.bottom,
+                        },
+                        Vector2 {
+                            X: r.left,
+                            Y: r.bottom,
+                        },
+                        Vector2 {
+                            X: r.left + lw,
+                            Y: r.bottom - bw,
+                        },
+                        Vector2 {
+                            X: r.right - rw,
+                            Y: r.bottom - bw,
+                        },
+                    ],
+                    // left side
+                    [
+                        Vector2 {
+                            X: r.left,
+                            Y: r.bottom,
+                        },
+                        Vector2 {
+                            X: r.left,
+                            Y: r.top,
+                        },
+                        Vector2 {
+                            X: r.left + lw,
+                            Y: r.top + tw,
+                        },
+                        Vector2 {
+                            X: r.left + lw,
+                            Y: r.bottom - bw,
+                        },
+                    ],
+                ];
+                let sides = [
+                    style.border.top,
+                    style.border.right,
+                    style.border.bottom,
+                    style.border.left,
+                ];
+                let mut parts_v: Vec<(ID2D1SolidColorBrush, ID2D1PathGeometry)> = Vec::new();
+                for (i, side) in sides.iter().enumerate() {
+                    if side.width.0 <= 0.0 {
+                        continue;
                     }
+                    let c = resolve_render(side.color, dark, forced);
+                    if c.a <= 0.0 {
+                        continue;
+                    }
+                    let b = target.CreateSolidColorBrush(&c, None)?;
+                    let geo = target.GetFactory()?.CreatePathGeometry()?;
+                    {
+                        let sink = geo.Open()?;
+                        sink.SetFillMode(D2D1_FILL_MODE_WINDING);
+                        let p = trapezoids[i];
+                        sink.BeginFigure(p[0], D2D1_FIGURE_BEGIN_FILLED);
+                        sink.AddLines(&[p[1], p[2], p[3]]);
+                        sink.EndFigure(D2D1_FIGURE_END_CLOSED);
+                        sink.Close()?;
+                    }
+                    parts_v.push((b, geo));
+                }
+                target.PushLayer(&params, None);
+                for (b, geo) in &parts_v {
+                    target.FillGeometry(geo, b, None);
                 }
                 target.PopLayer();
                 // release the params' clone now that the layer is popped

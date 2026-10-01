@@ -1406,18 +1406,100 @@ pub(crate) fn action_style_ok(s: &ActionStyle) -> bool {
             .all(|p| p.is_none_or(|p| box_patch_ok(&p)))
 }
 
+// ---------------------------------------------------------------------------
+// forced-colors — the semantic slot mapping is shared; the platform owns RGB
+// ---------------------------------------------------------------------------
+
+/// Semantic OS-control color slots. Under forced colors a role resolves to
+/// a SYSTEM color slot; the platform adapter turns the slot into the real
+/// OS RGB (GetSysColor on Windows). The mapping itself is shared policy —
+/// a backend never invents its own role->system routing.
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub enum SystemColor {
+    /// COLOR_WINDOW — page/canvas background
+    Window,
+    /// COLOR_WINDOWTEXT — primary text on Window
+    WindowText,
+    /// COLOR_HIGHLIGHT — selection/accent fill
+    Highlight,
+    /// COLOR_HIGHLIGHTTEXT — text on Highlight
+    HighlightText,
+    /// COLOR_GRAYTEXT — disabled/muted text
+    GrayText,
+    /// COLOR_INACTIVEBORDER — secondary strokes/dividers
+    InactiveBorder,
+    /// COLOR_HOTLIGHT — interactive affordance
+    HotTrack,
+}
+
+/// The shared role -> system-slot mapping used under forced colors.
+/// Covers the whole `ColorRole` vocabulary — a role can never escape
+/// enforcement.
+pub fn system_slot(role: crate::theme::ColorRole) -> SystemColor {
+    use crate::theme::ColorRole as R;
+    match role {
+        R::Background | R::Muted => SystemColor::Window,
+        R::Foreground | R::Destructive => SystemColor::WindowText,
+        R::MutedForeground | R::Shadow => SystemColor::GrayText,
+        R::Accent | R::Focus => SystemColor::Highlight,
+        R::AccentForeground | R::DestructiveForeground => SystemColor::HighlightText,
+        R::Border => SystemColor::InactiveBorder,
+    }
+}
+
 /// OS/accessibility enforcement — applied AFTER all recipe+consumer
 /// layers. Forced-colors/high-contrast: decorative shadow resolves to
 /// `None` (the approved contract); required focus visibility lives in the
 /// focus enforcement layer and survives. Colors keep their role
 /// resolution — under forced colors the OS-level palette follows.
-pub(crate) fn os_enforce_box(b: &mut BoxStyle, forced_colors: bool) {
-    if forced_colors {
-        b.shadow = None;
+fn enforce_color(c: &mut Color, sys: &dyn Fn(SystemColor) -> [f32; 4]) {
+    if let Color::Role(r) = c {
+        let [r8, g8, b8, a8] = sys(system_slot(*r));
+        *c = Color::rgba(
+            (r8 * 255.0).round() as u8,
+            (g8 * 255.0).round() as u8,
+            (b8 * 255.0).round() as u8,
+            (a8 * 255.0).round() as u8,
+        );
     }
 }
-pub(crate) fn os_enforce_visual(v: &mut VisualStyle, forced_colors: bool) {
-    os_enforce_box(&mut v.box_style, forced_colors);
+
+fn enforce_box_colors(b: &mut BoxStyle, sys: &dyn Fn(SystemColor) -> [f32; 4]) {
+    enforce_color(&mut b.background, sys);
+    for side in [
+        &mut b.border.top,
+        &mut b.border.right,
+        &mut b.border.bottom,
+        &mut b.border.left,
+    ] {
+        enforce_color(&mut side.color, sys);
+    }
+    if let Some(s) = &mut b.shadow {
+        enforce_color(&mut s.color, sys);
+    }
+}
+
+/// `forced_resolver` = the platform's system-color lookup — `None` keeps
+/// the authored palette (forced-colors off). `Some` rewrites every role to
+/// its system slot's real RGB and removes decorative shadow.
+pub(crate) fn os_enforce_box(
+    b: &mut BoxStyle,
+    forced_resolver: Option<&dyn Fn(SystemColor) -> [f32; 4]>,
+) {
+    if let Some(sys) = forced_resolver {
+        b.shadow = None;
+        enforce_box_colors(b, sys);
+    }
+}
+pub(crate) fn os_enforce_visual(
+    v: &mut VisualStyle,
+    forced_resolver: Option<&dyn Fn(SystemColor) -> [f32; 4]>,
+) {
+    os_enforce_box(&mut v.box_style, forced_resolver);
+    if let Some(sys) = forced_resolver {
+        enforce_color(&mut v.text_style.foreground, sys);
+        v.text_style.size = TextSize::Body; // OS text size wins
+    }
 }
 
 /// Does a box patch touch any field that feeds layout insets (padding) or
