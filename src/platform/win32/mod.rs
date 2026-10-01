@@ -472,6 +472,11 @@ where
         if self.state_paint_dirty.replace(false) {
             needs_paint = true;
         }
+        // live UIA state follows the committed tree — external clients see
+        // name/enabled/bounds/order changes without a fresh WM_GETOBJECT
+        if updated || needs_layout || needs_paint {
+            self.uia_refresh();
+        }
         if needs_paint {
             self.paint()?;
         }
@@ -1611,14 +1616,20 @@ where
                 native: None,
             });
         }
-        // editors get the REAL windowless provider when available — reuse
-        // an already-registered provider so one peer maps to one provider
-        // across WM_GETOBJECT rebuilds (no duplicate editable semantics)
+        // editors get the REAL windowless provider when available — the
+        // registry is generation-keyed so a same-slot replacement can
+        // never inherit the retired provider
         for k in &mut kids {
             if !k.peer_node {
                 continue;
             }
-            if u.native.lock().unwrap().contains_key(&k.id.slot) {
+            let registered = u
+                .native
+                .lock()
+                .unwrap()
+                .get(&k.id.slot)
+                .is_some_and(|(g, _)| *g == k.id.generation);
+            if registered {
                 continue; // rebuild() picks it up from the registry
             }
             let Some(peer) = self.peer_for(k.id) else {
@@ -1634,7 +1645,7 @@ where
                     && let Ok(prov) = unsafe { acc.CreateProvider(&site) }
                     && let Ok(frag) = prov.cast::<IRawElementProviderFragment>()
                 {
-                    u.register_native(k.id.slot, frag.clone()).ok();
+                    u.register_native(k.id, frag.clone()).ok();
                     k.native = Some(frag);
                 }
             }
@@ -1642,6 +1653,17 @@ where
         u.rebuild(kids)
             .map_err(|e| UiError::Platform(format!("uia rebuild: {e}")))?;
         Ok(Some(u.provider()))
+    }
+
+    /// Push the current tree into the UIA tables when a client has ever
+    /// asked for them — called at each commit boundary so external clients
+    /// see live name/enabled/bounds/order WITHOUT needing a fresh
+    /// WM_GETOBJECT. No-op until the root exists.
+    pub(crate) fn uia_refresh(&mut self) {
+        if self.uia.is_none() {
+            return;
+        }
+        let _ = self.uia_provider();
     }
 
     /// UIA press/focus post landed — the generation check happens HERE so a

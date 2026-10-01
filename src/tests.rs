@@ -3881,3 +3881,32 @@ fn button_style_of(n: &crate::node::Node) -> NodeDataLike {
         _ => panic!("expected button"),
     }
 }
+
+#[cfg(windows)]
+#[test]
+fn rid_safearray_roundtrip() {
+    use windows::Win32::System::Com::SAFEARRAY;
+    use windows::Win32::System::Ole::*;
+    use windows::Win32::System::Variant::VT_I4;
+    use windows::Win32::UI::Accessibility::UiaAppendRuntimeId;
+    unsafe {
+        eprintln!("UiaAppendRuntimeId = {UiaAppendRuntimeId}");
+        let sa = SafeArrayCreateVector(VT_I4, 0, 3);
+        let vals = [UiaAppendRuntimeId as i32, 7, 99];
+        for (i, v) in vals.iter().enumerate() {
+            let r = SafeArrayPutElement(
+                sa,
+                &(i as i32),
+                v as *const i32 as *const core::ffi::c_void,
+            );
+            eprintln!("put {i} -> {r:?}");
+        }
+        let lb = SafeArrayGetLBound(sa, 1).unwrap();
+        let ub = SafeArrayGetUBound(sa, 1).unwrap();
+        for i in lb..=ub {
+            let mut out = 0i32;
+            SafeArrayGetElement(sa, &i, &mut out as *mut i32 as *mut core::ffi::c_void).unwrap();
+            eprintln!("rid[{i}] = {out}");
+        }
+    }
+}
