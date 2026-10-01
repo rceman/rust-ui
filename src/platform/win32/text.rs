@@ -38,8 +38,8 @@ use windows::Win32::UI::Input::KeyboardAndMouse::SetFocus;
 use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::core::*;
 
+use super::space::{LogicalPoint, LogicalRect, PhysicalPoint, ScaleFactor};
 use crate::text::{BindingToken, TextRevision};
-use super::space::{DipPoint, DipRect, PxPoint, Scale};
 use crate::{NodeId, UiError, UiResult};
 
 /// missing from the windows bindings
@@ -143,9 +143,9 @@ pub(crate) struct HostShared {
     /// owning window (IME context, timers, capture)
     pub hwnd: HWND,
     /// global bounds in window DIP (for ScreenToClient conversions)
-    pub bounds: DipRect,
+    pub bounds: LogicalRect,
     /// px-per-DIP — the ONLY scale authority (see space.rs)
-    pub scale: Scale,
+    pub scale: ScaleFactor,
     /// property bits advertised via TxGetPropertyBits
     pub bits: u32,
     /// latest EN_REQUESTRESIZE size — client units are PHYSICAL px
@@ -393,8 +393,15 @@ impl ITextHost_Impl for HostBox {
         };
         bools(unsafe {
             // screen px -> client px -> peer-local px (host space is px)
-            let c = super::space::screen_to_client(hwnd, super::space::ScreenPxPoint((*lppt).into()));
-            let off = DipPoint { x: bounds.x, y: bounds.y }.px(scale);
+            let c = super::space::screen_to_client(
+                hwnd,
+                super::space::ScreenPhysicalPoint((*lppt).into()),
+            );
+            let off = LogicalPoint {
+                x: bounds.x,
+                y: bounds.y,
+            }
+            .physical(scale);
             (*lppt).x = c.0.x - off.x;
             (*lppt).y = c.0.y - off.y;
             true
@@ -407,10 +414,14 @@ impl ITextHost_Impl for HostBox {
         };
         bools(unsafe {
             // peer-local px -> window client px -> screen px
-            let off = DipPoint { x: bounds.x, y: bounds.y }.px(scale);
+            let off = LogicalPoint {
+                x: bounds.x,
+                y: bounds.y,
+            }
+            .physical(scale);
             let s = super::space::client_to_screen(
                 hwnd,
-                super::space::ClientPxPoint(PxPoint {
+                super::space::ClientPhysicalPoint(PhysicalPoint {
                     x: (*lppt).x + off.x,
                     y: (*lppt).y + off.y,
                 }),
@@ -433,7 +444,7 @@ impl ITextHost_Impl for HostBox {
                 let s = self.s();
                 (s.host.scale, s.host.bounds)
             };
-            *prc = DipRect::local(b.w, b.h).px(sc).into();
+            *prc = LogicalRect::local(b.width, b.height).physical(sc).into();
         }
         Ok(())
     }
@@ -503,8 +514,8 @@ impl ITextHost_Impl for HostBox {
         let hm = 2540.0 / 96.0;
         unsafe {
             *lpextent = SIZE {
-                cx: (b.w * hm).round() as i32,
-                cy: (b.h * hm).round() as i32,
+                cx: (b.width * hm).round() as i32,
+                cy: (b.height * hm).round() as i32,
             };
         }
         Ok(())
@@ -708,7 +719,7 @@ impl WindowlessPeer {
         id: u64,
         lib: &Arc<Msftedit>,
         hwnd: HWND,
-        scale: Scale,
+        scale: ScaleFactor,
         cfg: &PeerConfig,
         sink: std::sync::Arc<std::sync::Mutex<Vec<super::NativeSinkItem>>>,
     ) -> UiResult<WindowlessPeer> {
@@ -720,7 +731,7 @@ impl WindowlessPeer {
             lib: lib.clone(),
             host: HostShared {
                 hwnd,
-                bounds: DipRect::default(),
+                bounds: LogicalRect::default(),
                 scale,
                 bits: TXTBIT_WORDWRAP
                     | TXTBIT_AUTOWORDSEL
@@ -905,12 +916,16 @@ impl WindowlessPeer {
     /// `bounds` is the peer's CONTENT rect in window DIP
     /// (`editor_content_rect` is the single shared transform). `lprcBounds`
     /// for `TxDrawD2D` is in the host's PHYSICAL-PIXEL space — msftedit
-    /// divides by `dcDpi/96` internally, so `DipRect::rectl` performs THE
+    /// divides by `dcDpi/96` internally, so `LogicalRect::rectl` performs THE
     /// conversion at this seam. The format space stays the peer's LOCAL
     /// client rect (px); one transform at the seam, nothing to cache.
-    pub(crate) fn draw(&self, rt: &ID2D1RenderTarget, bounds: DipRect) -> UiResult<()> {
+    pub(crate) fn draw(&self, rt: &ID2D1RenderTarget, bounds: LogicalRect) -> UiResult<()> {
         self.ensure_activated();
-        if !(bounds.w > 0.0 && bounds.h > 0.0 && bounds.x.is_finite() && bounds.y.is_finite()) {
+        if !(bounds.width > 0.0
+            && bounds.height > 0.0
+            && bounds.x.is_finite()
+            && bounds.y.is_finite())
+        {
             return Ok(());
         }
         let sc = self.shared().host.scale;
@@ -928,11 +943,11 @@ impl WindowlessPeer {
     pub(crate) fn natural_size(&self, width_dip: f32) -> UiResult<(f32, f32)> {
         {
             let mut s = self.shared_mut();
-            s.host.bounds.w = width_dip;
-            if s.host.bounds.h <= 0.0 {
+            s.host.bounds.width = width_dip;
+            if s.host.bounds.height <= 0.0 {
                 // scratch height — the service reports natural extent via
                 // REQRESIZE regardless of clip height
-                s.host.bounds.h = 4000.0;
+                s.host.bounds.height = 4000.0;
             }
         }
         self.ensure_activated();
@@ -945,9 +960,10 @@ impl WindowlessPeer {
         if px.cy > 0
             && let Ok(ns) = self.send(EM_GETLINECOUNT, 0, 0)
         {
-            self.line_h.set(sc.px_to_dip(px.cy) / (ns.lr.max(1) as f32));
+            self.line_h
+                .set(sc.to_logical(px.cy) / (ns.lr.max(1) as f32));
         }
-        Ok((sc.px_to_dip(px.cx), sc.px_to_dip(px.cy)))
+        Ok((sc.to_logical(px.cx), sc.to_logical(px.cy)))
     }
 
     /// measured single-line height (DIP); 0.0 until a `natural_size` pass
@@ -962,7 +978,7 @@ impl WindowlessPeer {
     /// would latch a 0×0 space and draw nothing). The client rect is a live
     /// property (`TxGetClientRect` reads `host.bounds`) — never relatched,
     /// matching the proven mascot contract.
-    pub(crate) fn apply_bounds(&self, bounds: DipRect, scale: Scale) {
+    pub(crate) fn apply_bounds(&self, bounds: LogicalRect, scale: ScaleFactor) {
         self.shared_mut().host.bounds = bounds;
         self.shared_mut().host.scale = scale;
         self.ensure_activated();
@@ -974,13 +990,13 @@ impl WindowlessPeer {
             return;
         }
         let b = self.shared().host.bounds;
-        if b.w <= 0.0 || b.h <= 0.0 {
+        if b.width <= 0.0 || b.height <= 0.0 {
             return;
         }
         let sc = self.shared().host.scale;
         // activation rect in the host's px units (see the unit contract at
         // the top of the file / space.rs)
-        let mut local: RECT = DipRect::local(b.w, b.h).px(sc).into();
+        let mut local: RECT = LogicalRect::local(b.width, b.height).physical(sc).into();
         unsafe {
             let _ = self.tx().OnTxInPlaceActivate(&mut local);
             let _ = self.tx().OnTxUIActivate();

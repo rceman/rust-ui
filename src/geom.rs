@@ -58,13 +58,176 @@ impl Rect {
         local.x >= 0.0 && local.y >= 0.0 && local.x <= self.width && local.y <= self.height
     }
 
-    /// Shrink each edge by `d` (clamped at zero).
-    pub fn inset(&self, d: f32) -> Rect {
+    /// Is `p` (a point in this rect's own coordinate space) inside it?
+    pub fn contains(&self, p: Point) -> bool {
+        p.x >= self.x && p.x < self.x + self.width && p.y >= self.y && p.y < self.y + self.height
+    }
+
+    /// Smallest rect covering both — the ink-damage union primitive.
+    pub fn union(&self, o: Rect) -> Rect {
+        let (x0, y0) = (self.x.min(o.x), self.y.min(o.y));
         Rect {
-            x: self.x + d,
-            y: self.y + d,
-            width: (self.width - 2.0 * d).max(0.0),
-            height: (self.height - 2.0 * d).max(0.0),
+            x: x0,
+            y: y0,
+            width: (self.x + self.width).max(o.x + o.width) - x0,
+            height: (self.y + self.height).max(o.y + o.height) - y0,
+        }
+    }
+
+    /// A local-space rect `(0,0,w,h)` — peer/client surfaces hand these
+    /// to native APIs as their own origin.
+    pub fn local(w: f32, h: f32) -> Rect {
+        Rect {
+            x: 0.0,
+            y: 0.0,
+            width: w,
+            height: h,
+        }
+    }
+
+    /// DIP -> physical px rect (right/bottom rounded independently — the
+    /// *edges* snap, never the width).
+    pub fn physical(self, s: ScaleFactor) -> PhysicalRect {
+        PhysicalRect {
+            left: s.to_physical(self.x),
+            top: s.to_physical(self.y),
+            right: s.to_physical(self.x + self.width),
+            bottom: s.to_physical(self.y + self.height),
+        }
+    }
+
+    pub fn right(&self) -> f32 {
+        self.x + self.width
+    }
+    pub fn bottom(&self) -> f32 {
+        self.y + self.height
+    }
+}
+
+impl Point {
+    /// DIP point -> physical px point.
+    pub fn physical(self, s: ScaleFactor) -> PhysicalPoint {
+        PhysicalPoint {
+            x: s.to_physical(self.x),
+            y: s.to_physical(self.y),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Platform-contract geometry — the SHARED semantic model (docs/PLATFORM_CONTRACTS.md).
+//
+// rust-ui semantics are DIP/Logical. The physical-px space is what real
+// display servers, native text services and accessibility trees speak; each
+// backend converts at its own seam. `* scale`/`dpi/96` arithmetic outside
+// these methods is a contract violation.
+// ---------------------------------------------------------------------------
+
+/// px per logical unit — `dpi / 96` semantics, without naming the Windows
+/// constant: on any platform the logical unit is "one physical pixel at
+/// 96 dpi" (the OS-independent baseline).
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub struct ScaleFactor(pub f32);
+
+impl ScaleFactor {
+    pub const ONE: ScaleFactor = ScaleFactor(1.0);
+
+    /// `ScaleFactor::from_dpi(120)` = the 125% monitor.
+    pub fn from_dpi(dpi: u32) -> ScaleFactor {
+        ScaleFactor(dpi as f32 / 96.0)
+    }
+
+    pub fn dpi(self) -> u32 {
+        (self.0 * 96.0).round() as u32
+    }
+
+    /// logical -> physical px — THE rounding policy:
+    /// round-half-away-from-zero at the conversion boundary.
+    pub fn to_physical(self, logical: f32) -> i32 {
+        (logical * self.0).round() as i32
+    }
+
+    /// logical -> fractional physical px (antialiased chrome raster math
+    /// that must not snap mid-pipeline).
+    pub fn to_physical_f(self, logical: f32) -> f32 {
+        logical * self.0
+    }
+
+    /// physical px -> logical (exact — a rounded physical pixel may
+    /// legitimately map to a fractional logical unit).
+    pub fn to_logical(self, px: i32) -> f32 {
+        px as f32 / self.0
+    }
+
+    /// fractional physical px -> logical.
+    pub fn to_logical_f(self, px: f32) -> f32 {
+        px / self.0
+    }
+}
+
+/// A physical-pixel scalar.
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
+pub struct PhysicalPx(pub i32);
+
+/// A physical-pixel point — unmarked. When origin ambiguity matters use
+/// the marker wrappers `ClientPhysicalPoint` / `ScreenPhysicalPoint`.
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
+pub struct PhysicalPoint {
+    pub x: i32,
+    pub y: i32,
+}
+
+/// A physical-pixel size.
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
+pub struct PhysicalSize {
+    pub w: i32,
+    pub h: i32,
+}
+
+/// A physical-pixel rect on the left/top/right/bottom lattice — the shape
+/// display servers and native controls actually exchange.
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
+pub struct PhysicalRect {
+    pub left: i32,
+    pub top: i32,
+    pub right: i32,
+    pub bottom: i32,
+}
+
+/// Marker: a physical px point in a *surface-client* space (a window's or
+/// peer's own 0,0 origin) — never confuse it with screen coordinates.
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
+pub struct ClientPhysicalPoint(pub PhysicalPoint);
+
+/// Marker: a physical px point in *screen* space.
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
+pub struct ScreenPhysicalPoint(pub PhysicalPoint);
+
+impl PhysicalPoint {
+    /// physical px -> DIP point.
+    pub fn logical(self, s: ScaleFactor) -> Point {
+        Point {
+            x: s.to_logical(self.x),
+            y: s.to_logical(self.y),
+        }
+    }
+}
+
+impl PhysicalRect {
+    /// physical px -> DIP rect.
+    pub fn logical(self, s: ScaleFactor) -> Rect {
+        Rect {
+            x: s.to_logical(self.left),
+            y: s.to_logical(self.top),
+            width: s.to_logical(self.right - self.left),
+            height: s.to_logical(self.bottom - self.top),
+        }
+    }
+
+    pub fn size(self) -> PhysicalSize {
+        PhysicalSize {
+            w: self.right - self.left,
+            h: self.bottom - self.top,
         }
     }
 }

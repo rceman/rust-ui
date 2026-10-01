@@ -6,6 +6,10 @@ The approved architecture baseline for the Windows spike is `29c67025dc88221899a
 
 The current spike is Windows-only. Do not add other-platform backends or stubs, a custom editor, a browser runtime, compatibility shims, a mandatory async runtime, or CI. Native editable text must remain windowless RichEdit through `ITextHost` / `ITextServices`, with `TxDrawD2D`; HWND editor substitution is not an approved fallback.
 
+### Platform contracts
+
+rust-ui core semantics are platform-neutral; Windows is the current backend, not the semantic definition. Shared platform responsibilities have explicit semantic contracts documented in `docs/PLATFORM_CONTRACTS.md`, and each backend provides exactly one authoritative implementation. Consumers must not duplicate platform semantics; native handles/messages never leak into shared contracts (no `HWND`/`WM_*`/`RECT`/`WPARAM` in `src/` outside `platform/`). Validation scripts orchestrate only — Rust (`examples/native_probe.rs`, conformance tests in `src/tests.rs`) owns reusable native semantics. Do not implement macOS during the current Windows foundation milestone.
+
 Keep native handles private. Application state changes in `update`; views stage a retained keyed transaction. Native node events and worker deliveries require generation fencing. Required native behavior must be validated on Windows, not inferred from fake-peer tests.
 
 ## Windows authority

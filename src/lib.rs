@@ -20,7 +20,8 @@ mod ui;
 pub use app::App;
 pub use event::{FrameTime, Key, KeyEvent, Modifiers, PointerButton, PointerEvent, ScrollOffset};
 pub use geom::{
-    Align, Constraints, Dp, Justify, LayoutSpec, Length, Point, Rect, Size, Visibility, dp,
+    Align, Constraints, Dp, Justify, LayoutSpec, Length, PhysicalPoint, PhysicalPx, PhysicalRect,
+    PhysicalSize, Point, Rect, ScaleFactor, Size, Visibility, dp,
 };
 pub use key::KeyId;
 pub use node::NodeId;

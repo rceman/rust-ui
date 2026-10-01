@@ -20,7 +20,11 @@ accepted; no frontend or integration machinery is implemented by this review.
 ## Three workflows, one renderer
 
 The review keeps the owner's three first-class workflows — they are three
-ways of authoring UI over one paint/style pipeline, not three renderers:
+ways of authoring UI over one paint/style pipeline, not three renderers.
+All style/theme/component semantics on this page are platform-neutral —
+each backend renders the same recipes through its own graphics stack
+(`docs/PLATFORM_CONTRACTS.md`); portability means identical logical sizes
+and state behavior, not identical glyph rasterization.
 
 - **FAST** — a standard component with variants, sizes, theme recipe and
   typed interaction behavior:

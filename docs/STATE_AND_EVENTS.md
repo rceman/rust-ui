@@ -31,7 +31,7 @@ contract — `RefCell` can defeat it — not a type-level guarantee.
 
 ## Events
 
-All events are typed factories bound at the emitting node. Ownership means:
+All events are typed factories bound at the emitting node. Platform input is normalized at the backend boundary (`docs/PLATFORM_CONTRACTS.md`) — `WM_*`, IME and accessibility notifications become the semantic events on this table *before* they can produce `M`; application state never sees raw native messages. Ownership means:
 the closure lives on the node, produces `M` (or `Option<M>`), and the runtime
 routes the message into `update` after traversal.
 

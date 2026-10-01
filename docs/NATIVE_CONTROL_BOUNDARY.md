@@ -191,7 +191,10 @@ blocks activation entirely. They are independent.
 - Rectangular clip only; dp→physical conversion happens at the backend.
   Min/max line measurement, keyboard focus and IME candidate-window positions
   follow layout.
-- Coordinate units — verified Win32/RichEdit contract:
+- Coordinate units — verified Win32/RichEdit contract (this is now one
+  *instance* of the platform-contract model — `docs/PLATFORM_CONTRACTS.md`;
+  the shared semantic types live in `crate::geom`, the Win32 seams in
+  `platform/win32/space.rs`):
 
       rust-ui retained/layout boundary:   logical DIP
       Win32/RichEdit COM boundary where

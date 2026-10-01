@@ -16,8 +16,8 @@ pub(crate) mod uia;
 mod window;
 
 pub(crate) use layout::LayoutCache;
-pub(crate) use space::DipRect;
 pub(crate) use render::Renderer;
+pub(crate) use space::LogicalRect;
 pub(crate) use text::{HostEvent, Msftedit, PeerConfig, WindowlessPeer};
 
 use std::cell::RefCell;
@@ -83,7 +83,7 @@ pub(crate) struct PeerCtx {
     pub lib: Arc<Msftedit>,
     /// owning window — assigned on WM_CREATE (peers may mount before it)
     pub hwnd: std::cell::Cell<HWND>,
-    pub scale: std::cell::Cell<space::Scale>,
+    pub scale: std::cell::Cell<space::ScaleFactor>,
     /// interaction state at layout-run time — state style branches can
     /// consume content insets, so layout resolves the live state
     pub hot: std::cell::Cell<Option<NodeId>>,
@@ -253,7 +253,7 @@ where
     pub peer_ctx: Rc<PeerCtx>,
     pub renderer: RefCell<Renderer>,
     /// laid-out rects in DIP, keyed by live NodeId — pruned on remove
-    pub rects: HashMap<NodeId, DipRect>,
+    pub rects: HashMap<NodeId, LogicalRect>,
     /// depth-first paint/hit order (cached each layout pass)
     pub order: Vec<NodeId>,
     pub focus: Option<NodeId>,
@@ -300,7 +300,7 @@ where
     /// accumulated ink damage since the last committed paint — union of
     /// every paint-dirty node's rect (+ shadow footprint). Cleared by
     /// paint(); reserved for fine-grained invalidation.
-    damage: std::cell::Cell<Option<DipRect>>,
+    damage: std::cell::Cell<Option<LogicalRect>>,
 }
 
 /// The deferred-native-delivery contract (private to this backend).
@@ -754,7 +754,7 @@ where
             .and_then(|id| self.rects.get(id))
         {
             let s = self.peer_ctx.scale.get();
-            let mut p = r.px(s);
+            let mut p = r.physical(s);
             // invalidation must never under-cover — +1 keeps the bottom/
             // right edge inside the damage rect (conservative clip, not a
             // unit conversion)
@@ -855,7 +855,7 @@ where
         let s = self.peer_ctx.scale.get();
         unsafe {
             use windows::Win32::UI::WindowsAndMessaging::*;
-            let org = space::DipPoint { x: r.x, y: r.y }.px(s);
+            let org = space::LogicalPoint { x: r.x, y: r.y }.physical(s);
             let _ = CreateCaret(self.hwnd, None, size.cx, size.cy);
             let _ = SetCaretPos(org.x + pos.x, org.y + pos.y);
             if shown {
@@ -1183,11 +1183,11 @@ where
                     &self.editor_chrome_of(id),
                 );
                 let sc = self.peer_ctx.scale.get();
-                let lp_px = space::DipPoint {
+                let lp_px = space::LogicalPoint {
                     x: pos.x - r.x,
                     y: pos.y - r.y,
                 }
-                .px(sc);
+                .physical(sc);
                 let msg = match (phase, button) {
                     (crate::node::PointerPhase::Down, Some(PointerButton::Primary)) => {
                         self.set_focus(Some(id));
@@ -1539,11 +1539,11 @@ where
             );
             let sc = self.peer_ctx.scale.get();
             let lp = space::lparam_px(
-                space::DipPoint {
+                space::LogicalPoint {
                     x: pos.x - r.x,
                     y: pos.y - r.y,
                 }
-                .px(sc),
+                .physical(sc),
             );
             let _ = self.deliver_native(id, WM_MOUSEMOVE, 0, lp);
             self.service_peer_events()?;
@@ -1602,7 +1602,7 @@ where
                 continue;
             };
             let scale = self.peer_ctx.scale.get();
-            let pr = r.px(scale); // DIP -> client px (UIA wants px)
+            let pr = r.physical(scale); // DIP -> client px (UIA wants px)
             let mut pt = POINT {
                 x: pr.left,
                 y: pr.top,
@@ -1755,7 +1755,7 @@ where
     pub(crate) fn pt(&self, lp: LPARAM) -> Point {
         let (x, y) = (lp.0 as i16 as i32, ((lp.0 >> 16) as i16) as i32);
         let s = self.peer_ctx.scale.get();
-        let d = space::PxPoint { x, y }.dip(s); // client px -> DIP
+        let d = space::PhysicalPoint { x, y }.logical(s); // client px -> DIP
         Point { x: d.x, y: d.y }
     }
     /// peer holding focus (if any)
@@ -1774,7 +1774,7 @@ where
     }
     /// DPI changed — scale update + full damage, no recreate
     pub(crate) fn dpi_changed(&mut self, dpi: u32) -> UiResult {
-        let scale = space::Scale::from_dpi(dpi);
+        let scale = space::ScaleFactor::from_dpi(dpi);
         self.peer_ctx.scale.set(scale);
         self.renderer.borrow_mut().set_dpi(scale);
         self.relayout()
@@ -1941,7 +1941,7 @@ where
     let peer_ctx = Rc::new(PeerCtx {
         lib: msft.clone(),
         hwnd: std::cell::Cell::new(HWND::default()),
-        scale: std::cell::Cell::new(space::Scale::ONE),
+        scale: std::cell::Cell::new(space::ScaleFactor::ONE),
         hot: std::cell::Cell::new(None),
         pressed: std::cell::Cell::new(None),
         focus: std::cell::Cell::new(None),
@@ -2026,13 +2026,12 @@ where
     {
         p.borrow().set_hwnd(hwnd);
     }
-    let scale = unsafe {
-        space::Scale::from_dpi(windows::Win32::UI::HiDpi::GetDpiForWindow(hwnd))
-    };
+    let scale =
+        unsafe { space::ScaleFactor::from_dpi(windows::Win32::UI::HiDpi::GetDpiForWindow(hwnd)) };
     backend
         .peer_ctx
         .scale
-        .set(space::Scale(scale.0.max(0.5)));
+        .set(space::ScaleFactor(scale.0.max(0.5)));
 
     // mailbox -> posted pump (no polling)
     let closed = backend.closed.clone();

@@ -232,7 +232,7 @@ pub(crate) struct Renderer {
     factory: ID2D1Factory,
     target: Option<ID2D1HwndRenderTarget>,
     hwnd: HWND,
-    dpi: super::space::Scale,
+    dpi: super::space::ScaleFactor,
     /// bumped every time the frame target is (re)created or its DPI
     /// changes — peer-compatible surfaces key on this so device loss or a
     /// DPI move deterministically invalidates every cached bitmap
@@ -254,7 +254,7 @@ impl Renderer {
             factory,
             target: None,
             hwnd: HWND::default(),
-            dpi: super::space::Scale::ONE,
+            dpi: super::space::ScaleFactor::ONE,
             target_gen: std::cell::Cell::new(0),
             shadow_cache: RefCell::new(ShadowCache::default()),
             tip: RefCell::new(None),
@@ -262,7 +262,7 @@ impl Renderer {
         })
     }
 
-    pub(crate) fn set_dpi(&mut self, dpi: super::space::Scale) {
+    pub(crate) fn set_dpi(&mut self, dpi: super::space::ScaleFactor) {
         if self.dpi == dpi {
             return;
         }
@@ -400,8 +400,8 @@ impl Renderer {
             let clip = D2D_RECT_F {
                 left: r.x,
                 top: r.y,
-                right: r.x + r.w,
-                bottom: r.y + r.h,
+                right: r.x + r.width,
+                bottom: r.y + r.height,
             };
             match &n.data {
                 NodeData::Label {
@@ -430,8 +430,8 @@ impl Renderer {
                         dwrite()?.factory.CreateTextLayout(
                             &wide,
                             &fmt_for(&ts, fi)?,
-                            if *wrap { r.w.max(1.0) } else { f32::MAX },
-                            r.h.max(1.0),
+                            if *wrap { r.width.max(1.0) } else { f32::MAX },
+                            r.height.max(1.0),
                         )
                     } {
                         let c = resolve_color_f(ts.foreground, dark);
@@ -475,8 +475,8 @@ impl Renderer {
                     let br = D2D_RECT_F {
                         left: r.x,
                         top: r.y,
-                        right: r.x + r.w,
-                        bottom: r.y + r.h,
+                        right: r.x + r.width,
+                        bottom: r.y + r.height,
                     };
                     unsafe {
                         paint_box(
@@ -552,8 +552,7 @@ impl Renderer {
                         // `editor_content_rect` is THE pill→content
                         // transform — shared with layout/pointer/caret.
                         let c = super::layout::editor_content_rect(r, &chrome);
-                        peer.borrow()
-                            .draw(&target, c)?;
+                        peer.borrow().draw(&target, c)?;
                     }
                 }
                 NodeData::Custom { render, .. } => {
@@ -568,8 +567,8 @@ impl Renderer {
                         crate::geom::Rect {
                             x: r.x,
                             y: r.y,
-                            width: r.w,
-                            height: r.h,
+                            width: r.width,
+                            height: r.height,
                         },
                     );
                 }
@@ -633,7 +632,12 @@ impl Renderer {
 
     /// Semantic tooltip fired — show the owned nonactivating overlay near
     /// the anchor rect. Chrome fade 150ms unless reduced-motion.
-    pub(crate) fn show_tooltip(&mut self, text: &str, anchor: HWND, scale: super::space::Scale) {
+    pub(crate) fn show_tooltip(
+        &mut self,
+        text: &str,
+        anchor: HWND,
+        scale: super::space::ScaleFactor,
+    ) {
         let hwnd = match self.tip.borrow().as_ref() {
             Some(t) => t.hwnd,
             None => self.create_tip(text),
@@ -653,8 +657,8 @@ impl Renderer {
             let mut tip_rc = RECT {
                 left: 0,
                 top: 0,
-                right: scale.dip_to_px(pw),
-            bottom: scale.dip_to_px(ph),
+                right: scale.to_physical(pw),
+                bottom: scale.to_physical(ph),
             };
             let _ = AdjustWindowRect(&mut tip_rc, WS_POPUP, false);
             let _ = SetWindowPos(
@@ -662,8 +666,8 @@ impl Renderer {
                 Some(HWND_TOPMOST),
                 x,
                 y,
-                scale.dip_to_px(pw),
-                scale.dip_to_px(ph),
+                scale.to_physical(pw),
+                scale.to_physical(ph),
                 SWP_NOACTIVATE | SWP_SHOWWINDOW,
             );
             let _ = InvalidateRect(Some(hwnd), None, false);
@@ -992,8 +996,8 @@ unsafe fn box_geometry(
 #[derive(Hash, Eq, PartialEq, Clone)]
 struct ShadowKey {
     target_gen: u64,
-    w: u32,
-    h: u32,
+    width: u32,
+    height: u32,
     pad: u32,
     radii: [u32; 4], // normalized radii bit patterns (DIP)
     sigma: u32,
@@ -1054,7 +1058,7 @@ fn draw_shadow(
     radii: &CornerRadii,
     shadow: &Shadow,
     dark: bool,
-    dpi: super::space::Scale,
+    dpi: super::space::ScaleFactor,
     cache: &RefCell<ShadowCache>,
     target_gen: u64,
 ) -> Result<()> {
@@ -1066,11 +1070,11 @@ fn draw_shadow(
     let scale = dpi;
     // DIP->device px: blur pad + extent in physical pixels (checked)
     let pad_dip = (sigma * 3.0).max(1.0);
-    let pad = scale.dip_to_px_f(pad_dip).ceil() as usize;
+    let pad = scale.to_physical_f(pad_dip).ceil() as usize;
     let rw = (r.right - r.left).max(0.0);
     let rh = (r.bottom - r.top).max(0.0);
-    let w = scale.dip_to_px_f(rw).ceil() as usize + 2 * pad;
-    let h = scale.dip_to_px_f(rh).ceil() as usize + 2 * pad;
+    let w = scale.to_physical_f(rw).ceil() as usize + 2 * pad;
+    let h = scale.to_physical_f(rh).ceil() as usize + 2 * pad;
     if w == 0 || h == 0 || w > SHADOW_MAX_DIM as usize || h > SHADOW_MAX_DIM as usize {
         return Ok(());
     }
@@ -1086,8 +1090,8 @@ fn draw_shadow(
     let cbits = |v: f32| (v.clamp(0.0, 1.0) * 255.0) as u32;
     let key = ShadowKey {
         target_gen,
-        w: w as u32,
-        h: h as u32,
+        width: w as u32,
+        height: h as u32,
         pad: pad as u32,
         radii: [
             norm.top_left.0.to_bits(),
@@ -1112,8 +1116,8 @@ fn draw_shadow(
         let dest = D2D_RECT_F {
             left: r.left + shadow.offset_x.0 - pad_dip,
             top: r.top + shadow.offset_y.0 - pad_dip,
-            right: r.left + shadow.offset_x.0 - pad_dip + scale.px_to_dip_f(w as f32),
-            bottom: r.top + shadow.offset_y.0 - pad_dip + scale.px_to_dip_f(h as f32),
+            right: r.left + shadow.offset_x.0 - pad_dip + scale.to_logical_f(w as f32),
+            bottom: r.top + shadow.offset_y.0 - pad_dip + scale.to_logical_f(h as f32),
         };
         unsafe {
             target.DrawBitmap(
@@ -1130,8 +1134,8 @@ fn draw_shadow(
     // signed distance to the per-corner rounded rect — evaluated in DIP,
     // sampled at device-pixel density (1 DIP = `scale` px)
     let sd = |px: f32, py: f32| -> f32 {
-        let x = scale.px_to_dip_f(px + 0.5) - pad_dip;
-        let y = scale.px_to_dip_f(py + 0.5) - pad_dip;
+        let x = scale.to_logical_f(px + 0.5) - pad_dip;
+        let y = scale.to_logical_f(py + 0.5) - pad_dip;
         let rad = if y < bh {
             if x < bw { rtl } else { rtr }
         } else if x < bw {
@@ -1150,14 +1154,15 @@ fn draw_shadow(
     for y in 0..h {
         for x in 0..w {
             let d = sd(x as f32, y as f32);
-            // AA edge half-width shrinks in DIP terms at high DPI
-            solid[y * w + x] = (0.5 - d * scale.0).clamp(0.0, 1.0);
+            // AA edge half-width shrinks in DIP terms at high DPI —
+            // `to_physical_f` keeps the sigma-kernel space in px
+            solid[y * w + x] = (0.5 - scale.to_physical_f(d)).clamp(0.0, 1.0);
         }
     }
     // 3 box blurs approximate a Gaussian of `sigma` DIP — kernel in px
     let mut mask = solid.clone();
     if sigma > 0.0 {
-        let kr = ((sigma * scale.0) / 1.5).max(1.0) as usize;
+        let kr = (scale.to_physical_f(sigma) / 1.5).max(1.0) as usize;
         for _ in 0..3 {
             // horizontal
             let mut tmp = vec![0f32; n_px];
@@ -1234,8 +1239,8 @@ fn draw_shadow(
         let dest = D2D_RECT_F {
             left: r.left + shadow.offset_x.0 - pad_dip,
             top: r.top + shadow.offset_y.0 - pad_dip,
-            right: r.left + shadow.offset_x.0 - pad_dip + scale.px_to_dip_f(w as f32),
-            bottom: r.top + shadow.offset_y.0 - pad_dip + scale.px_to_dip_f(h as f32),
+            right: r.left + shadow.offset_x.0 - pad_dip + scale.to_logical_f(w as f32),
+            bottom: r.top + shadow.offset_y.0 - pad_dip + scale.to_logical_f(h as f32),
         };
         target.DrawBitmap(
             &bmp,
@@ -1257,7 +1262,7 @@ fn paint_box(
     style: &BoxStyle,
     dark: bool,
     forced: bool,
-    dpi: super::space::Scale,
+    dpi: super::space::ScaleFactor,
     shadow_cache: &RefCell<ShadowCache>,
     target_gen: u64,
 ) -> Result<()> {
@@ -1434,13 +1439,16 @@ unsafe fn paint_focus_ring(target: &ID2D1RenderTarget, r: &D2D_RECT_F, dark: boo
 /// (dx,dy) and inflated by the blur pad (3σ covers the spread). This is
 /// the per-node damage contribution for shadow changes: old and new rects
 /// union through it.
-pub(crate) fn shadow_ink_rect(r: &super::space::DipRect, s: &Shadow) -> super::space::DipRect {
+pub(crate) fn shadow_ink_rect(
+    r: &super::space::LogicalRect,
+    s: &Shadow,
+) -> super::space::LogicalRect {
     let pad = (s.blur_sigma.0.max(0.0) * 3.0).max(1.0);
-    super::space::DipRect {
+    super::space::LogicalRect {
         x: r.x + s.offset_x.0 - pad,
         y: r.y + s.offset_y.0 - pad,
-        w: r.w + 2.0 * pad,
-        h: r.h + 2.0 * pad,
+        width: r.width + 2.0 * pad,
+        height: r.height + 2.0 * pad,
     }
 }
 

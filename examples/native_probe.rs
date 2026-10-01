@@ -17,22 +17,20 @@ mod probe {
     use std::ffi::c_void;
     use windows::Win32::Foundation::*;
     use windows::Win32::System::Com::*;
+    use windows::Win32::System::Memory::*;
+    use windows::Win32::System::Threading::*;
     use windows::Win32::UI::Accessibility::*;
     use windows::Win32::UI::HiDpi::*;
     use windows::Win32::UI::Input::Ime::*;
     use windows::Win32::UI::Input::KeyboardAndMouse::*;
     use windows::Win32::UI::TextServices::*;
     use windows::Win32::UI::WindowsAndMessaging::*;
-    use windows::Win32::System::Memory::*;
-    use windows::Win32::System::Threading::*;
     windows::core::link!("kernel32.dll" "system" fn WPM(h: HANDLE, base: *const c_void, buf: *const c_void, sz: usize, written: *mut usize) -> BOOL);
     use windows::core::*;
 
     pub fn set_pmv2() {
         unsafe {
-            let _ = SetThreadDpiAwarenessContext(
-                DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
-            );
+            let _ = SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
         }
     }
 
@@ -46,7 +44,8 @@ mod probe {
                 let n = unsafe { GetWindowTextW(h, &mut buf) };
                 let title = String::from_utf16_lossy(&buf[..n as usize]);
                 let needle = unsafe { &*(l.0 as *const String) };
-                if !title.is_empty() && title.contains(needle.as_str())
+                if !title.is_empty()
+                    && title.contains(needle.as_str())
                     && unsafe { IsWindowVisible(h).as_bool() }
                 {
                     unsafe { *(l.0 as *mut HWND) = h };
@@ -54,17 +53,11 @@ mod probe {
                 }
                 BOOL(1)
             }
-            let _ = EnumWindows(
-                Some(cb),
-                LPARAM(&mut needle as *mut String as isize),
-            );
+            let _ = EnumWindows(Some(cb), LPARAM(&mut needle as *mut String as isize));
             let _ = &mut found;
             // re-enum to actually capture — above lambda wrote through l
             let mut f2 = HWND::default();
-            let _ = EnumWindows(
-                Some(cb),
-                LPARAM(&mut f2 as *mut HWND as isize),
-            );
+            let _ = EnumWindows(Some(cb), LPARAM(&mut f2 as *mut HWND as isize));
             if f2.is_invalid() {
                 Err(Error::new(E_FAIL.into(), "window not found"))
             } else {
@@ -85,7 +78,7 @@ mod probe {
             let dpi = GetDpiForWindow(hwnd);
             let thread_dpi = GetThreadDpiAwarenessContext();
             let _ = thread_dpi;
-            let scale = dpi as f32 / 96.0;
+            let scale = rust_ui::ScaleFactor::from_dpi(dpi).0;
             Ok(format!(
                 "{{\"kind\":\"geometry\",\"evidence\":\"acceptance\",\"dpi\":{dpi},\"scale\":{scale:.3},\"window_px\":[{},{},{},{}],\"client_px\":[0,0,{},{}],\"client_origin_px\":[{},{}]}}",
                 wr.left, wr.top, wr.right, wr.bottom, cr.right, cr.bottom, org.x, org.y,
@@ -166,13 +159,12 @@ mod probe {
     pub fn dpi_changed(hwnd: HWND, pid: u32, dpi: u32) -> Result<()> {
         unsafe {
             let hp = OpenProcess(PROCESS_ALL_ACCESS, false, pid)?;
-            let mem =
-                VirtualAllocEx(hp, None, 16, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+            let mem = VirtualAllocEx(hp, None, 16, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
             if mem.is_null() {
                 return Err(Error::new(E_FAIL.into(), "VirtualAllocEx"));
             }
-            let s = dpi as f64 / 96.0;
-            let rect = [0i32, 0, (500.0 * s) as i32, (470.0 * s) as i32];
+            let s = rust_ui::ScaleFactor::from_dpi(dpi);
+            let rect = [0i32, 0, s.to_physical(500.0), s.to_physical(470.0)];
             let mut written = 0usize;
             WPM(hp, mem, rect.as_ptr() as *const c_void, 16, &mut written);
             PostMessageW(
@@ -192,8 +184,7 @@ mod probe {
     pub fn uia_tree(hwnd: HWND) -> Result<String> {
         unsafe {
             let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
-            let uia: IUIAutomation =
-                CoCreateInstance(&CUIAutomation, None, CLSCTX_ALL)?;
+            let uia: IUIAutomation = CoCreateInstance(&CUIAutomation, None, CLSCTX_ALL)?;
             let root = uia.ElementFromHandle(hwnd)?;
             let mut out = String::from("{\"kind\":\"uia\",\"evidence\":\"acceptance\",\"items\":[");
             unsafe fn walk(
@@ -203,13 +194,9 @@ mod probe {
                 out: &mut String,
             ) {
                 let name = el.CurrentName().unwrap_or_default().to_string();
-                let ct = el
-                    .CurrentControlType()
-                    .map(|c| c.0)
-                    .unwrap_or_default();
+                let ct = el.CurrentControlType().map(|c| c.0).unwrap_or_default();
                 let r = el.CurrentBoundingRectangle().unwrap_or_default();
-                let enabled =
-                    el.CurrentIsEnabled().map(|b| b.as_bool()).unwrap_or(false);
+                let enabled = el.CurrentIsEnabled().map(|b| b.as_bool()).unwrap_or(false);
                 let focusable = el
                     .CurrentIsKeyboardFocusable()
                     .map(|b| b.as_bool())
@@ -241,8 +228,7 @@ mod probe {
     pub fn uia_value(hwnd: HWND, name: &str) -> Result<Option<String>> {
         unsafe {
             let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
-            let uia: IUIAutomation =
-                CoCreateInstance(&CUIAutomation, None, CLSCTX_ALL)?;
+            let uia: IUIAutomation = CoCreateInstance(&CUIAutomation, None, CLSCTX_ALL)?;
             let root = uia.ElementFromHandle(hwnd)?;
             unsafe fn find(
                 uia: &IUIAutomation,
@@ -360,11 +346,16 @@ fn main() {
             let cx: i32 = args[3].parse().unwrap_or(0);
             let cy: i32 = args[4].parse().unwrap_or(0);
             click(hwnd, cx, cy).map(|_| {
-                format!("{{\"kind\":\"click\",\"evidence\":\"acceptance\",\"client_px\":[{cx},{cy}]}}")
+                format!(
+                    "{{\"kind\":\"click\",\"evidence\":\"acceptance\",\"client_px\":[{cx},{cy}]}}"
+                )
             })
         }
         "type" => type_text(hwnd, &args[3]).map(|_| {
-            format!("{{\"kind\":\"type\",\"evidence\":\"acceptance\",\"text\":\"{}\"}}", args[3])
+            format!(
+                "{{\"kind\":\"type\",\"evidence\":\"acceptance\",\"text\":\"{}\"}}",
+                args[3]
+            )
         }),
         "value" => uia_value(hwnd, &args[3]).map(|v| {
             format!(
@@ -384,9 +375,8 @@ fn main() {
                 );
                 p
             };
-            dpi_changed(hwnd, pid, dpi).map(|_| {
-                "{\"kind\":\"dpichange\",\"evidence\":\"regression\"}".to_string()
-            })
+            dpi_changed(hwnd, pid, dpi)
+                .map(|_| "{\"kind\":\"dpichange\",\"evidence\":\"regression\"}".to_string())
         }
         "ime" => ime_japanese(hwnd, &args[3]),
         other => {

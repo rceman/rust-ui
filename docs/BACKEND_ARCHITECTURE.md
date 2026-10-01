@@ -211,6 +211,12 @@ is no public `Canvas` filter/effects graph and no raw D2D handle; public
 
 ## Platform adapters — conceptual flow
 
+**Ownership model (implemented):** the adapters below are realizations of
+the shared semantic contracts in `docs/PLATFORM_CONTRACTS.md` — one
+authoritative implementation per platform per contract, thin native seams
+only. Windows is the first and currently only backend; nothing it defines
+is rust-ui semantics.
+
 ### Windows (`platform/win32`)
 
 - Owning UI thread runs a COM-initialised Win32 message loop; `EventLoopBackend`

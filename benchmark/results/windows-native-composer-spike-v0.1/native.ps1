@@ -20,11 +20,6 @@ public class NW {
   [DllImport("user32.dll")] public static extern uint GetDpiForWindow(IntPtr h);
   [DllImport("user32.dll")] public static extern IntPtr SetThreadDpiAwarenessContext(IntPtr ctx);
   [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint flags, IntPtr extra);
-  [DllImport("kernel32.dll")] public static extern IntPtr OpenProcess(uint a, bool i, int pid);
-  [DllImport("kernel32.dll")] public static extern IntPtr VirtualAllocEx(IntPtr h, IntPtr a, uint n, uint t, uint p);
-  [DllImport("kernel32.dll")] public static extern bool WriteProcessMemory(IntPtr h, IntPtr a, int[] b, uint n, out uint w);
-  [DllImport("kernel32.dll")] public static extern bool VirtualFreeEx(IntPtr h, IntPtr a, uint n, uint t);
-  [DllImport("kernel32.dll")] public static extern bool CloseHandle(IntPtr h);
   public struct RECT { public int l, t, r, b; }
   public struct POINT { public int x, y; }
 }
@@ -38,6 +33,9 @@ public class NW {
 
 $script:OutDir = "W:\devin_folder\rust-ui\benchmark\results\windows-native-composer-spike-v0.1"
 $script:ComposerExe = "W:\devin_folder\rust-ui\target\debug\examples\composer.exe"
+# repo-local Rust harness — owns every native semantic (geometry, UIA,
+# input, DPI injection); ps1 calls it for measurement/invariant checks
+$script:ProbeExe = "W:\devin_folder\rust-ui\target\debug\examples\native_probe.exe"
 
 # ---- lifecycle ------------------------------------------------------------
 
@@ -130,18 +128,11 @@ function Post-Key($h, [uint32]$vk, [switch]$ctrl, [switch]$shift) {
 }
 
 function Post-DpiChanged($p, [uint32]$dpi) {
-  # real WM_DPICHANGED — suggested-rect RECT* allocated inside the target
-  # process (VirtualAllocEx + WriteProcessMemory), freed after settle
-  $h = $p.MainWindowHandle
-  $hp = [NW]::OpenProcess(0x1F0FFF, $false, $p.Id)
-  $mem = [NW]::VirtualAllocEx($hp, [IntPtr]::Zero, 16, 0x1000, 0x40)
-  $s = $dpi / 96.0
-  [uint32]$written = 0
-  [NW]::WriteProcessMemory($hp, $mem, @(0, 0, [int](500 * $s), [int](470 * $s)), 16, [ref]$written) | Out-Null
-  [NW]::PostMessageW($h, 0x02E0, [UIntPtr](($dpi -shl 16) -bor $dpi), $mem) | Out-Null
-  Start-Sleep -Milliseconds 900
-  [NW]::VirtualFreeEx($hp, $mem, 0, 0x8000) | Out-Null
-  [NW]::CloseHandle($hp) | Out-Null
+  # synthetic WM_DPICHANGED — deterministic regression evidence (NOT a real
+  # monitor transition). All native math (process memory, suggested-rect
+  # scale, message) lives in the Rust harness; this is orchestration only.
+  & $script:ProbeExe dpi-changed $p.MainWindowHandle $p.Id $dpi | Out-Null
+  if ($LASTEXITCODE -ne 0) { throw "native_probe dpi-changed failed ($LASTEXITCODE)" }
 }
 
 # ---- UIA ------------------------------------------------------------------

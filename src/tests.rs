@@ -3183,7 +3183,7 @@ fn native_probe_richedit_paints_text() {
         ReleaseDC(Some(hwnd), dc);
         d
     };
-    let dc_scale = dc_dpi as f32 / 96.0;
+    let dc_scale = crate::geom::ScaleFactor::from_dpi(dc_dpi as u32).0;
     eprintln!("[probe] dc_dpi={dc_dpi} dc_scale={dc_scale}");
 
     // in-memory framebuffer: DIB + memory DC + D2D DC render target.
@@ -3244,12 +3244,12 @@ fn native_probe_richedit_paints_text() {
         sel_fg: [1.0, 1.0, 1.0, 1.0],
         bold: false,
     };
-    use crate::platform::win32::space::{DipRect, Scale};
-    let island_dip = DipRect {
+    use crate::platform::win32::space::{LogicalRect, ScaleFactor};
+    let island_dip = LogicalRect {
         x: 34.0,
         y: 167.0,
-        w: 336.0,
-        h: 22.0,
+        width: 336.0,
+        height: 22.0,
     };
 
     // ---- draw-position matrix across all four canonical scales ---------
@@ -3257,7 +3257,12 @@ fn native_probe_richedit_paints_text() {
     for scale in [1.0f32, 1.25, 1.5, 2.0] {
         let sink = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
         let mut peer = crate::platform::win32::WindowlessPeer::create(
-            1, &lib, hwnd, Scale(scale), &cfg(), sink,
+            1,
+            &lib,
+            hwnd,
+            ScaleFactor(scale),
+            &cfg(),
+            sink,
         )
         .expect("peer create");
         let binding = crate::text::BindingToken::mint();
@@ -3270,7 +3275,7 @@ fn native_probe_richedit_paints_text() {
         .expect("initialize");
         // app order: measure (scratch extent, activates), then real bounds
         let (_, h_dip) = peer.natural_size(400.0).expect("natural_size");
-        peer.apply_bounds(island_dip, Scale(scale));
+        peer.apply_bounds(island_dip, ScaleFactor(scale));
         // typed-after-mount must land identically to mount-time text
         let _ = peer.send(0x0007 /*WM_SETFOCUS*/, 0, 0);
         for c in " xy".encode_utf16() {
@@ -3294,7 +3299,7 @@ fn native_probe_richedit_paints_text() {
 
         // island in framebuffer px — ink must sit inside it; THE layer
         // performs the same conversion the peer applied
-        let island_px = island_dip.px(Scale(scale));
+        let island_px = island_dip.physical(ScaleFactor(scale));
         let (ix0, iy0) = (island_px.left, island_px.top);
         let (ix1, iy1) = (island_px.right, island_px.bottom);
         let mut inside = 0usize;
@@ -4338,4 +4343,147 @@ fn hundred_mount_remove_cycles_reclaim_all() {
     );
     // slots/generations stay bounded — a freed slot is reusable, not grown
     assert!(rig.rt.arena.slot_len() < 64, "arena must recycle slots");
+}
+
+// ============================================================================
+// Platform-contract geometry conformance — docs/PLATFORM_CONTRACTS.md
+// ============================================================================
+// The SHARED semantic authority is `crate::geom` — these tests prove the
+// conversion mathematics ONCE for every backend, at every canonical scale.
+// Windows adapter tests (probe, UIA) separately prove *which* space a given
+// native API speaks; they never re-derive this math.
+
+#[test]
+fn geometry_contract_scale_identity() {
+    use crate::geom::ScaleFactor;
+    // the four canonical monitors
+    let cases = [(96u32, 1.0f32), (120, 1.25), (144, 1.5), (192, 2.0)];
+    for (dpi, want) in cases {
+        let s = ScaleFactor::from_dpi(dpi);
+        assert!((s.0 - want).abs() < 1e-6, "dpi {dpi}");
+        assert_eq!(s.dpi(), dpi, "round-trip dpi {dpi}");
+    }
+}
+
+#[test]
+fn geometry_contract_logical_to_physical() {
+    use crate::geom::ScaleFactor;
+    // exactly-representable conversions are exact at every scale
+    for &dpi in &[96u32, 120, 144, 192] {
+        let s = ScaleFactor::from_dpi(dpi);
+        assert_eq!(s.to_physical(96.0), dpi as i32, "96dp@{dpi}dpi");
+        assert_eq!(s.to_physical(0.0), 0);
+        assert_eq!(s.to_physical(-8.0), -((8.0 * s.0).round()) as i32);
+    }
+    // rounding policy: round-half-away-from-zero — the ONLY policy
+    let s = ScaleFactor::ONE;
+    assert_eq!(s.to_physical(0.49), 0);
+    assert_eq!(s.to_physical(0.5), 1);
+    assert_eq!(s.to_physical(0.51), 1);
+    assert_eq!(s.to_physical(-0.5), -1); // half-away, not half-even
+    // 125%: 0.4dp -> 0.5px -> rounds to 1 (not 0)
+    assert_eq!(ScaleFactor::from_dpi(120).to_physical(0.4), 1);
+    assert_eq!(ScaleFactor::from_dpi(120).to_physical(1.6), 2); // 2.0 exact
+    assert_eq!(ScaleFactor::from_dpi(144).to_physical(2.5), 4); // 3.75 -> 4
+}
+
+#[test]
+fn geometry_contract_round_trip() {
+    use crate::geom::ScaleFactor;
+    // logical -> px -> logical stays within half a physical pixel of the
+    // source value (the maximum rounding error, by construction)
+    for &dpi in &[96u32, 120, 144, 192] {
+        let s = ScaleFactor::from_dpi(dpi);
+        let tol = 0.5 / s.0 + 1e-4;
+        let mut v = -32.0f32;
+        while v <= 1024.0 {
+            let rt = s.to_logical(s.to_physical(v));
+            assert!(
+                (rt - v).abs() <= tol,
+                "round-trip @{dpi}dpi: {v} -> {} -> {rt}",
+                s.to_physical(v)
+            );
+            v += 0.1;
+        }
+    }
+}
+
+#[test]
+fn geometry_contract_rect_conversion() {
+    use crate::geom::{Point, Rect, ScaleFactor};
+    for &dpi in &[96u32, 120, 144, 192] {
+        let s = ScaleFactor::from_dpi(dpi);
+        let r = Rect {
+            x: 34.0,
+            y: 167.0,
+            width: 336.0,
+            height: 22.0,
+        };
+        let p = r.physical(s);
+        // edges snap independently — width is never derived from two
+        // rounded edges inside the impl
+        assert_eq!(p.left, s.to_physical(34.0));
+        assert_eq!(p.right, s.to_physical(370.0));
+        let back = p.logical(s);
+        let tol = 0.5 / s.0 + 1e-4;
+        assert!((back.x - 34.0).abs() <= tol);
+        assert!((back.y - 167.0).abs() <= tol);
+        assert!((back.right() - 370.0).abs() <= 2.0 * tol);
+    }
+    // zero-size and negative-origin rects survive
+    let z = Rect::local(0.0, 0.0).physical(ScaleFactor::from_dpi(120));
+    assert_eq!(z.size().w, 0);
+    let neg = Rect {
+        x: -20.0,
+        y: -8.0,
+        width: 10.0,
+        height: 4.0,
+    }
+    .physical(ScaleFactor::from_dpi(144));
+    assert!(neg.left < 0 && neg.top < 0, "screen px may be negative");
+
+    // geometry helpers shared with the retained side
+    let r = Rect {
+        x: 10.0,
+        y: 10.0,
+        width: 40.0,
+        height: 20.0,
+    };
+    assert!(r.contains(Point { x: 10.0, y: 10.0 }));
+    assert!(!r.contains(Point { x: 50.0, y: 10.0 })); // exclusive edge
+    let u = r.union(Rect {
+        x: 0.0,
+        y: 0.0,
+        width: 5.0,
+        height: 5.0,
+    });
+    assert_eq!((u.x, u.y), (0.0, 0.0));
+    assert_eq!(u.right(), 50.0);
+}
+
+#[test]
+fn geometry_contract_scale_change_is_pure() {
+    use crate::geom::{Rect, ScaleFactor};
+    // a scale change is a pure function of (logical, scale) — no hidden
+    // latching; identical inputs always produce identical px geometry
+    let r = Rect {
+        x: 12.0,
+        y: 3.0,
+        width: 100.0,
+        height: 40.0,
+    };
+    let at96 = r.physical(ScaleFactor::from_dpi(96));
+    let at192 = r.physical(ScaleFactor::from_dpi(192));
+    assert_eq!(at192.left, at96.left * 2);
+    assert_eq!(at96, r.physical(ScaleFactor::from_dpi(96)));
+    // fractional coords round *after* scaling — deterministic, not
+    // commutable: 12.5dp is 13px@96 but 25px@192 (not 26)
+    let f = Rect {
+        x: 12.5,
+        y: 0.0,
+        width: 10.0,
+        height: 10.0,
+    };
+    assert_eq!(f.physical(ScaleFactor::from_dpi(96)).left, 13);
+    assert_eq!(f.physical(ScaleFactor::from_dpi(192)).left, 25);
 }

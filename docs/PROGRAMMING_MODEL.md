@@ -12,6 +12,10 @@ records. Events produce typed messages `M`; messages flow into `update`; the
 root view reruns after each update batch. `M` is the message type parameter,
 so composition is a typed adapter (`ui.scope`), never a global event bus.
 
+Everything in this document is platform-neutral by construction — it is the
+shared semantic layer each backend implements (`docs/PLATFORM_CONTRACTS.md`).
+Nothing in `S`, `M`, `Ui` or the arena ever names a native handle.
+
 ## Canonical signatures
 
 ```rust

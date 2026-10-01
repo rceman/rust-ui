@@ -20,10 +20,10 @@ use crate::style::Insets;
 use crate::theme::{ControlSize, Space};
 use crate::{NodeId, UiResult};
 
-use super::space::{DipRect, Scale};
+use super::space::{LogicalRect, ScaleFactor};
 use super::{PeerCtx, WindowlessPeer};
 
-// THE laid-out rect type is `space::DipRect` — the canonical layer owns
+// THE laid-out rect type is `space::LogicalRect` — the canonical layer owns
 // DIP geometry and px conversion; nothing here may invent units.
 
 /// THE editor content transform — the ONE place the pill-chrome →
@@ -68,13 +68,13 @@ pub(crate) fn editor_inset(c: &crate::style::BoxStyle) -> crate::style::Insets {
 
 /// Chrome rect → content rect (DIP). The peer's native surface covers
 /// exactly this area; native coordinates are content-local.
-pub(crate) fn editor_content_rect(r: DipRect, c: &crate::style::BoxStyle) -> DipRect {
+pub(crate) fn editor_content_rect(r: LogicalRect, c: &crate::style::BoxStyle) -> LogicalRect {
     let i = editor_inset(c);
-    DipRect {
+    LogicalRect {
         x: r.x + i.left.0,
         y: r.y + i.top.0,
-        w: (r.w - i.left.0 - i.right.0).max(0.0),
-        h: (r.h - i.top.0 - i.bottom.0).max(0.0),
+        width: (r.width - i.left.0 - i.right.0).max(0.0),
+        height: (r.height - i.top.0 - i.bottom.0).max(0.0),
     }
 }
 
@@ -401,11 +401,11 @@ fn waterfill(avail: f32, items: &[Item]) -> Vec<f32> {
 /// The whole layout pass — consumes the retained arena, produces DIP rects
 /// for VISIBLE nodes and the depth-first paint/hit order.
 pub(crate) struct LayoutCache {
-    scale: Scale,
+    scale: ScaleFactor,
 }
 
 impl LayoutCache {
-    pub(crate) fn new(scale: Scale) -> Self {
+    pub(crate) fn new(scale: ScaleFactor) -> Self {
         LayoutCache { scale }
     }
 
@@ -413,13 +413,13 @@ impl LayoutCache {
         &mut self,
         rt: &mut crate::runtime::Runtime<S, M, U, V>,
         ctx: &PeerCtx,
-    ) -> UiResult<(HashMap<NodeId, DipRect>, Vec<NodeId>)>
+    ) -> UiResult<(HashMap<NodeId, LogicalRect>, Vec<NodeId>)>
     where
         M: 'static,
         U: Fn(&mut S, M, &mut UpdateCtx<'_, M>),
         V: Fn(&S, &mut crate::Ui<'_, '_, M>),
     {
-        let mut rects: HashMap<NodeId, DipRect> = HashMap::new();
+        let mut rects: HashMap<NodeId, LogicalRect> = HashMap::new();
         let mut order: Vec<NodeId> = Vec::new();
         // window client size in DIP
         let (w, h) = client_dip(ctx.hwnd.get(), self.scale)?;
@@ -457,11 +457,11 @@ impl LayoutCache {
                 rt,
                 ctx,
                 it.id,
-                DipRect {
+                LogicalRect {
                     x: padding,
                     y,
-                    w: w - padding * 2.0,
-                    h: *size,
+                    width: w - padding * 2.0,
+                    height: *size,
                 },
                 &mut rects,
                 &mut order,
@@ -480,8 +480,8 @@ impl LayoutCache {
         rt: &mut crate::runtime::Runtime<S, M, U, V>,
         ctx: &PeerCtx,
         id: NodeId,
-        rect: DipRect,
-        rects: &mut HashMap<NodeId, DipRect>,
+        rect: LogicalRect,
+        rects: &mut HashMap<NodeId, LogicalRect>,
         order: &mut Vec<NodeId>,
         parent_axis: u8,
     ) where
@@ -523,11 +523,11 @@ impl LayoutCache {
         }
         let mut measurer = super::render::measure_fn();
         let pad = node_insets(ctx, id, n);
-        let inner = DipRect {
+        let inner = LogicalRect {
             x: rect.x + pad.left.0,
             y: rect.y + pad.top.0,
-            w: (rect.w - pad.left.0 - pad.right.0).max(0.0),
-            h: (rect.h - pad.top.0 - pad.bottom.0).max(0.0),
+            width: (rect.width - pad.left.0 - pad.right.0).max(0.0),
+            height: (rect.height - pad.top.0 - pad.bottom.0).max(0.0),
         };
         let ids: Vec<NodeId> = children
             .iter()
@@ -554,15 +554,18 @@ impl LayoutCache {
                     .iter()
                     .map(|&cid| {
                         let spec = rt.arena.get(cid).unwrap().layout;
-                        let (_, nh) = natural(rt, ctx, cid, inner.w, &mut measurer);
-                        item(cid, spec, inner.w, nh, true)
+                        let (_, nh) = natural(rt, ctx, cid, inner.width, &mut measurer);
+                        item(cid, spec, inner.width, nh, true)
                     })
                     .collect();
-                let sizes = waterfill(inner.h - gap * ids.len().saturating_sub(1) as f32, &items);
+                let sizes = waterfill(
+                    inner.height - gap * ids.len().saturating_sub(1) as f32,
+                    &items,
+                );
                 let mut y = inner.y;
                 for (it, sz) in items.iter().zip(sizes.iter()) {
                     // cross axis: align — Stretch fills, others keep natural
-                    let (nw, _) = natural(rt, ctx, it.id, inner.w, &mut measurer);
+                    let (nw, _) = natural(rt, ctx, it.id, inner.width, &mut measurer);
                     let (w, x) = cross(
                         props.align.unwrap_or_default(),
                         rt.arena.get(it.id).unwrap().layout.width,
@@ -573,7 +576,12 @@ impl LayoutCache {
                         rt,
                         ctx,
                         it.id,
-                        DipRect { x, y, w, h: *sz },
+                        LogicalRect {
+                            x,
+                            y,
+                            width: w,
+                            height: *sz,
+                        },
                         rects,
                         order,
                         kind,
@@ -587,22 +595,25 @@ impl LayoutCache {
                     .iter()
                     .map(|&cid| {
                         let spec = rt.arena.get(cid).unwrap().layout;
-                        let (nw, _) = natural(rt, ctx, cid, inner.w, &mut measurer);
-                        item(cid, spec, nw, inner.h, false)
+                        let (nw, _) = natural(rt, ctx, cid, inner.width, &mut measurer);
+                        item(cid, spec, nw, inner.height, false)
                     })
                     .collect();
-                let sizes = waterfill(inner.w - gap * ids.len().saturating_sub(1) as f32, &items);
+                let sizes = waterfill(
+                    inner.width - gap * ids.len().saturating_sub(1) as f32,
+                    &items,
+                );
                 let mut x = inner.x;
                 for (it, sz) in items.iter().zip(sizes.iter()) {
                     self.walk(
                         rt,
                         ctx,
                         it.id,
-                        DipRect {
+                        LogicalRect {
                             x,
                             y: inner.y,
-                            w: *sz,
-                            h: inner.h,
+                            width: *sz,
+                            height: inner.height,
                         },
                         rects,
                         order,
@@ -646,28 +657,28 @@ fn item(id: NodeId, spec: crate::geom::LayoutSpec, nw: f32, nh: f32, vertical: b
 
 /// Cross-axis placement inside `inner` per `Align` and the child's width
 /// spec.
-fn cross(align: Align, len: Length, inner: DipRect, natural_w: f32) -> (f32, f32) {
+fn cross(align: Align, len: Length, inner: LogicalRect, natural_w: f32) -> (f32, f32) {
     let want = match len {
         Length::Fixed(d) => d.0,
-        Length::Fill(_) | Length::Content => natural_w.min(inner.w),
+        Length::Fill(_) | Length::Content => natural_w.min(inner.width),
     };
     match align {
-        Align::Stretch => (inner.w, inner.x),
+        Align::Stretch => (inner.width, inner.x),
         Align::Start => (want, inner.x),
-        Align::Center => (want, inner.x + (inner.w - want) / 2.0),
-        Align::End => (want, inner.x + inner.w - want),
+        Align::Center => (want, inner.x + (inner.width - want) / 2.0),
+        Align::End => (want, inner.x + inner.width - want),
     }
 }
 
 /// Window client size in DIP — GetClientRect returns physical px.
-fn client_dip(hwnd: windows::Win32::Foundation::HWND, scale: Scale) -> UiResult<(f32, f32)> {
+fn client_dip(hwnd: windows::Win32::Foundation::HWND, scale: ScaleFactor) -> UiResult<(f32, f32)> {
     unsafe {
         let mut rc = RECT::default();
         windows::Win32::UI::WindowsAndMessaging::GetClientRect(hwnd, &mut rc)
             .map_err(|e| crate::UiError::Platform(format!("GetClientRect: {e}")))?;
         Ok((
-            scale.px_to_dip(rc.right - rc.left),
-            scale.px_to_dip(rc.bottom - rc.top),
+            scale.to_logical(rc.right - rc.left),
+            scale.to_logical(rc.bottom - rc.top),
         ))
     }
 }

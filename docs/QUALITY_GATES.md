@@ -129,6 +129,26 @@ FAIL for:
 - product runtime carrying development-only video/QA dependencies;
 - architecture drift from approved boundaries.
 
+### Single semantic authority and platform contract ownership
+
+For every shared semantic concept:
+
+    one shared semantic authority/contract
+            ↓
+    one authoritative implementation per platform
+            ↓
+    many consumers
+
+Review questions:
+
+- Why do multiple places know how this works?
+- Is this a shared semantic concept? What is its single authority?
+- Is the current code platform semantics, or merely one platform's implementation?
+- Would a future backend have to reinvent the contract?
+- Can the API/type boundary make incorrect usage impossible or difficult?
+
+Equivalent logic in multiple consumers is an architecture defect unless separate ownership is documented. Do not solve this with a god-module — authorities stay narrow and cohesive. Platform contracts are ownership claims, not required `dyn` traits; use the smallest correct Rust representation (see `docs/PLATFORM_CONTRACTS.md`).
+
 ## GATE 7 — Duplication & Existing Capability Reuse
 
 Before adding material logic, inspect the affected cone for an existing owner/capability.
@@ -153,6 +173,18 @@ FAIL for:
 - repeated image decode/render passes that can be shared;
 - re-creating scratch crop/zoom/montage logic instead of using project tooling;
 - materially equivalent implementations without justification.
+
+### Semantic duplication
+
+Duplication includes *semantic* duplication, not only copied text:
+
+- the same conversion formula expressed differently;
+- the same native-state policy in multiple subsystems;
+- the same validation rule independently implemented;
+- the same coordinate semantics repeated in test tooling/scripts;
+- the same state transition implemented in two adapters.
+
+Production code, tests and scripts must not independently reproduce a rule that has a shared authority — they depend on it. Two platform backends containing different native code to satisfy the same contract is NOT duplication; independently *defining different semantics* is.
 
 ## GATE 8 — No Unrequested Fallback / Shim / Legacy Path
 
@@ -213,6 +245,10 @@ FAIL for:
 - two canonical authoring sources;
 - caller guesswork;
 - tool output that changes meaning depending on undocumented environment state.
+
+### Platform-contract stability
+
+Shared rust-ui semantics are explicit and stable independently of the current platform implementation. A backend must not silently redefine coordinate units, rounding, event meaning, focus semantics, text-state ownership, accessibility meaning, or failure behavior. Platform-specific behavior either implements the shared semantic contract or is documented as an explicit capability/limitation. Accidental Win32 behavior is never the implicit rust-ui specification.
 
 ## GATE 10 — Authority, Specs, Rules & Obsolescence
 
@@ -453,6 +489,17 @@ Where applicable, deterministic coverage should include representative scales su
 
 The exact matrix may be reduced only when the tested contract is mathematically proven scale-independent and the reduction is documented.
 
+### Contract conformance and proof reuse
+
+A shared semantic authority is tested deeply ONCE. Each platform implementation proves conformance at its adapter boundary. Consumers then require only focused integration proof unless the shared contract itself changed:
+
+    shared contract          -> conformance tests
+    platform implementation  -> native adapter tests (prove which space/contract the API speaks)
+    consumer                 -> focused integration tests
+    freeze/release           -> broad final acceptance
+
+A future backend is not complete merely because it compiles — it must satisfy the same applicable shared conformance expectations.
+
 ## GATE 17 — Recovery Proportionality / Sunk-Cost Containment
 
 Repair of stale, rejected, obsolete, contaminated or ambiguous execution state MUST NOT cost/risk more than bounded salvage into a clean lane plus cleanup.
@@ -585,6 +632,24 @@ The corrective action is complete only when:
     evidence metadata
 
 agree.
+
+### Duplicated semantic authority is a systemic defect class
+
+When a defect reveals equivalent semantic knowledge in multiple subsystems (the RichEdit px-space bug lived independently in `text.rs`, caret code, pointer lparams, UIA rects, the probe and PowerShell):
+
+    STOP local patching.
+
+    1. identify the shared invariant;
+    2. identify every owner/duplicate implementation;
+    3. determine the shared semantic contract;
+    4. identify the single implementation authority per platform;
+    5. centralize / reroute consumers;
+    6. strengthen the type/API boundary;
+    7. add conformance tests at the authority;
+    8. leave only platform-specific adapter logic outside the authority;
+    9. audit tests and scripts for duplicated semantics.
+
+A bug is not systemically fixed if equivalent independent implementations remain capable of reproducing the same defect class.
 
 Current examples that trigger Gate 20:
 
