@@ -538,8 +538,10 @@ impl LayoutCache {
         if let Some(peer) = peer_of(ctx, id)
             && let NodeData::Editor { patch, .. } = &n.data
         {
-            peer.borrow()
-                .apply_bounds(editor_content_rect(rect, &editor_chrome(patch)).win(), self.scale);
+            peer.borrow().apply_bounds(
+                editor_content_rect(rect, &editor_chrome(patch)).win(),
+                self.scale,
+            );
         }
         rects.insert(id, rect);
         order.push(id);

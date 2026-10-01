@@ -477,7 +477,16 @@ impl Renderer {
                         bottom: r.y + r.h,
                     };
                     unsafe {
-                        paint_box(&target, &br, bs, dark, forced, dpi, &self.shadow_cache, self.target_gen.get())?;
+                        paint_box(
+                            &target,
+                            &br,
+                            bs,
+                            dark,
+                            forced,
+                            dpi,
+                            &self.shadow_cache,
+                            self.target_gen.get(),
+                        )?;
                         // focus ENFORCEMENT — independent ring layer the
                         // style resolution can't erase (Focus role,
                         // outside the box); see Action arm for the same
@@ -515,7 +524,16 @@ impl Renderer {
                     let mut chrome = super::layout::editor_chrome(patch);
                     crate::style::os_enforce_box(&mut chrome, forced);
                     unsafe {
-                        paint_box(&target, &clip, &chrome, dark, forced, dpi, &self.shadow_cache, self.target_gen.get())?;
+                        paint_box(
+                            &target,
+                            &clip,
+                            &chrome,
+                            dark,
+                            forced,
+                            dpi,
+                            &self.shadow_cache,
+                            self.target_gen.get(),
+                        )?;
                         // focus ENFORCEMENT — same independent ring layer
                         if be.focus == Some(id) && !*disabled {
                             paint_focus_ring(&target, &clip, dark)?;
@@ -564,7 +582,16 @@ impl Renderer {
                     // box_ = authored full style
                     if let Some(bs) = props.resolved_box(*kind) {
                         unsafe {
-                            paint_box(&target, &clip, &bs, dark, forced, dpi, &self.shadow_cache, self.target_gen.get())?;
+                            paint_box(
+                                &target,
+                                &clip,
+                                &bs,
+                                dark,
+                                forced,
+                                dpi,
+                                &self.shadow_cache,
+                                self.target_gen.get(),
+                            )?;
                         }
                     }
                 }
@@ -578,7 +605,16 @@ impl Renderer {
                         be.focus == Some(id),
                     );
                     unsafe {
-                        paint_box(&target, &clip, &bs, dark, forced, dpi, &self.shadow_cache, self.target_gen.get())?;
+                        paint_box(
+                            &target,
+                            &clip,
+                            &bs,
+                            dark,
+                            forced,
+                            dpi,
+                            &self.shadow_cache,
+                            self.target_gen.get(),
+                        )?;
                         // focus ENFORCEMENT — the ring lives at paint, a
                         // layer consumer patches can never erase
                         if be.focus == Some(id) && !*disabled {
@@ -1085,7 +1121,13 @@ fn draw_shadow(
             bottom: r.top + shadow.offset_y.0 - pad_dip + h as f32 / scale,
         };
         unsafe {
-            target.DrawBitmap(bmp, Some(&dest), 1.0, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR, None);
+            target.DrawBitmap(
+                bmp,
+                Some(&dest),
+                1.0,
+                D2D1_BITMAP_INTERPOLATION_MODE_LINEAR,
+                None,
+            );
         }
         return Ok(());
     }
@@ -1236,7 +1278,16 @@ fn paint_box(
     };
     unsafe {
         if let Some(sh) = &style.shadow {
-            draw_shadow(target, r, &style.radii, sh, dark, dpi, shadow_cache, target_gen)?;
+            draw_shadow(
+                target,
+                r,
+                &style.radii,
+                sh,
+                dark,
+                dpi,
+                shadow_cache,
+                target_gen,
+            )?;
         }
         let bg = resolve_color_f(style.background, dark);
         let geo = box_geometry(target, r, &style.radii)?;
@@ -1362,14 +1413,10 @@ fn shrink_radii(r: &CornerRadii, d: f32) -> CornerRadii {
 /// Required focus indicator — painted OUTSIDE the box in the Focus role.
 /// This is the enforcement layer: it runs at render after every style
 /// layer resolved, so no consumer patch can erase focus visibility.
-unsafe fn paint_focus_ring(
-    target: &ID2D1RenderTarget,
-    r: &D2D_RECT_F,
-    dark: bool,
-) -> Result<()> {
+unsafe fn paint_focus_ring(target: &ID2D1RenderTarget, r: &D2D_RECT_F, dark: bool) -> Result<()> {
     unsafe {
-        let ring =
-            target.CreateSolidColorBrush(&role_color(crate::theme::ColorRole::Focus, dark), None)?;
+        let ring = target
+            .CreateSolidColorBrush(&role_color(crate::theme::ColorRole::Focus, dark), None)?;
         let outer = D2D1_ROUNDED_RECT {
             rect: D2D_RECT_F {
                 left: r.left - 2.0,

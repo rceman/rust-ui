@@ -275,7 +275,10 @@ impl<S: 'static> Rig<S> {
                     as Box<dyn crate::node::TextPeer>)
             }),
             Theme::light(),
-            Appearance { dark: false, forced_colors: false },
+            Appearance {
+                dark: false,
+                forced_colors: false,
+            },
         );
         rt.executor = Some(Arc::new(exec.clone()));
         Rig { rt, peers, exec }
@@ -331,7 +334,13 @@ impl<S: 'static> Rig<S> {
     }
 
     fn peer_rec(&self, peer: u64) -> PeerRec {
-        self.peers.recs.lock().unwrap_or_else(|e| e.into_inner()).get(&peer).unwrap().clone()
+        self.peers
+            .recs
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(&peer)
+            .unwrap()
+            .clone()
     }
 
     fn root_children(&self) -> Vec<crate::NodeId> {
@@ -1793,7 +1802,10 @@ fn executor_rejection_fences_registration() {
                 as Box<dyn crate::node::TextPeer>)
         }),
         Theme::light(),
-        Appearance { dark: false, forced_colors: false },
+        Appearance {
+            dark: false,
+            forced_colors: false,
+        },
     );
     rt.executor = Some(Arc::new(RejectAll));
     rt.review_for_test().unwrap();
@@ -2273,7 +2285,10 @@ fn scope_adapter_captures_rc_and_root_msg_need_not_send() {
                 as Box<dyn crate::node::TextPeer>)
         }),
         Theme::light(),
-        Appearance { dark: false, forced_colors: false },
+        Appearance {
+            dark: false,
+            forced_colors: false,
+        },
     );
     rt.review_for_test().unwrap();
     let btn = rt.root_children()[0];
@@ -2987,7 +3002,10 @@ fn peer_factory_failure_tears_down_orderly() {
                 as Box<dyn crate::node::TextPeer>)
         }),
         Theme::light(),
-        Appearance { dark: false, forced_colors: false },
+        Appearance {
+            dark: false,
+            forced_colors: false,
+        },
     );
     let r = rt.review_for_test();
     assert!(matches!(r, Err(crate::UiError::Platform(_))));
@@ -3963,11 +3981,8 @@ fn rid_safearray_roundtrip() {
         let sa = SafeArrayCreateVector(VT_I4, 0, 3);
         let vals = [UiaAppendRuntimeId as i32, 7, 99];
         for (i, v) in vals.iter().enumerate() {
-            let r = SafeArrayPutElement(
-                sa,
-                &(i as i32),
-                v as *const i32 as *const core::ffi::c_void,
-            );
+            let r =
+                SafeArrayPutElement(sa, &(i as i32), v as *const i32 as *const core::ffi::c_void);
             eprintln!("put {i} -> {r:?}");
         }
         let lb = SafeArrayGetLBound(sa, 1).unwrap();
@@ -4047,10 +4062,17 @@ fn uia_retained_provider_lifecycle() {
         mk(1, 0, "b", false),
     ])
     .unwrap();
-    let en = unsafe { simple_of(&b).GetPropertyValue(UIA_IsEnabledPropertyId).unwrap() };
+    let en = unsafe {
+        simple_of(&b)
+            .GetPropertyValue(UIA_IsEnabledPropertyId)
+            .unwrap()
+    };
     assert!(unsafe { !en.Anonymous.Anonymous.Anonymous.boolVal.as_bool() });
     // disabled node cannot take focus
-    assert!(unsafe { b.SetFocus() }.is_err(), "disabled must reject SetFocus");
+    assert!(
+        unsafe { b.SetFocus() }.is_err(),
+        "disabled must reject SetFocus"
+    );
 
     // remove B — retained reference dies permanently
     root.rebuild(vec![mk(2, 0, "c", true), mk(0, 0, "a", true)])
@@ -4059,14 +4081,20 @@ fn uia_retained_provider_lifecycle() {
 
     // same-slot new-generation recreate — old B ref must NOT resolve to
     // the replacement; the new provider answers
-    root.rebuild(vec![mk(2, 0, "c", true), mk(0, 0, "a", true), mk(1, 1, "b2", true)])
-        .unwrap();
+    root.rebuild(vec![
+        mk(2, 0, "c", true),
+        mk(0, 0, "a", true),
+        mk(1, 1, "b2", true),
+    ])
+    .unwrap();
     assert!(unsafe { simple_of(&b).GetPropertyValue(UIA_NamePropertyId) }.is_err());
     let last = unsafe { rf.Navigate(NavigateDirection_LastChild).unwrap() };
     assert_eq!(
-        uia_variant_string(
-            &unsafe { simple_of(&last).GetPropertyValue(UIA_NamePropertyId).unwrap() }
-        ),
+        uia_variant_string(&unsafe {
+            simple_of(&last)
+                .GetPropertyValue(UIA_NamePropertyId)
+                .unwrap()
+        }),
         "b2"
     );
 
@@ -4081,30 +4109,42 @@ fn uia_retained_provider_lifecycle() {
 #[test]
 fn invalid_style_rejected_at_commit() {
     use crate::geom::Dp;
-    let mut rig = Rig::new((), |_: &mut (), _m: Msg, _u: &mut UpdateCtx<Msg>| {}, |_: &(), ui| {
-        let mut p = crate::style::ButtonStylePatch::new();
-        p.styles.base.box_style.padding.left = Some(Dp(f32::NAN));
-        ui.button("b").style(p);
-    });
+    let mut rig = Rig::new(
+        (),
+        |_: &mut (), _m: Msg, _u: &mut UpdateCtx<Msg>| {},
+        |_: &(), ui| {
+            let mut p = crate::style::ButtonStylePatch::new();
+            p.styles.base.box_style.padding.left = Some(Dp(f32::NAN));
+            ui.button("b").style(p);
+        },
+    );
     match rig.view() {
         Err(crate::UiError::InvalidUi(crate::UiDiagnostic::InvalidStyle)) => {}
         r => panic!("expected InvalidStyle, got {r:?}"),
     }
     // negative border width also rejects
-    let mut rig2 = Rig::new((), |_: &mut (), _m: Msg, _u: &mut UpdateCtx<Msg>| {}, |_: &(), ui| {
-        let mut p = crate::style::ButtonStylePatch::new();
-        p.styles.base.box_style.border.top.width = Some(Dp(-1.0));
-        ui.button("b").style(p);
-    });
+    let mut rig2 = Rig::new(
+        (),
+        |_: &mut (), _m: Msg, _u: &mut UpdateCtx<Msg>| {},
+        |_: &(), ui| {
+            let mut p = crate::style::ButtonStylePatch::new();
+            p.styles.base.box_style.border.top.width = Some(Dp(-1.0));
+            ui.button("b").style(p);
+        },
+    );
     match rig2.view() {
         Err(crate::UiError::InvalidUi(crate::UiDiagnostic::InvalidStyle)) => {}
         r => panic!("expected InvalidStyle, got {r:?}"),
     }
     // zero/nonpositive exact text size rejects
-    let mut rig3 = Rig::new((), |_: &mut (), _m: Msg, _u: &mut UpdateCtx<Msg>| {}, |_: &(), ui| {
-        ui.label("x")
-            .style(crate::style::TextStylePatch::new().size(Dp(0.0)));
-    });
+    let mut rig3 = Rig::new(
+        (),
+        |_: &mut (), _m: Msg, _u: &mut UpdateCtx<Msg>| {},
+        |_: &(), ui| {
+            ui.label("x")
+                .style(crate::style::TextStylePatch::new().size(Dp(0.0)));
+        },
+    );
     match rig3.view() {
         Err(crate::UiError::InvalidUi(crate::UiDiagnostic::InvalidStyle)) => {}
         r => panic!("expected InvalidStyle, got {r:?}"),
@@ -4206,7 +4246,10 @@ fn resolved_dirty_classification() {
     };
     // same authored descriptor -> no dirty
     let p = BoxStylePatch::new();
-    assert_eq!(crate::node::dirty_diff(&surface(p), &surface(p), false, false), 0);
+    assert_eq!(
+        crate::node::dirty_diff(&surface(p), &surface(p), false, false),
+        0
+    );
     // a patch authoring the SAME resolved value as the recipe -> no dirty
     let mut same = BoxStylePatch::new();
     same.padding.top = Some(Dp(12.0));
@@ -4277,7 +4320,12 @@ fn hundred_mount_remove_cycles_reclaim_all() {
         },
     );
     rig.view().unwrap();
-    let baseline_peers = rig.peers.recs.lock().unwrap_or_else(|e| e.into_inner()).len();
+    let baseline_peers = rig
+        .peers
+        .recs
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .len();
     for i in 0..100 {
         rig.rt.state.mounted = i % 2 == 0;
         rig.view().unwrap();

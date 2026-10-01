@@ -75,9 +75,7 @@ fn main() {
         CoUninitialize();
     }
 
-    unsafe fn safearray_i4(
-        sa: *const windows::Win32::System::Com::SAFEARRAY,
-    ) -> Result<Vec<i32>> {
+    unsafe fn safearray_i4(sa: *const windows::Win32::System::Com::SAFEARRAY) -> Result<Vec<i32>> {
         use windows::Win32::System::Ole::*;
         if sa.is_null() {
             return Ok(vec![]);

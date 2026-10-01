@@ -118,9 +118,7 @@ impl std::fmt::Display for UiDiagnostic {
             UiDiagnostic::InvalidComposition => {
                 "invalid composition (actionable/peer inside action)"
             }
-            UiDiagnostic::InvalidStyle => {
-                "invalid style (non-finite/negative/out-of-range value)"
-            }
+            UiDiagnostic::InvalidStyle => "invalid style (non-finite/negative/out-of-range value)",
         };
         f.write_str(s)
     }

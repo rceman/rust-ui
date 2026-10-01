@@ -1178,10 +1178,7 @@ fn insets_ok(i: &Insets) -> bool {
     dp_ok(&i.top) && dp_ok(&i.right) && dp_ok(&i.bottom) && dp_ok(&i.left)
 }
 fn radii_ok(r: &CornerRadii) -> bool {
-    dp_ok(&r.top_left)
-        && dp_ok(&r.top_right)
-        && dp_ok(&r.bottom_right)
-        && dp_ok(&r.bottom_left)
+    dp_ok(&r.top_left) && dp_ok(&r.top_right) && dp_ok(&r.bottom_right) && dp_ok(&r.bottom_left)
 }
 fn border_ok(b: &Border) -> bool {
     [&b.top, &b.right, &b.bottom, &b.left]
@@ -1203,7 +1200,9 @@ fn text_ok(t: &TextStyle) -> bool {
 
 /// resolved `BoxStyle` — checked before paint/layout use
 pub(crate) fn box_style_ok(s: &BoxStyle) -> bool {
-    insets_ok(&s.padding) && radii_ok(&s.radii) && border_ok(&s.border)
+    insets_ok(&s.padding)
+        && radii_ok(&s.radii)
+        && border_ok(&s.border)
         && s.shadow.as_ref().is_none_or(|sh| shadow_ok(sh))
 }
 /// resolved `VisualStyle`
@@ -1213,15 +1212,30 @@ pub(crate) fn visual_style_ok(s: &VisualStyle) -> bool {
 /// sparse box patch — every authored field checked
 pub(crate) fn box_patch_ok(p: &BoxStylePatch) -> bool {
     let dp_opt = |d: &Option<Dp>| d.is_none_or(|d| dp_ok(&d));
-    let sides_ok = [&p.border.top, &p.border.right, &p.border.bottom, &p.border.left]
-        .iter()
-        .all(|s| dp_opt(&s.width));
-    let radii_ok = [&p.radii.top_left, &p.radii.top_right, &p.radii.bottom_right, &p.radii.bottom_left]
-        .iter()
-        .all(|r| dp_opt(r));
-    let pad_ok = [&p.padding.top, &p.padding.right, &p.padding.bottom, &p.padding.left]
-        .iter()
-        .all(|i| dp_opt(i));
+    let sides_ok = [
+        &p.border.top,
+        &p.border.right,
+        &p.border.bottom,
+        &p.border.left,
+    ]
+    .iter()
+    .all(|s| dp_opt(&s.width));
+    let radii_ok = [
+        &p.radii.top_left,
+        &p.radii.top_right,
+        &p.radii.bottom_right,
+        &p.radii.bottom_left,
+    ]
+    .iter()
+    .all(|r| dp_opt(r));
+    let pad_ok = [
+        &p.padding.top,
+        &p.padding.right,
+        &p.padding.bottom,
+        &p.padding.left,
+    ]
+    .iter()
+    .all(|i| dp_opt(i));
     let sh_ok = match &p.shadow {
         ShadowPatch::Set(s) => shadow_ok(s),
         _ => true,
@@ -1239,9 +1253,14 @@ pub(crate) fn visual_patch_ok(p: &VisualStylePatch) -> bool {
 /// full `ButtonStylePatch` — base plus every state branch
 pub(crate) fn button_patch_ok(p: &ButtonStylePatch) -> bool {
     visual_patch_ok(&p.styles.base)
-        && [&p.styles.hover, &p.styles.pressed, &p.styles.disabled, &p.styles.focus_visible]
-            .iter()
-            .all(|s| s.is_none_or(|s| visual_patch_ok(&s)))
+        && [
+            &p.styles.hover,
+            &p.styles.pressed,
+            &p.styles.disabled,
+            &p.styles.focus_visible,
+        ]
+        .iter()
+        .all(|s| s.is_none_or(|s| visual_patch_ok(&s)))
 }
 /// `TextInputStylePatch` — chrome fields validated; foreground opaque
 /// checks happen against the resolved color (role → palette) at commit.

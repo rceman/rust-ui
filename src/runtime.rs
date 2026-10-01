@@ -549,9 +549,9 @@ where
         {
             // capability boundary: the peer receives ONLY the resolved
             // editable foreground — authored value or the Foreground role
-            let foreground = patch
-                .foreground
-                .unwrap_or(crate::style::Color::Role(crate::theme::ColorRole::Foreground));
+            let foreground = patch.foreground.unwrap_or(crate::style::Color::Role(
+                crate::theme::ColorRole::Foreground,
+            ));
             peer = Some(pf(crate::node::PeerSpec {
                 multiline,
                 read_only: *read_only,
@@ -682,11 +682,9 @@ where
                             p.set_read_only(*read_only || *disabled);
                         }
                         if patch_changed {
-                            p.apply_foreground(
-                                patch.foreground.unwrap_or(crate::style::Color::Role(
-                                    crate::theme::ColorRole::Foreground,
-                                )),
-                            );
+                            p.apply_foreground(patch.foreground.unwrap_or(
+                                crate::style::Color::Role(crate::theme::ColorRole::Foreground),
+                            ));
                         }
                         if let NodeData::Editor { snapshot, sync, .. } = &mut n.data {
                             match sync.commit(p.as_mut(), snapshot) {
@@ -1288,7 +1286,10 @@ fn validate_styles(tx: &Tx, dark: bool) -> Option<UiError> {
             }
             NodeData::Label { patch, .. } => crate::style::text_patch_ok(patch),
             NodeData::Button {
-                style, variant, size, ..
+                style,
+                variant,
+                size,
+                ..
             } => {
                 crate::style::button_patch_ok(style)
                     && crate::style::visual_style_ok(&crate::style::resolve_button(
@@ -1306,9 +1307,9 @@ fn validate_styles(tx: &Tx, dark: bool) -> Option<UiError> {
                 }
                 // opaque rule — checked against the RESOLVED colors
                 let chrome = crate::style::resolve_text_input_chrome(patch);
-                let fg = patch
-                    .foreground
-                    .unwrap_or(crate::style::Color::Role(crate::theme::ColorRole::Foreground));
+                let fg = patch.foreground.unwrap_or(crate::style::Color::Role(
+                    crate::theme::ColorRole::Foreground,
+                ));
                 if !crate::style::text_input_opaque(&chrome, fg, dark) {
                     return Some(UiError::Unsupported(
                         "native text requires opaque backing and foreground".into(),

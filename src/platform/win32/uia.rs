@@ -193,7 +193,9 @@ impl PaintFragment {
         self.state.enabled.load(std::sync::atomic::Ordering::SeqCst)
     }
     fn actionable(&self) -> bool {
-        self.state.actionable.load(std::sync::atomic::Ordering::SeqCst)
+        self.state
+            .actionable
+            .load(std::sync::atomic::Ordering::SeqCst)
     }
 }
 
@@ -219,9 +221,7 @@ impl IRawElementProviderSimple_Impl for PaintFragment_Impl {
             x if x == UIA_NamePropertyId => {
                 Ok(VARIANT::from(BSTR::from(&*self.state.name.lock().unwrap())))
             }
-            x if x == UIA_RuntimeIdPropertyId => {
-                Ok(unsafe { runtime_id_variant(self.node) })
-            }
+            x if x == UIA_RuntimeIdPropertyId => Ok(unsafe { runtime_id_variant(self.node) }),
             x if x == UIA_ControlTypePropertyId => Ok(VARIANT::from(self.control_type.0 as i32)),
             x if x == UIA_LocalizedControlTypePropertyId => {
                 Ok(VARIANT::from(BSTR::from(self.localized)))
@@ -395,18 +395,20 @@ impl IRawElementProviderSimple_Impl for EditorFragment_Impl {
             return Err(EditorFragment::unavailable());
         }
         match propertyid {
-            x if x == UIA_NamePropertyId => {
-                Ok(VARIANT::from(BSTR::from(&*self.this.state.name.lock().unwrap())))
-            }
-            x if x == UIA_IsEnabledPropertyId => {
-                Ok(VARIANT::from(
-                    self.this.state
-                        .enabled
-                        .load(std::sync::atomic::Ordering::SeqCst),
-                ))
-            }
+            x if x == UIA_NamePropertyId => Ok(VARIANT::from(BSTR::from(
+                &*self.this.state.name.lock().unwrap(),
+            ))),
+            x if x == UIA_IsEnabledPropertyId => Ok(VARIANT::from(
+                self.this
+                    .state
+                    .enabled
+                    .load(std::sync::atomic::Ordering::SeqCst),
+            )),
             x if x == UIA_IsKeyboardFocusablePropertyId => Ok(VARIANT::from(
-                self.this.state.enabled.load(std::sync::atomic::Ordering::SeqCst),
+                self.this
+                    .state
+                    .enabled
+                    .load(std::sync::atomic::Ordering::SeqCst),
             )),
             x if x == UIA_HasKeyboardFocusPropertyId => {
                 let focused = *self.this.snap.focus.lock().unwrap() == Some(self.this.node);
@@ -416,14 +418,12 @@ impl IRawElementProviderSimple_Impl for EditorFragment_Impl {
             // "not supported" answer) — msftedit's windowless provider can
             // error on properties it can't serve, and an error here breaks
             // external enumeration (FindAll aborts the whole collection)
-            _ => {
-                unsafe {
+            _ => unsafe {
                 Ok(self
                     .this
                     .inner_simple
                     .GetPropertyValue(propertyid)
                     .unwrap_or_default())
-                }
             },
         }
     }
@@ -488,12 +488,7 @@ impl IRawElementProviderFragment_Impl for EditorFragment_Impl {
         unsafe { Ok(SafeArrayCreateVector(VT_UNKNOWN, 0, 0)) }
     }
     fn SetFocus(&self) -> Result<()> {
-        if !self.this.live()
-            || !self
-                .state
-                .enabled
-                .load(std::sync::atomic::Ordering::SeqCst)
-        {
+        if !self.this.live() || !self.state.enabled.load(std::sync::atomic::Ordering::SeqCst) {
             return Err(EditorFragment::unavailable());
         }
         unsafe {
@@ -821,7 +816,10 @@ impl UiaRoot {
                 order.push((k.id, frag.downgrade()?));
             }
             // prune dead + stale-generation associations
-            if table.keys().any(|id| live.get(&id.slot) != Some(&id.generation)) {
+            if table
+                .keys()
+                .any(|id| live.get(&id.slot) != Some(&id.generation))
+            {
                 structure_changed = true;
             }
             table.retain(|id, _| live.get(&id.slot) == Some(&id.generation));
@@ -859,8 +857,15 @@ impl UiaRoot {
     /// Register a native editor provider (built by the peer + site) —
     /// keyed on the full NodeId's generation so a replacement peer can
     /// never inherit the retired provider.
-    pub(crate) fn register_native(&self, id: NodeId, frag: IRawElementProviderFragment) -> UiResult {
-        self.native.lock().unwrap().insert(id.slot, (id.generation, frag));
+    pub(crate) fn register_native(
+        &self,
+        id: NodeId,
+        frag: IRawElementProviderFragment,
+    ) -> UiResult {
+        self.native
+            .lock()
+            .unwrap()
+            .insert(id.slot, (id.generation, frag));
         Ok(())
     }
 
@@ -898,7 +903,11 @@ impl UiaRoot {
             .closed
             .store(true, std::sync::atomic::Ordering::SeqCst);
         unsafe {
-            let _ = self.root.cast::<IRawElementProviderSimple>().ok().map(|r| UiaDisconnectProvider(&r));
+            let _ = self
+                .root
+                .cast::<IRawElementProviderSimple>()
+                .ok()
+                .map(|r| UiaDisconnectProvider(&r));
         }
         self.snap.live.lock().unwrap().clear();
         self.snap.order.lock().unwrap().clear();

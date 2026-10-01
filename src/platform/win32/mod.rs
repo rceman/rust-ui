@@ -111,8 +111,8 @@ impl PeerCtx {
             let (fg, sel_bg, sel_fg) = palette(&theme, &appearance);
             // capability boundary: the peer receives ONLY the resolved
             // foreground — font face/size/weight/selection stay OS-owned
-            let explicit = spec.foreground
-                != crate::style::Color::Role(crate::theme::ColorRole::Foreground);
+            let explicit =
+                spec.foreground != crate::style::Color::Role(crate::theme::ColorRole::Foreground);
             let cfg = PeerConfig {
                 multiline: spec.multiline,
                 // disabled peers mount read-only — inert until enabled
@@ -467,7 +467,9 @@ where
                         Some(crate::node::NodeData::Container { kind, props }) => props
                             .resolved_box(*kind)
                             .and_then(|b| b.shadow.map(|s| (b, s))),
-                        Some(crate::node::NodeData::Action { style, disabled, .. }) => {
+                        Some(crate::node::NodeData::Action {
+                            style, disabled, ..
+                        }) => {
                             let b = style.resolve(*disabled, false, false, false);
                             b.shadow.map(|s| (b, s))
                         }
@@ -1270,9 +1272,7 @@ where
     /// transform contract's style input.
     pub(crate) fn editor_chrome_of(&self, node: NodeId) -> crate::style::BoxStyle {
         match self.rt.arena.get(node).map(|n| &n.data) {
-            Some(crate::node::NodeData::Editor { patch, .. }) => {
-                layout::editor_chrome(patch)
-            }
+            Some(crate::node::NodeData::Editor { patch, .. }) => layout::editor_chrome(patch),
             _ => crate::style::text_input_chrome_recipe(),
         }
     }
