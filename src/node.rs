@@ -638,7 +638,13 @@ pub(crate) fn dirty_diff(
             if aml != bml {
                 d |= LAYOUT;
             }
-            if aph != bph || asnap.committed != bsnap.committed {
+            // committed text feeds the peer's natural measurement — a
+            // content change can change the natural extent, so it is a
+            // layout-classified dirty, not paint-only
+            if asnap.committed != bsnap.committed {
+                d |= PAINT | LAYOUT;
+            }
+            if aph != bph {
                 d |= PAINT;
             }
             if ap != bp {

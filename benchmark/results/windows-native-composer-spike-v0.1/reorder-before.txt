@@ -7,10 +7,10 @@
                       "ct":  50032,
                       "name":  "rust-ui",
                       "rect_px":  [
-                                      288,
-                                      288,
-                                      1268,
-                                      1188
+                                      224,
+                                      224,
+                                      1204,
+                                      1124
                                   ],
                       "enabled":  true,
                       "focusable":  true
@@ -20,10 +20,10 @@
                       "ct":  50037,
                       "name":  "",
                       "rect_px":  [
-                                      317,
-                                      291,
-                                      1259,
-                                      326
+                                      253,
+                                      227,
+                                      1195,
+                                      262
                                   ],
                       "enabled":  true,
                       "focusable":  true
@@ -33,10 +33,10 @@
                       "ct":  50010,
                       "name":  "System",
                       "rect_px":  [
-                                      297,
-                                      297,
-                                      325,
-                                      325
+                                      233,
+                                      233,
+                                      261,
+                                      261
                                   ],
                       "enabled":  true,
                       "focusable":  true
@@ -46,10 +46,10 @@
                       "ct":  50011,
                       "name":  "System",
                       "rect_px":  [
-                                      297,
-                                      297,
-                                      325,
-                                      325
+                                      233,
+                                      233,
+                                      261,
+                                      261
                                   ],
                       "enabled":  true,
                       "focusable":  true
@@ -59,10 +59,10 @@
                       "ct":  50000,
                       "name":  "Minimize",
                       "rect_px":  [
-                                      1081,
-                                      289,
-                                      1141,
-                                      326
+                                      1017,
+                                      225,
+                                      1077,
+                                      262
                                   ],
                       "enabled":  true,
                       "focusable":  false
@@ -72,10 +72,10 @@
                       "ct":  50000,
                       "name":  "Maximize",
                       "rect_px":  [
-                                      1141,
-                                      289,
-                                      1200,
-                                      326
+                                      1077,
+                                      225,
+                                      1136,
+                                      262
                                   ],
                       "enabled":  true,
                       "focusable":  false
@@ -85,10 +85,10 @@
                       "ct":  50000,
                       "name":  "Close",
                       "rect_px":  [
-                                      1200,
-                                      289,
-                                      1260,
-                                      326
+                                      1136,
+                                      225,
+                                      1196,
+                                      262
                                   ],
                       "enabled":  true,
                       "focusable":  false
@@ -98,10 +98,10 @@
                       "ct":  50020,
                       "name":  "composer spike",
                       "rect_px":  [
-                                      332,
-                                      361,
-                                      453,
-                                      384
+                                      268,
+                                      297,
+                                      389,
+                                      320
                                   ],
                       "enabled":  true,
                       "focusable":  false
@@ -111,10 +111,10 @@
                       "ct":  50004,
                       "name":  "draft",
                       "rect_px":  [
-                                      332,
-                                      394,
-                                      1224,
-                                      457
+                                      268,
+                                      330,
+                                      1160,
+                                      393
                                   ],
                       "enabled":  true,
                       "focusable":  true
@@ -124,10 +124,10 @@
                       "ct":  50030,
                       "name":  "body",
                       "rect_px":  [
-                                      332,
-                                      457,
-                                      1224,
-                                      514
+                                      268,
+                                      393,
+                                      1160,
+                                      450
                                   ],
                       "enabled":  true,
                       "focusable":  true
@@ -137,10 +137,10 @@
                       "ct":  50000,
                       "name":  "show details",
                       "rect_px":  [
-                                      342,
-                                      544,
+                                      278,
                                       480,
-                                      589
+                                      416,
+                                      525
                                   ],
                       "enabled":  true,
                       "focusable":  true
@@ -150,10 +150,10 @@
                       "ct":  50004,
                       "name":  "row 1",
                       "rect_px":  [
-                                      332,
-                                      609,
-                                      1224,
-                                      672
+                                      268,
+                                      545,
+                                      1160,
+                                      608
                                   ],
                       "enabled":  true,
                       "focusable":  true
@@ -163,10 +163,10 @@
                       "ct":  50004,
                       "name":  "row 2",
                       "rect_px":  [
-                                      332,
-                                      672,
-                                      1224,
-                                      734
+                                      268,
+                                      608,
+                                      1160,
+                                      670
                                   ],
                       "enabled":  true,
                       "focusable":  true
@@ -176,10 +176,10 @@
                       "ct":  50004,
                       "name":  "row 3",
                       "rect_px":  [
-                                      332,
-                                      734,
-                                      1224,
-                                      797
+                                      268,
+                                      670,
+                                      1160,
+                                      733
                                   ],
                       "enabled":  true,
                       "focusable":  true
@@ -189,10 +189,10 @@
                       "ct":  50000,
                       "name":  "send",
                       "rect_px":  [
-                                      342,
-                                      817,
-                                      419,
-                                      862
+                                      278,
+                                      753,
+                                      355,
+                                      798
                                   ],
                       "enabled":  true,
                       "focusable":  true
@@ -202,10 +202,10 @@
                       "ct":  50000,
                       "name":  "stop",
                       "rect_px":  [
-                                      429,
-                                      817,
-                                      503,
-                                      862
+                                      365,
+                                      753,
+                                      439,
+                                      798
                                   ],
                       "enabled":  false,
                       "focusable":  false
@@ -215,10 +215,10 @@
                       "ct":  50000,
                       "name":  "reorder",
                       "rect_px":  [
-                                      513,
-                                      817,
-                                      610,
-                                      862
+                                      449,
+                                      753,
+                                      546,
+                                      798
                                   ],
                       "enabled":  true,
                       "focusable":  true
@@ -228,10 +228,10 @@
                       "ct":  50000,
                       "name":  "replace",
                       "rect_px":  [
-                                      620,
-                                      817,
-                                      716,
-                                      862
+                                      556,
+                                      753,
+                                      652,
+                                      798
                                   ],
                       "enabled":  true,
                       "focusable":  true
@@ -241,10 +241,10 @@
                       "ct":  50000,
                       "name":  "dark",
                       "rect_px":  [
-                                      342,
-                                      892,
-                                      418,
-                                      937
+                                      278,
+                                      828,
+                                      354,
+                                      873
                                   ],
                       "enabled":  true,
                       "focusable":  true
@@ -254,10 +254,10 @@
                       "ct":  50000,
                       "name":  "light",
                       "rect_px":  [
-                                      428,
-                                      892,
-                                      506,
-                                      937
+                                      364,
+                                      828,
+                                      442,
+                                      873
                                   ],
                       "enabled":  true,
                       "focusable":  true
@@ -267,10 +267,10 @@
                       "ct":  50000,
                       "name":  "reduce",
                       "rect_px":  [
-                                      516,
-                                      892,
-                                      611,
-                                      937
+                                      452,
+                                      828,
+                                      547,
+                                      873
                                   ],
                       "enabled":  true,
                       "focusable":  true
@@ -280,10 +280,10 @@
                       "ct":  50000,
                       "name":  "motion",
                       "rect_px":  [
-                                      621,
-                                      892,
-                                      719,
-                                      937
+                                      557,
+                                      828,
+                                      655,
+                                      873
                                   ],
                       "enabled":  true,
                       "focusable":  true
@@ -293,10 +293,10 @@
                       "ct":  50000,
                       "name":  "bold",
                       "rect_px":  [
-                                      729,
-                                      892,
-                                      804,
-                                      937
+                                      665,
+                                      828,
+                                      740,
+                                      873
                                   ],
                       "enabled":  true,
                       "focusable":  true
@@ -306,10 +306,10 @@
                       "ct":  50000,
                       "name":  "ro on",
                       "rect_px":  [
-                                      814,
-                                      892,
-                                      895,
-                                      937
+                                      750,
+                                      828,
+                                      831,
+                                      873
                                   ],
                       "enabled":  true,
                       "focusable":  true
@@ -319,10 +319,10 @@
                       "ct":  50000,
                       "name":  "rm B",
                       "rect_px":  [
-                                      905,
-                                      892,
-                                      981,
-                                      937
+                                      841,
+                                      828,
+                                      917,
+                                      873
                                   ],
                       "enabled":  true,
                       "focusable":  true
@@ -332,10 +332,10 @@
                       "ct":  50000,
                       "name":  "mk B",
                       "rect_px":  [
-                                      991,
-                                      892,
-                                      1070,
-                                      937
+                                      927,
+                                      828,
+                                      1006,
+                                      873
                                   ],
                       "enabled":  true,
                       "focusable":  true
@@ -358,10 +358,10 @@
                       "ct":  50000,
                       "name":  "custom tile action",
                       "rect_px":  [
-                                      332,
-                                      990,
-                                      616,
-                                      1095
+                                      268,
+                                      926,
+                                      552,
+                                      1031
                                   ],
                       "enabled":  true,
                       "focusable":  true
@@ -371,10 +371,10 @@
                       "ct":  50020,
                       "name":  "custom action",
                       "rect_px":  [
-                                      355,
-                                      1013,
-                                      463,
-                                      1073
+                                      291,
+                                      949,
+                                      399,
+                                      1009
                                   ],
                       "enabled":  true,
                       "focusable":  false
@@ -384,10 +384,10 @@
                       "ct":  50006,
                       "name":  "decorative tile",
                       "rect_px":  [
-                                      473,
-                                      1013,
-                                      593,
-                                      1073
+                                      409,
+                                      949,
+                                      529,
+                                      1009
                                   ],
                       "enabled":  true,
                       "focusable":  false
