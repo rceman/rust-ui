@@ -23,7 +23,6 @@
 //! `IUnknown`/`ITextHost`/`ITextHost2` all with `base+0`.
 
 use std::cell::{Cell, RefCell};
-use std::collections::BTreeSet;
 use std::ffi::c_void;
 use std::sync::Arc;
 
@@ -127,9 +126,6 @@ pub(crate) enum HostEvent {
     Change,
     /// EN_SELCHANGE: selection changed
     SelChange,
-    /// richedit asked the host for a timer (native id, ms)
-    SetTimer(u32, u32),
-    KillTimer(u32),
     /// richedit wants mouse capture set/released
     Capture(bool),
     /// caret geometry or visibility changed (system caret)
@@ -164,8 +160,18 @@ pub(crate) struct HostShared {
     pub caret_size: SIZE,
     pub caret_shown: bool,
     pub caret_created: bool,
-    /// richedit-requested native timer ids currently installed
-    pub timers: BTreeSet<u32>,
+    /// richedit-requested timers armed by THIS host (richedit id ->
+    /// win32 id) — KillTimer/Drop resolve through it; the armed win32
+    /// ids live in the shared `timer_pool` (existence + routing owner)
+    pub armed_timers: std::collections::BTreeMap<u32, usize>,
+    /// this host's node — assigned at attach; timer routing needs it
+    pub node: Option<crate::NodeId>,
+    /// THE armed-timer authority — win32 id -> (owner, richedit id);
+    /// shared by every peer on the window
+    pub timer_pool:
+        std::sync::Arc<std::sync::Mutex<std::collections::HashMap<usize, (crate::NodeId, u32)>>>,
+    /// monotonically increasing allocator sequence (skip-live policy)
+    pub timer_seq: std::sync::Arc<std::sync::atomic::AtomicUsize>,
     /// bounded host-event log — same 128 bound as the runtime event queue;
     /// overflow is a QueueOverflow failure, not a silent drop
     pub events: Vec<HostEvent>,
@@ -189,6 +195,25 @@ impl HostShared {
 
 fn bools(v: bool) -> BOOL {
     BOOL::from(v)
+}
+
+/// Allocate a collision-free win32 timer id — scans forward from the
+/// sequence and skips still-live ids; `None` when the namespace is full
+/// (capacity is honestly reported to msftedit, never silently dropped).
+fn alloc_native_timer(
+    pool: &std::sync::Arc<std::sync::Mutex<std::collections::HashMap<usize, (crate::NodeId, u32)>>>,
+    seq: &std::sync::Arc<std::sync::atomic::AtomicUsize>,
+) -> Option<usize> {
+    use super::window::{NATIVE_TIMER_BASE, NATIVE_TIMER_CAP};
+    let p = pool.lock().unwrap();
+    for _ in 0..NATIVE_TIMER_CAP {
+        let n = seq.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let tid = NATIVE_TIMER_BASE + (n % NATIVE_TIMER_CAP);
+        if !p.contains_key(&tid) {
+            return Some(tid);
+        }
+    }
+    None
 }
 
 /// Peer-visible state the host callbacks need — the msftedit reference is
@@ -347,16 +372,53 @@ impl ITextHost_Impl for HostBox {
         s.host.ev(HostEvent::Invalidate);
         BOOL(1)
     }
+    /// richedit arms a native timer — synchronously, because the BOOL
+    /// answer is the contract: FALSE means "no timer exists" and msftedit
+    /// must not wait on a tick that will never come. The win32 id is
+    /// allocated from the shared pool (collision-free while live); both
+    /// capacity exhaustion and a SetTimer failure return FALSE.
     fn TxSetTimer(&self, idtimer: u32, utimeout: u32) -> BOOL {
-        let mut s = self.m();
-        s.host.timers.insert(idtimer);
-        s.host.ev(HostEvent::SetTimer(idtimer, utimeout));
+        let (hwnd, node, pool, seq) = {
+            let s = self.s();
+            (
+                s.host.hwnd,
+                s.host.node,
+                s.host.timer_pool.clone(),
+                s.host.timer_seq.clone(),
+            )
+        };
+        let Some(node) = node else {
+            return BOOL(0); // unattached host cannot route a timer
+        };
+        if hwnd.is_invalid() {
+            return BOOL(0);
+        }
+        let Some(tid) = alloc_native_timer(&pool, &seq) else {
+            return BOOL(0); // capacity exhausted — honest failure
+        };
+        let armed = unsafe {
+            windows::Win32::UI::WindowsAndMessaging::SetTimer(Some(hwnd), tid, utimeout, None)
+        };
+        if armed == 0 {
+            pool.lock().unwrap().remove(&tid);
+            return BOOL(0);
+        }
+        pool.lock().unwrap().insert(tid, (node, idtimer));
+        self.m().host.armed_timers.insert(idtimer, tid);
         BOOL(1)
     }
     fn TxKillTimer(&self, idtimer: u32) {
-        let mut s = self.m();
-        s.host.timers.remove(&idtimer);
-        s.host.ev(HostEvent::KillTimer(idtimer));
+        let (hwnd, tid, pool) = {
+            let mut s = self.m();
+            let Some(tid) = s.host.armed_timers.remove(&idtimer) else {
+                return;
+            };
+            (s.host.hwnd, tid, s.host.timer_pool.clone())
+        };
+        pool.lock().unwrap().remove(&tid);
+        unsafe {
+            let _ = windows::Win32::UI::WindowsAndMessaging::KillTimer(Some(hwnd), tid);
+        }
     }
     fn TxScrollWindowEx(
         &self,
@@ -714,6 +776,10 @@ impl WindowlessPeer {
         scale: ScaleFactor,
         cfg: &PeerConfig,
         sink: std::sync::Arc<std::sync::Mutex<Vec<super::NativeSinkItem>>>,
+        timer_pool: std::sync::Arc<
+            std::sync::Mutex<std::collections::HashMap<usize, (crate::NodeId, u32)>>,
+        >,
+        timer_seq: std::sync::Arc<std::sync::atomic::AtomicUsize>,
     ) -> UiResult<WindowlessPeer> {
         let mut face = [0u16; 32];
         for (i, c) in cfg.face.encode_utf16().take(31).enumerate() {
@@ -758,7 +824,10 @@ impl WindowlessPeer {
                 caret_size: SIZE::default(),
                 caret_shown: false,
                 caret_created: false,
-                timers: BTreeSet::new(),
+                armed_timers: std::collections::BTreeMap::new(),
+                node: None,
+                timer_pool: timer_pool.clone(),
+                timer_seq: timer_seq.clone(),
                 events: Vec::new(),
                 read_only: cfg.read_only,
                 overflow: false,
@@ -1055,7 +1124,7 @@ impl WindowlessPeer {
 
     /// Richedit-requested native timer ids currently armed.
     pub(crate) fn native_timers(&self) -> Vec<u32> {
-        self.shared().host.timers.iter().copied().collect()
+        self.shared().host.armed_timers.keys().copied().collect()
     }
 
     /// Caret state as `(created, shown, pos, size)` — the backend draws the
@@ -1202,6 +1271,7 @@ impl crate::node::TextPeer for WindowlessPeer {
 
     fn attach(&mut self, node: NodeId) {
         self.node = node;
+        self.shared_mut().host.node = Some(node);
     }
 }
 
@@ -1209,6 +1279,22 @@ impl Drop for WindowlessPeer {
     fn drop(&mut self) {
         if !self.host.is_null() {
             drop(self.tx.take());
+            // kill every native timer this host armed — a dead peer can
+            // never receive WM_TIMER, so its ids must not stay live
+            let (hwnd, tids, pool) = {
+                let mut s = self.shared_mut();
+                let t: Vec<usize> = s.host.armed_timers.values().copied().collect();
+                s.host.armed_timers.clear();
+                (s.host.hwnd, t, s.host.timer_pool.clone())
+            };
+            for tid in tids {
+                pool.lock().unwrap().remove(&tid);
+                if !hwnd.is_invalid() {
+                    unsafe {
+                        let _ = windows::Win32::UI::WindowsAndMessaging::KillTimer(Some(hwnd), tid);
+                    }
+                }
+            }
             unsafe {
                 HostBox::Release(self.host);
             }

@@ -91,6 +91,11 @@ pub(crate) struct PeerCtx {
     pub focus: std::cell::Cell<Option<NodeId>>,
     pub sink: Arc<Mutex<Vec<NativeSinkItem>>>,
     pub registry: Arc<Mutex<HashMap<u32, RcWeak<RefCell<WindowlessPeer>>>>>,
+    /// THE armed-native-timer authority — win32 tid -> (owner node,
+    /// richedit timer id). The host writes on TxSetTimer/TxKillTimer; the
+    /// backend reads it to route WM_TIMER. No second armed-state store.
+    pub timer_pool: Arc<Mutex<HashMap<usize, (NodeId, u32)>>>,
+    pub timer_seq: Arc<std::sync::atomic::AtomicUsize>,
     next_id: AtomicU64,
     /// live theme colors for peer creation (updated on theme switch)
     pub colors: std::cell::RefCell<(Appearance, Theme)>,
@@ -137,6 +142,8 @@ impl PeerCtx {
                 ctx.scale.get(),
                 &cfg,
                 ctx.sink.clone(),
+                ctx.timer_pool.clone(),
+                ctx.timer_seq.clone(),
             )?;
             let handle = Rc::new(RefCell::new(peer));
             Ok(Box::new(PeerHandle {
@@ -264,13 +271,9 @@ where
     pub mouse: Point,
     /// armed/deadline timers owned by the loop (distinct from peer timers)
     pub deadline_timer: Option<std::time::Instant>,
-    /// peer-requested native timers: win32 timer id -> (node, richedit id)
-    /// — the NodeId carries the generation so a stale fire can never reach
-    /// a replacement peer in the same slot
-    pub native_timers: HashMap<usize, (NodeId, u32)>,
-    /// next win32 timer id offset above NATIVE_TIMER_BASE — wraps at the
-    /// cap so the namespace stays disjoint from framework timers forever
-    next_timer_id: usize,
+    // (armed-timer state lives in peer_ctx.timer_pool — the ONE authority;
+    // the host arms via SetTimer synchronously and this backend routes
+    // WM_TIMER through it — no mirror map here)
     /// currently-shown tooltip node (overlay window managed by renderer)
     pub tooltip_for: Option<NodeId>,
     /// UIA root — built on the first WM_GETOBJECT
@@ -285,6 +288,11 @@ where
     /// `turn()` is executing — native reentrancy (e.g. `SetFocus` inside
     /// `OnTxUIActivate`) must queue another pump instead of recursing
     in_turn: std::cell::Cell<bool>,
+    /// reentrant WndProc arrivals — owned payloads ONLY (scalars or a
+    /// copied RECT for WM_DPICHANGED; no borrowed pointers). Drained
+    /// FIFO at the end of the outer dispatch — the ONE deferred lane.
+    pub(crate) reentrant_queue:
+        std::cell::RefCell<std::collections::VecDeque<crate::platform::win32::window::QueuedMsg>>,
     /// WndProc dispatch holds the backend — the trampoline checks this
     /// THROUGH THE ROUTE POINTER before forming `&mut Backend`, so a
     /// synchronous native callback can never create overlapping access
@@ -446,7 +454,7 @@ where
         let dirty = self.rt.drain_dirty();
         // commit boundary: a removed/disabled focus or capture owner must
         // be resolved BEFORE layout/paint use stale state
-        self.sanitize_focus();
+        self.sanitize_focus()?;
         let mut needs_layout = !self.rects.is_empty() && self.order.is_empty();
         let mut needs_paint = !chrome.is_empty();
         for (id, d) in dirty {
@@ -669,10 +677,24 @@ where
                 .filter(|p| p.borrow().node() == node);
             if let Some(peer) = peer {
                 // generation-checked; the send's host callbacks may defer
-                // further messages — they enqueue behind, drained next pass
+                // further messages — they enqueue behind, drained next pass.
+                // Delivery failure surfaces — a silently dropped message is
+                // a lost input, not a transient skip.
                 let was = self.in_turn.replace(true);
-                let _ = peer.borrow().send(msg, wparam, lparam);
+                let r = peer.borrow().send(msg, wparam, lparam);
                 self.in_turn.set(was);
+                r?;
+            }
+        }
+        // bounded drain left work — arm an explicit continuation instead
+        // of depending on an unrelated later message
+        if !self.deferred_native.is_empty()
+            && !self.pump_queued.replace(true)
+            && !self.hwnd.0.is_null()
+            && !self.closed.load(Ordering::SeqCst)
+        {
+            unsafe {
+                let _ = PostMessageW(Some(self.hwnd), WM_PUMP, WPARAM(0), LPARAM(0));
             }
         }
         let slots: Vec<u32> = self
@@ -711,14 +733,6 @@ where
                     HostEvent::SelChange => {
                         self.native_selection(slot, &peer)?;
                     }
-                    HostEvent::SetTimer(id, ms) => {
-                        // generation-bearing owner — a stale fire can never
-                        // reach a slot's replacement peer
-                        self.arm_native_timer(peer.borrow().node(), id, ms);
-                    }
-                    HostEvent::KillTimer(id) => {
-                        self.disarm_native_timer(peer.borrow().node(), id);
-                    }
                     HostEvent::Capture(on) => {
                         if on {
                             unsafe {
@@ -743,9 +757,8 @@ where
                 }
             }
         }
-        // unmount cleanup — a peer that released mid-pass leaves timers
-        // behind; prune here so no native timer outlives its owner
-        self.prune_native_timers();
+        // armed-timer cleanup is the peer Drop's job — the pool is the
+        // authority, there is no second store to prune
         Ok(())
     }
 
@@ -879,86 +892,20 @@ where
     // request reschedules the SAME win32 id rather than allocating a new
     // one; disarm kills every win32 id for that (node, nid).
 
-    fn arm_native_timer(&mut self, node: NodeId, id: u32, ms: u32) {
-        // repeat request — reschedule the existing win32 id
-        if let Some((&tid, _)) = self
-            .native_timers
-            .iter()
-            .find(|(_, (n, i))| *n == node && *i == id)
-        {
-            unsafe {
-                SetTimer(Some(self.hwnd), tid, ms, None);
-            }
-            return;
-        }
-        if self.native_timers.len() >= crate::event::EVENT_QUEUE_CAP {
-            return; // bounded — a flooded timer table is a defect, not growth
-        }
-        self.next_timer_id += 1;
-        let tid = window::native_timer_id(self.next_timer_id);
-        unsafe {
-            SetTimer(Some(self.hwnd), tid, ms, None);
-        }
-        self.native_timers.insert(tid, (node, id));
-    }
-
-    fn disarm_native_timer(&mut self, node: NodeId, id: u32) {
-        let dead: Vec<usize> = self
-            .native_timers
-            .iter()
-            .filter(|(_, (n, i))| *n == node && *i == id)
-            .map(|(t, _)| *t)
-            .collect::<Vec<usize>>();
-        for t in dead {
-            unsafe {
-                let _ = KillTimer(Some(self.hwnd), t);
-            }
-            self.native_timers.remove(&t);
-        }
-    }
-
-    /// Kill every peer timer whose node no longer owns a live peer —
-    /// unmount/close cleanup driven by the registry, not by the peer (the
-    /// peer is already gone by the time anyone notices).
-    fn prune_native_timers(&mut self) {
-        let dead: Vec<usize> = self
-            .native_timers
-            .iter()
-            .filter(|(_, (n, _))| {
-                self.peer_ctx
-                    .registry
-                    .lock()
-                    .unwrap()
-                    .get(&n.slot)
-                    .and_then(|w| w.upgrade())
-                    .is_none_or(|p| p.borrow().node() != *n)
-            })
-            .map(|(t, _)| *t)
-            .collect();
-        for t in dead {
-            unsafe {
-                let _ = KillTimer(Some(self.hwnd), t);
-            }
-            self.native_timers.remove(&t);
-        }
-    }
-
     /// `WM_TIMER` on a peer-owned id: forward into the peer through the
     /// delivery contract, drain the host events the callback produced.
+    /// `WM_TIMER` on a peer-owned id: forward into the peer through the
+    /// delivery contract, drain the host events the callback produced.
+    /// Periodic: the native timer stays armed until msftedit kills it —
+    /// a tick does NOT consume the registration.
     pub(crate) fn native_timer_fire(&mut self, tid: usize) -> UiResult {
-        let Some((node, nid)) = self.native_timers.get(&tid).copied() else {
-            return Ok(()); // stale timer id — reject
+        let Some((node, nid)) = self.peer_ctx.timer_pool.lock().unwrap().get(&tid).copied() else {
+            return Ok(()); // stale/unowned timer id — reject
         };
-        // one-shot per richedit request — kill before processing, rearm
-        // inside if it asks again
-        unsafe {
-            let _ = KillTimer(Some(self.hwnd), tid);
-        }
-        self.native_timers.remove(&tid);
         self.counters
             .native_timer_fires
             .fetch_add(1, Ordering::Relaxed);
-        let _ = self.deliver_native(node, WM_TIMER, nid as usize, 0);
+        self.deliver_native(node, WM_TIMER, nid as usize, 0)?;
         self.service_peer_events()?;
         Ok(())
     }
@@ -1154,7 +1101,7 @@ where
         // hot tracking for semantic nodes
         if hit != self.hot {
             if let Some(old) = self.hot {
-                let _ = self.push_input(
+                self.push_input(
                     old,
                     NodeEvent::Pointer(
                         PointerEvent {
@@ -1164,12 +1111,12 @@ where
                         },
                         crate::node::PointerPhase::Leave,
                     ),
-                );
+                )?;
             }
             if let Some(id) = hit
                 && !self.peer_for(id).is_some()
             {
-                let _ = self.push_input(
+                self.push_input(
                     id,
                     NodeEvent::Pointer(
                         PointerEvent {
@@ -1179,7 +1126,7 @@ where
                         },
                         crate::node::PointerPhase::Enter,
                     ),
-                );
+                )?;
             }
             self.hot = hit;
         }
@@ -1199,7 +1146,7 @@ where
                 let lp_px = origin.to_local(pos_px).0;
                 let msg = match (phase, button) {
                     (crate::node::PointerPhase::Down, Some(PointerButton::Primary)) => {
-                        self.set_focus(Some(id));
+                        self.set_focus(Some(id))?;
                         WM_LBUTTONDOWN
                     }
                     (crate::node::PointerPhase::Up, Some(PointerButton::Primary)) => WM_LBUTTONUP,
@@ -1218,7 +1165,7 @@ where
                 return self.turn();
             }
             if phase == crate::node::PointerPhase::Down && button == Some(PointerButton::Primary) {
-                self.set_focus(Some(id));
+                self.set_focus(Some(id))?;
             }
             // semantic node events
             let ev = match phase {
@@ -1242,7 +1189,7 @@ where
                     }
                     // press = down+up on the same node
                     if was_pressed {
-                        let _ = self.push_input(id, NodeEvent::Press);
+                        self.push_input(id, NodeEvent::Press)?;
                         return self.turn();
                     }
                     NodeEvent::Pointer(
@@ -1263,7 +1210,7 @@ where
                     phase,
                 ),
             };
-            let _ = self.push_input(id, ev);
+            self.push_input(id, ev)?;
         }
         self.turn()
     }
@@ -1318,7 +1265,7 @@ where
         };
         // Tab traversal — focus moves through eligible nodes
         if msg == WM_KEYDOWN && key == VK_TAB.0 as u32 {
-            self.focus_step(unsafe { GetKeyState(VK_SHIFT.0 as i32) } < 0);
+            self.focus_step(unsafe { GetKeyState(VK_SHIFT.0 as i32) } < 0)?;
             return self.turn();
         }
         // focused editor gets the raw key (native editing, IME)
@@ -1357,17 +1304,17 @@ where
         if let Some(focus) = self.focus {
             match ev {
                 Key::Space | Key::Enter => {
-                    let _ = self.push_input(focus, NodeEvent::Press);
+                    self.push_input(focus, NodeEvent::Press)?;
                     return self.turn();
                 }
                 _ => {
-                    let _ = self.push_input(
+                    self.push_input(
                         focus,
                         NodeEvent::Key(KeyEvent {
                             key: ev,
                             modifiers: Modifiers::default(),
                         }),
-                    );
+                    )?;
                     return self.turn();
                 }
             }
@@ -1434,7 +1381,7 @@ where
     }
 
     /// Focus next/previous eligible node (Tab/Shift-Tab traversal).
-    pub(crate) fn focus_step(&mut self, back: bool) {
+    pub(crate) fn focus_step(&mut self, back: bool) -> UiResult {
         let eligible: Vec<NodeId> = self
             .order
             .iter()
@@ -1452,7 +1399,7 @@ where
             })
             .collect();
         if eligible.is_empty() {
-            return;
+            return Ok(());
         }
         let idx = self
             .focus
@@ -1470,31 +1417,32 @@ where
                 i => (i + 1) % eligible.len(),
             }
         };
-        self.set_focus(Some(eligible[next]));
+        self.set_focus(Some(eligible[next]))
     }
 
     /// Focus a node — blur the old (still routed even when it just hid),
     /// focus the new. Peers get the raw focus messages so caret/edit state
     /// tracks the framework focus owner.
-    pub(crate) fn set_focus(&mut self, node: Option<NodeId>) {
+    pub(crate) fn set_focus(&mut self, node: Option<NodeId>) -> UiResult {
         if self.focus == node {
-            return;
+            return Ok(());
         }
         self.state_paint_dirty.set(true);
         if let Some(old) = self.focus {
             if self.rt.arena.is_live(old) {
-                let _ = self.push_input(old, NodeEvent::Focus(false));
+                self.push_input(old, NodeEvent::Focus(false))?;
             }
-            self.deliver_native(old, WM_KILLFOCUS, 0, 0);
+            self.deliver_native(old, WM_KILLFOCUS, 0, 0)?;
         }
         self.focus = node;
         if let Some(u) = &self.uia {
             u.set_focus(node);
         }
         if let Some(id) = node {
-            let _ = self.push_input(id, NodeEvent::Focus(true));
-            self.deliver_native(id, WM_SETFOCUS, 0, 0);
+            self.push_input(id, NodeEvent::Focus(true))?;
+            self.deliver_native(id, WM_SETFOCUS, 0, 0)?;
         }
+        Ok(())
     }
 
     /// WM_MOUSEMOVE: hot tracking (Enter/Leave) + raw move to hovered peer.
@@ -1513,7 +1461,7 @@ where
             if let Some(old) = self.hot
                 && self.peer_for(old).is_none()
             {
-                let _ = self.push_input(
+                self.push_input(
                     old,
                     NodeEvent::Pointer(
                         PointerEvent {
@@ -1523,14 +1471,14 @@ where
                         },
                         crate::node::PointerPhase::Leave,
                     ),
-                );
+                )?;
                 self.rt.sched_unarm_tooltip(old);
             }
             self.hot = hit;
             self.state_paint_dirty.set(true);
             if let Some(id) = hit {
                 if self.peer_for(id).is_none() {
-                    let _ = self.push_input(
+                    self.push_input(
                         id,
                         NodeEvent::Pointer(
                             PointerEvent {
@@ -1540,7 +1488,7 @@ where
                             },
                             crate::node::PointerPhase::Enter,
                         ),
-                    );
+                    )?;
                 }
                 if self.rt.node_has_tooltip(id) {
                     self.rt.sched_arm_tooltip(id);
@@ -1574,7 +1522,7 @@ where
     pub(crate) fn leave(&mut self) -> UiResult {
         if let Some(old) = self.hot.take() {
             if self.peer_for(old).is_none() {
-                let _ = self.push_input(
+                self.push_input(
                     old,
                     NodeEvent::Pointer(
                         PointerEvent {
@@ -1584,7 +1532,7 @@ where
                         },
                         crate::node::PointerPhase::Leave,
                     ),
-                );
+                )?;
             }
             self.rt.sched_unarm_tooltip(old);
         }
@@ -1753,9 +1701,9 @@ where
             return Ok(());
         }
         if focus {
-            self.set_focus(Some(id));
+            self.set_focus(Some(id))?;
         } else {
-            let _ = self.push_input(id, NodeEvent::Press);
+            self.push_input(id, NodeEvent::Press)?;
         }
         self.turn()
     }
@@ -1801,7 +1749,7 @@ where
     /// native text-input contract)
     pub(crate) fn char_msg(&mut self, msg: u32, wparam: usize, lparam: isize) -> UiResult {
         if let Some(id) = self.focus {
-            let _ = self.deliver_native(id, msg, wparam, lparam);
+            self.deliver_native(id, msg, wparam, lparam)?;
             self.service_peer_events()?;
         }
         self.turn()
@@ -1813,6 +1761,25 @@ where
         self.renderer.borrow_mut().set_dpi(scale);
         self.relayout()
     }
+    /// Drain the reentrant queue — one owned message at a time through
+    /// the SAME dispatch path, FIFO. Runs while the caller legitimately
+    /// holds `&mut Backend` (after a dispatch unwound or in run()).
+    /// Bounded: a pathological native callback storm cannot spin forever;
+    /// leftover work surfaces as QueueOverflow instead of starvation.
+    pub(crate) fn drain_reentrant(&mut self) -> UiResult {
+        let hwnd = self.hwnd;
+        for _ in 0..crate::event::EVENT_QUEUE_CAP {
+            let Some(m) = self.reentrant_queue.borrow_mut().pop_front() else {
+                return Ok(());
+            };
+            self.in_dispatch.set(true);
+            let r = crate::platform::win32::window::wndproc::dispatch_owned(hwnd, m, self);
+            self.in_dispatch.set(false);
+            r?;
+        }
+        Err(UiError::QueueOverflow)
+    }
+
     /// fatal (typed) error from inside a WndProc — surface on next turn
     pub(crate) fn mark_fatal(&mut self, e: crate::UiError) {
         self.fatal = Some(e);
@@ -1847,12 +1814,15 @@ where
             u.close();
         }
         self.deferred_native.clear();
-        for tid in self.native_timers.keys().copied().collect::<Vec<_>>() {
-            unsafe {
-                let _ = KillTimer(Some(self.hwnd), tid);
+        {
+            let mut pool = self.peer_ctx.timer_pool.lock().unwrap();
+            for tid in pool.keys().copied().collect::<Vec<_>>() {
+                unsafe {
+                    let _ = KillTimer(Some(self.hwnd), tid);
+                }
             }
+            pool.clear();
         }
-        self.native_timers.clear();
         unsafe {
             let _ = KillTimer(Some(self.hwnd), window::DEADLINE_TIMER);
         }
@@ -1877,7 +1847,7 @@ where
     /// Commit/update boundary: a removed/disabled/hidden focus or capture
     /// owner is resolved BEFORE layout/paint see it. The native side
     /// follows — blur message, capture release, caret destroyed.
-    pub(crate) fn sanitize_focus(&mut self) {
+    pub(crate) fn sanitize_focus(&mut self) -> UiResult {
         let ok = |f: NodeId| {
             self.rt
                 .arena
@@ -1907,10 +1877,10 @@ where
         if !valid {
             if let Some(id) = self.focus.take() {
                 // blur the native peer even when the node is dead — its
-                // peer may still be mid-teardown
-                let _ = self.deliver_native(id, WM_KILLFOCUS, 0, 0);
+                // peer may still be mid-teardown; a queued blur is enough
+                self.deliver_native(id, WM_KILLFOCUS, 0, 0)?;
                 if self.rt.arena.is_live(id) {
-                    let _ = self.push_input(id, NodeEvent::Focus(false));
+                    self.push_input(id, NodeEvent::Focus(false))?;
                 }
             }
             if let Some(u) = &self.uia {
@@ -1919,8 +1889,9 @@ where
             unsafe {
                 let _ = DestroyCaret();
             }
-            self.focus_step(false);
+            self.focus_step(false)?;
         }
+        Ok(())
     }
 }
 
@@ -1981,6 +1952,8 @@ where
         focus: std::cell::Cell::new(None),
         sink: sink.clone(),
         registry: Arc::new(Mutex::new(HashMap::new())),
+        timer_pool: Arc::new(Mutex::new(HashMap::new())),
+        timer_seq: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
         next_id: AtomicU64::new(1),
         colors: std::cell::RefCell::new((appearance, Theme::dark())),
     });
@@ -2018,8 +1991,6 @@ where
         native_capture: None,
         mouse: Point { x: 0.0, y: 0.0 },
         deadline_timer: None,
-        native_timers: HashMap::new(),
-        next_timer_id: 100,
         tooltip_for: None,
         uia: None,
         counters: Arc::new(PerfCounters::new()),
@@ -2027,6 +1998,7 @@ where
         last_appearance: appearance,
         fatal: None,
         in_turn: std::cell::Cell::new(false),
+        reentrant_queue: std::cell::RefCell::new(std::collections::VecDeque::new()),
         in_dispatch: std::cell::Cell::new(false),
         pump_queued: std::cell::Cell::new(false),
         deferred_native: std::collections::VecDeque::new(),
@@ -2102,7 +2074,13 @@ where
         Err(e)
     }
 
-    if let Err(e) = backend.turn() {
+    // the initial turn is a native-entry backend operation — peers mount
+    // inside it and their host callbacks can re-enter the WndProc; run it
+    // under the same ownership guard as real dispatch
+    backend.in_dispatch.set(true);
+    let initial = backend.turn();
+    backend.in_dispatch.set(false);
+    if let Err(e) = initial.and_then(|_| backend.drain_reentrant()) {
         return bail(&mut backend, e);
     } // initial view/layout/paint
 

@@ -3263,6 +3263,8 @@ fn native_probe_richedit_paints_text() {
             ScaleFactor(scale),
             &cfg(),
             sink,
+            std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
+            std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0)),
         )
         .expect("peer create");
         let binding = crate::text::BindingToken::mint();
@@ -3350,6 +3352,8 @@ fn native_probe_richedit_paints_text() {
             ScaleFactor(a),
             &cfg(),
             sink,
+            std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
+            std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0)),
         )
         .expect("peer create");
         let binding = crate::text::BindingToken::mint();

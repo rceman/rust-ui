@@ -22,14 +22,9 @@ pub(super) const DEADLINE_TIMER: usize = 1;
 /// Peer-timer ID namespace — framework timers are small ints; every
 /// richedit-requested timer is NATIVE_TIMER_BASE + n so the WM_TIMER route
 /// is unambiguous forever.
-pub(super) const NATIVE_TIMER_BASE: usize = 0x4000_0000;
+pub(crate) const NATIVE_TIMER_BASE: usize = 0x4000_0000;
 /// bound on simultaneously live native timer ids
-const NATIVE_TIMER_CAP: usize = 0x1000;
-
-/// Map a monotonically increasing sequence to a native timer id.
-pub(super) fn native_timer_id(seq: usize) -> usize {
-    NATIVE_TIMER_BASE + (seq % NATIVE_TIMER_CAP)
-}
+pub(crate) const NATIVE_TIMER_CAP: usize = 0x1000;
 /// WM_TIMER's wparam is a native peer timer iff it carries the base.
 pub(super) fn is_native_timer_id(tid: usize) -> bool {
     tid >= NATIVE_TIMER_BASE && tid < NATIVE_TIMER_BASE + NATIVE_TIMER_CAP
@@ -40,8 +35,74 @@ pub(super) fn native_timer_decode(tid: usize) -> Option<usize> {
     is_native_timer_id(tid).then_some(tid - NATIVE_TIMER_BASE)
 }
 
-pub(super) mod wndproc {
+/// One queued reentrant arrival — an OWNED payload. `rect` exists only
+/// for WM_DPICHANGED: the original message borrowed `const RECT*` from
+/// the sender's stack, which may not be reposted; we copy it here so the
+/// deferred delivery never dereferences a borrowed pointer.
+#[derive(Clone, Copy)]
+pub(crate) struct QueuedMsg {
+    pub msg: u32,
+    pub wparam: usize,
+    pub lparam: isize,
+    pub rect: Option<RECT>,
+}
+
+/// The reentrant-arrival classes whose wparam/lparam are pure scalars —
+/// everything else either carries a borrowed pointer (handled explicitly:
+/// WM_DPICHANGED) or needs a synchronous result (WM_GETOBJECT → default).
+fn deferrable_arrival(msg: u32) -> bool {
+    matches!(
+        msg,
+        WM_PUMP
+            | WM_MOUSEMOVE
+            | WM_MOUSELEAVE
+            | WM_LBUTTONDOWN
+            | WM_LBUTTONUP
+            | WM_LBUTTONDBLCLK
+            | WM_RBUTTONDOWN
+            | WM_RBUTTONUP
+            | WM_CHAR
+            | WM_SYSCHAR
+            | WM_KEYDOWN
+            | WM_KEYUP
+            | WM_SYSKEYDOWN
+            | WM_SYSKEYUP
+            | WM_IME_STARTCOMPOSITION
+            | WM_IME_ENDCOMPOSITION
+            | WM_IME_COMPOSITION
+            | WM_IME_NOTIFY
+            | WM_SETFOCUS
+            | WM_KILLFOCUS
+            | WM_MOUSEWHEEL
+            | WM_SIZE
+            | WM_SETTINGCHANGE
+            | WM_TIMER
+            | WM_UIA_PRESS
+            | WM_UIA_FOCUS
+    )
+}
+
+pub(crate) mod wndproc {
     use super::*;
+
+    /// Re-dispatch one owned queued message through the SAME dispatch
+    /// path — WM_DPICHANGED's lparam points at the entry's own RECT.
+    pub(crate) fn dispatch_owned<S, M, U, V>(
+        hwnd: HWND,
+        m: QueuedMsg,
+        be: &mut Backend<S, M, U, V>,
+    ) -> UiResult<LRESULT>
+    where
+        M: 'static,
+        U: Fn(&mut S, M, &mut UpdateCtx<'_, M>),
+        V: Fn(&S, &mut Ui<'_, '_, M>),
+    {
+        let l = match &m.rect {
+            Some(rc) => LPARAM(rc as *const RECT as isize),
+            None => LPARAM(m.lparam),
+        };
+        dispatch(hwnd, m.msg, WPARAM(m.wparam), l, be)
+    }
 
     pub(super) unsafe extern "system" fn trampoline<S, M, U, V>(
         hwnd: HWND,
@@ -84,6 +145,11 @@ pub(super) mod wndproc {
                 }
             };
             be.in_dispatch.set(false);
+            // deferred native arrivals — owned payloads only — run FIFO
+            // now that no &mut would alias. A drain error is fatal.
+            if let Err(e) = be.drain_reentrant() {
+                be.mark_fatal(e);
+            }
             out
         }
     }
@@ -119,45 +185,45 @@ pub(super) mod wndproc {
             match msg {
                 WM_GETOBJECT => DefWindowProcW(hwnd, msg, wparam, lparam),
                 WM_NCDESTROY => {
-                    // shared/atomic teardown only — no &mut Backend here
+                    // teardown cannot defer a detached pointer — do the
+                    // atomic parts now, queue the full cleanup so the
+                    // post-dispatch drain still runs be.shutdown()
                     (*ptr).closed.store(true, Ordering::SeqCst);
                     (*ptr).rt.mailbox.close();
                     SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
-                    PostQuitMessage(0);
+                    (*ptr).reentrant_queue.borrow_mut().push_back(QueuedMsg {
+                        msg,
+                        wparam: wparam.0,
+                        lparam: lparam.0,
+                        rect: None,
+                    });
                     DefWindowProcW(hwnd, msg, wparam, lparam)
                 }
                 WM_PAINT => {
+                    // coalescible — the in-flight frame covers it
                     let _ = ValidateRect(Some(hwnd), None);
                     LRESULT(0)
                 }
-                WM_PUMP
-                | WM_MOUSEMOVE
-                | WM_MOUSELEAVE
-                | WM_LBUTTONDOWN
-                | WM_LBUTTONUP
-                | WM_LBUTTONDBLCLK
-                | WM_RBUTTONDOWN
-                | WM_RBUTTONUP
-                | WM_CHAR
-                | WM_SYSCHAR
-                | WM_KEYDOWN
-                | WM_KEYUP
-                | WM_SYSKEYDOWN
-                | WM_SYSKEYUP
-                | WM_IME_STARTCOMPOSITION
-                | WM_IME_ENDCOMPOSITION
-                | WM_IME_COMPOSITION
-                | WM_IME_NOTIFY
-                | WM_SETFOCUS
-                | WM_KILLFOCUS
-                | WM_MOUSEWHEEL
-                | WM_SIZE
-                | WM_DPICHANGED
-                | WM_SETTINGCHANGE
-                | WM_TIMER
-                | WM_UIA_PRESS
-                | WM_UIA_FOCUS => {
-                    let _ = PostMessageW(Some(hwnd), msg, wparam, lparam);
+                WM_DPICHANGED => {
+                    // OWNED payload — the borrowed `const RECT*` is copied;
+                    // reposting it would dereference a dead stack frame
+                    let rc = unsafe { *(lparam.0 as *const RECT) };
+                    (*ptr).reentrant_queue.borrow_mut().push_back(QueuedMsg {
+                        msg,
+                        wparam: wparam.0,
+                        lparam: 0,
+                        rect: Some(rc),
+                    });
+                    LRESULT(0)
+                }
+                m if deferrable_arrival(m) => {
+                    // scalar/copyable payload — owned triple, one queue
+                    (*ptr).reentrant_queue.borrow_mut().push_back(QueuedMsg {
+                        msg,
+                        wparam: wparam.0,
+                        lparam: lparam.0,
+                        rect: None,
+                    });
                     LRESULT(0)
                 }
                 _ => DefWindowProcW(hwnd, msg, wparam, lparam),
