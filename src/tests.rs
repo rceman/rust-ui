@@ -3835,7 +3835,6 @@ fn send_stop_resend_late_chunks_fenced() {
 
 /// Minimal block-on for the test sender future — the send resolves
 /// immediately on a fenced token.
-#[cfg(windows)]
 fn tokio_block<F: std::future::Future>(fut: F) -> F::Output {
     use std::sync::Arc;
     use std::task::{Context, Poll, Wake};
@@ -4113,12 +4112,10 @@ fn patch_removal_restores_recipe_without_remount() {
     assert_eq!(button_style_of(n2).patch, Default::default());
 }
 
-#[cfg(windows)]
 struct NodeDataLike {
     patch: crate::style::ButtonStylePatch,
 }
 
-#[cfg(windows)]
 fn button_style_of(n: &crate::node::Node) -> NodeDataLike {
     match &n.data {
         crate::node::NodeData::Button { style, .. } => NodeDataLike { patch: *style },
@@ -4561,7 +4558,9 @@ fn geometry_contract_scale_identity() {
 }
 
 /// Win32 adapter contract: monitor DPI <-> ratio mapping lives in
-/// `platform::win32::space` — the shared layer never sees `96`.
+/// `platform::win32::space` — the shared layer never sees `96`. This is a
+/// Windows-adapter test (portable ratio tests live in geom).
+#[cfg(windows)]
 #[test]
 fn win32_scale_from_dpi_mapping() {
     use crate::platform::win32::space::{dpi_of, scale_from_dpi};
