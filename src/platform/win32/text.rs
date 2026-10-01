@@ -853,6 +853,18 @@ impl WindowlessPeer {
             refs: Cell::new(1),
             state: RefCell::new(shared),
         }));
+        // RAII: if CreateTextServices or the QI fails, the host box (and
+        // its owned `unk`) must not leak — the guard owns it until the
+        // peer is fully constructed
+        struct HostGuard(*mut HostBox);
+        impl Drop for HostGuard {
+            fn drop(&mut self) {
+                unsafe {
+                    drop(Box::from_raw(self.0));
+                }
+            }
+        }
+        let guard = HostGuard(host);
         unsafe {
             let mut punk: *mut c_void = std::ptr::null_mut();
             (lib.create_text_services)(std::ptr::null_mut(), host as *mut c_void, &mut punk)
@@ -909,6 +921,7 @@ impl WindowlessPeer {
                 activation: Cell::new(Activation::Inactive),
                 line_h: Cell::new(0.0),
             };
+            std::mem::forget(guard);
             Ok(peer)
         }
     }

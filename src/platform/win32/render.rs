@@ -30,39 +30,12 @@ use super::Backend;
 
 const FONT: &str = "Segoe UI";
 
-/// shadcn neutral palette (light / dark) per ColorRole — the renderer's
-/// Theme/ColorRole conversion layer.
+/// The renderer's `ColorRole -> D2D color` step delegates to the shared
+/// resolver — there is ONE palette authority (`crate::style::role_color`);
+/// a renderer may adapt format, never re-author semantic values.
 fn role_color(role: crate::theme::ColorRole, dark: bool) -> D2D1_COLOR_F {
-    use crate::theme::ColorRole::*;
-    let v = match (role, dark) {
-        (Background, false) => [0.980, 0.980, 0.980, 1.0],
-        (Background, true) => [0.043, 0.043, 0.043, 1.0],
-        (Foreground, false) => [0.090, 0.090, 0.090, 1.0],
-        (Foreground, true) => [0.929, 0.929, 0.929, 1.0],
-        (Muted, false) => [0.961, 0.961, 0.961, 1.0],
-        (Muted, true) => [0.149, 0.149, 0.149, 1.0],
-        (MutedForeground, false) => [0.451, 0.451, 0.451, 1.0],
-        (MutedForeground, true) => [0.639, 0.639, 0.639, 1.0],
-        (Accent, false) => [0.094, 0.094, 0.106, 1.0], // primary = inverse fg
-        (Accent, true) => [0.980, 0.980, 0.980, 1.0],
-        (AccentForeground, false) => [0.980, 0.980, 0.980, 1.0],
-        (AccentForeground, true) => [0.094, 0.094, 0.106, 1.0],
-        (Border, false) => [0.898, 0.898, 0.898, 1.0],
-        (Border, true) => [0.180, 0.180, 0.180, 1.0],
-        (Destructive, _) => [0.863, 0.149, 0.149, 1.0],
-        (DestructiveForeground, false) => [0.980, 0.980, 0.980, 1.0],
-        (DestructiveForeground, true) => [0.980, 0.980, 0.980, 1.0],
-        (Focus, false) => [0.35, 0.35, 0.40, 1.0],
-        (Focus, true) => [0.65, 0.65, 0.70, 1.0],
-        (Shadow, false) => [0.0, 0.0, 0.0, 0.16],
-        (Shadow, true) => [0.0, 0.0, 0.0, 0.35],
-    };
-    D2D1_COLOR_F {
-        r: v[0],
-        g: v[1],
-        b: v[2],
-        a: v[3],
-    }
+    let [r, g, b, a] = crate::style::role_color(role, dark);
+    D2D1_COLOR_F { r, g, b, a }
 }
 
 // ---------------------------------------------------------------------------
@@ -1075,15 +1048,27 @@ fn draw_shadow(
     let rh = (r.bottom - r.top).max(0.0);
     let w = scale.to_physical_f(rw).ceil() as usize + 2 * pad;
     let h = scale.to_physical_f(rh).ceil() as usize + 2 * pad;
-    if w == 0 || h == 0 || w > SHADOW_MAX_DIM as usize || h > SHADOW_MAX_DIM as usize {
-        return Ok(());
+    if w == 0 || h == 0 {
+        return Ok(()); // degenerate box — zero ink, not a failure
+    }
+    if w > SHADOW_MAX_DIM as usize || h > SHADOW_MAX_DIM as usize {
+        return Err(windows::core::Error::from_hresult(windows::core::HRESULT(
+            0x8007_0057u32 as i32, // E_INVALIDARG — extent overflow is a defect
+        ))
+        .into());
     }
     let Some(n_px) = w.checked_mul(h) else {
-        return Ok(());
+        return Err(windows::core::Error::from_hresult(windows::core::HRESULT(
+            0x8007_0057u32 as i32,
+        ))
+        .into());
     };
     let bytes = n_px.checked_mul(4).unwrap_or(usize::MAX);
     if bytes > SHADOW_CACHE_MAX_BYTES {
-        return Ok(());
+        return Err(windows::core::Error::from_hresult(windows::core::HRESULT(
+            0x8007_0057u32 as i32,
+        ))
+        .into());
     }
     // normalized radii are part of the raster key — authored proportions
     let norm = radii.normalized(rw, rh);
@@ -1205,10 +1190,23 @@ fn draw_shadow(
             mask = out;
         }
     }
-    // interior exclusion — a translucent fill must not show shadow ink
-    // through the box: blurred alpha minus the solid silhouette
+    // interior exclusion — the box paints UNSHIFTED at `r`; the shadow
+    // bitmap lands at `r + offset`. A translucent box fill must not show
+    // shadow ink through itself, so exclude the ORIGINAL silhouette:
+    // mask-space pixel (x,y) maps to box-local (x - offset_px, y - offset_px).
+    let ox_px = scale.to_physical_f(shadow.offset_x.0).round() as i32;
+    let oy_px = scale.to_physical_f(shadow.offset_y.0).round() as i32;
+    let excl = |i: usize| -> f32 {
+        let x = (i % w) as i32 - ox_px;
+        let y = (i / w) as i32 - oy_px;
+        if x < 0 || y < 0 || x >= w as i32 || y >= h as i32 {
+            0.0
+        } else {
+            solid[y as usize * w + x as usize]
+        }
+    };
     for (i, a) in mask.iter_mut().enumerate() {
-        *a = (*a - solid[i]).max(0.0) * sa;
+        *a = (*a - excl(i)).max(0.0) * sa;
     }
     // premultiplied BGRA
     let mut px = vec![0u32; n_px];
@@ -1337,7 +1335,6 @@ fn paint_box(
                     opacityBrush: std::mem::ManuallyDrop::new(None),
                     layerOptions: D2D1_LAYER_OPTIONS_NONE,
                 };
-                target.PushLayer(&params, None);
                 // non-overlapping corner partition: left/right strips own
                 // the full height INCLUDING the corner cells; top/bottom
                 // strips sit between them. Translucent side colors never
@@ -1381,16 +1378,29 @@ fn paint_box(
                         },
                     ),
                 ];
-                for (side, sr) in strips {
-                    if side.width.0 <= 0.0 {
-                        continue;
+                // RAII-paired layer: EVERY fallible allocation happens
+                // BEFORE PushLayer — a `?` between push/pop would strand
+                // the layer and leak the params' borrowed mask clone
+                let brushes: [Option<ID2D1SolidColorBrush>; 4] = strips
+                    .iter()
+                    .map(|(side, _)| {
+                        if side.width.0 <= 0.0 {
+                            return Ok(None);
+                        }
+                        let c = brush_color(side.color, dark);
+                        if c.a <= 0.0 {
+                            return Ok(None);
+                        }
+                        target.CreateSolidColorBrush(&c, None).map(Some)
+                    })
+                    .collect::<Result<Vec<_>>>()?
+                    .try_into()
+                    .unwrap();
+                target.PushLayer(&params, None);
+                for ((_, sr), b) in strips.iter().zip(brushes.iter()) {
+                    if let Some(b) = b {
+                        target.FillRectangle(sr, b);
                     }
-                    let c = brush_color(side.color, dark);
-                    if c.a <= 0.0 {
-                        continue;
-                    }
-                    let b = target.CreateSolidColorBrush(&c, None)?;
-                    target.FillRectangle(&sr, &b);
                 }
                 target.PopLayer();
                 // release the params' clone now that the layer is popped

@@ -4448,6 +4448,32 @@ fn resolved_dirty_classification() {
         0,
         "shadow change under forced-colors resolves to identical output"
     );
+    // F08: two DIFFERENT authored roles resolving to the same concrete
+    // RGBA under the live theme are a strict no-op — authored identity
+    // alone must not force work. AccentForeground(light) and
+    // DestructiveForeground both resolve to #FAFAFA; under dark they
+    // diverge — the resolved comparison must follow the theme.
+    {
+        let mut rc = BoxStylePatch::new();
+        rc.background = Some(crate::style::Color::Role(
+            crate::theme::ColorRole::AccentForeground,
+        ));
+        let mut lit = BoxStylePatch::new();
+        lit.background = Some(crate::style::Color::Role(
+            crate::theme::ColorRole::DestructiveForeground,
+        ));
+        assert_eq!(
+            crate::node::dirty_diff(&surface(rc), &surface(lit), false, false),
+            0,
+            "two roles resolving to identical concrete RGBA -> zero work"
+        );
+        let d = crate::node::dirty_diff(&surface(rc), &surface(lit), true, false);
+        assert_eq!(
+            d & PAINT,
+            PAINT,
+            "theme flip makes the same authored pair diverge -> paint"
+        );
+    }
 }
 
 /// P11: bounded lifecycle — 100 mount/reorder/remove/recreate cycles must

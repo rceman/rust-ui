@@ -333,12 +333,16 @@ where
     /// FIFO; delivered at the top of the next `service_peer_events`
     deferred_native: std::collections::VecDeque<DeferredNative>,
     /// interaction-state change (hot/pressed/focus) with no consumer
-    /// handler — chrome must still repaint; consumed by turn_body
-    state_paint_dirty: std::cell::Cell<bool>,
+    /// handler — classified: bit0 relayout (a metric-bearing branch
+    /// transitioned), bit1 repaint; consumed by turn_body
+    state_dirty: std::cell::Cell<u8>,
     /// accumulated ink damage since the last committed paint — union of
-    /// every paint-dirty node's rect (+ shadow footprint). Cleared by
-    /// paint(); reserved for fine-grained invalidation.
+    /// every paint-dirty node's OLD committed ink and NEW ink (a moved or
+    /// removed shadow must damage where it used to be). Cleared by paint().
     damage: std::cell::Cell<Option<LogicalRect>>,
+    /// node -> the ink footprint it committed at the LAST paint — the old
+    /// half of the damage union
+    committed_ink: std::cell::RefCell<HashMap<NodeId, LogicalRect>>,
 }
 
 /// The deferred-native-delivery contract (private to this backend).
@@ -498,7 +502,15 @@ where
                 // still repaints fully today, but the union is the promised
                 // damage contract and is tested.)
                 if let Some(r) = self.rects.get(&id).copied() {
-                    let mut dr = r;
+                    // OLD committed ink (where the node last painted —
+                    // covers a moved/shrunk/removed shadow) UNION new ink
+                    let mut dr = self
+                        .committed_ink
+                        .borrow()
+                        .get(&id)
+                        .copied()
+                        .map(|old| old.union(r))
+                        .unwrap_or(r);
                     let sh = match self.rt.arena.get(id).map(|n| &n.data) {
                         Some(crate::node::NodeData::Container { kind, props }) => props
                             .resolved_box(*kind)
@@ -532,8 +544,14 @@ where
             needs_paint = true;
         }
         // built-in chrome repaint is never dependent on consumer handlers
-        if self.state_paint_dirty.replace(false) {
-            needs_paint = true;
+        {
+            let d = self.state_dirty.replace(0);
+            if d & 0b01 != 0 {
+                needs_layout = true;
+            }
+            if d & 0b10 != 0 {
+                needs_paint = true;
+            }
         }
         // live UIA state follows the committed tree — external clients see
         // name/enabled/bounds/order changes without a fresh WM_GETOBJECT
@@ -1019,6 +1037,35 @@ where
         // prune stale ids — backend cache holds live NodeIds only
         self.rects = rects;
         self.order = order;
+        // record the committed ink footprint per node — damage unions
+        // consult THIS (the old half) plus the node's current contribution
+        {
+            let mut ink = self.committed_ink.borrow_mut();
+            ink.retain(|id, _| self.rt.arena.is_live(*id));
+            for (&id, &r) in self.rects.iter() {
+                let mut i = r;
+                let sh = match self.rt.arena.get(id).map(|n| &n.data) {
+                    Some(crate::node::NodeData::Container { kind, props }) => props
+                        .resolved_box(*kind)
+                        .and_then(|b| b.shadow.map(|s| (b, s))),
+                    Some(crate::node::NodeData::Action {
+                        style, disabled, ..
+                    }) => {
+                        let b = style.resolve(*disabled, false, false, false);
+                        b.shadow.map(|s| (b, s))
+                    }
+                    Some(crate::node::NodeData::Editor { patch, .. }) => {
+                        let c = layout::editor_chrome(patch);
+                        c.shadow.map(|s| (c, s))
+                    }
+                    _ => None,
+                };
+                if let Some((_b, sh)) = sh {
+                    i = i.union(render::shadow_ink_rect(&r, &sh));
+                }
+                ink.insert(id, i);
+            }
+        }
         Ok(())
     }
 
@@ -1225,7 +1272,7 @@ where
             let ev = match phase {
                 crate::node::PointerPhase::Down => {
                     self.pressed = Some(id);
-                    self.state_paint_dirty.set(true);
+                    self.mark_state_dirty(id);
                     NodeEvent::Pointer(
                         PointerEvent {
                             position: pos,
@@ -1239,7 +1286,7 @@ where
                     let was_pressed = self.pressed == Some(id);
                     self.pressed = None;
                     if was_pressed {
-                        self.state_paint_dirty.set(true);
+                        self.mark_state_dirty(id);
                     }
                     // press = down+up on the same node
                     if was_pressed {
@@ -1473,7 +1520,9 @@ where
         if self.focus == node {
             return Ok(());
         }
-        self.state_paint_dirty.set(true);
+        for id in [self.focus, node].into_iter().flatten() {
+            self.mark_state_dirty(id);
+        }
         if let Some(old) = self.focus {
             if self.rt.arena.is_live(old) {
                 self.push_input(old, NodeEvent::Focus(false))?;
@@ -1491,6 +1540,23 @@ where
         Ok(())
     }
 
+    /// An interaction-state transition on `id` — metric-bearing branches
+    /// need LAYOUT|PAINT, paint-only branches only PAINT. One classifier
+    /// for every hover/press/focus mark.
+    fn mark_state_dirty(&self, id: NodeId) {
+        let bits = if self
+            .rt
+            .arena
+            .get(id)
+            .is_some_and(|n| n.state_metric_affecting())
+        {
+            0b11
+        } else {
+            0b10
+        };
+        self.state_dirty.set(self.state_dirty.get() | bits);
+    }
+
     /// WM_MOUSEMOVE: hot tracking (Enter/Leave) + raw move to hovered peer.
     pub(crate) fn hover(&mut self, pos_px: space::ClientPhysicalPoint, wparam: usize) -> UiResult {
         let pos: Point = {
@@ -1504,7 +1570,8 @@ where
             self.hit_test(pos)
         };
         if hit != self.hot {
-            if let Some(old) = self.hot
+            let old_hot = self.hot;
+            if let Some(old) = old_hot
                 && self.peer_for(old).is_none()
             {
                 self.push_input(
@@ -1513,7 +1580,7 @@ where
                         PointerEvent {
                             position: pos,
                             button: None,
-                            modifiers: Modifiers::default(),
+                            modifiers: modifiers_now(),
                         },
                         crate::node::PointerPhase::Leave,
                     ),
@@ -1521,7 +1588,9 @@ where
                 self.rt.sched_unarm_tooltip(old);
             }
             self.hot = hit;
-            self.state_paint_dirty.set(true);
+            for id in [old_hot, hit].into_iter().flatten() {
+                self.mark_state_dirty(id);
+            }
             if let Some(id) = hit {
                 if self.peer_for(id).is_none() {
                     self.push_input(
@@ -2052,8 +2121,9 @@ where
         in_dispatch: std::cell::Cell::new(false),
         pump_queued: std::cell::Cell::new(false),
         deferred_native: std::collections::VecDeque::new(),
-        state_paint_dirty: std::cell::Cell::new(false),
+        state_dirty: std::cell::Cell::new(0),
         damage: std::cell::Cell::new(None),
+        committed_ink: std::cell::RefCell::new(HashMap::new()),
     });
     backend.rt.theme = theme;
 

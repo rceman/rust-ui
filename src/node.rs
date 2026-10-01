@@ -387,13 +387,32 @@ pub(crate) struct Node {
     pub dirty: u8,
 }
 
+impl Node {
+    /// Can an interaction-state transition on this node change layout?
+    /// True iff any authored state branch carries a metric-bearing patch —
+    /// the classifier consults this once per transition, not per paint.
+    pub(crate) fn state_metric_affecting(&self) -> bool {
+        match &self.data {
+            NodeData::Button { style, .. } => style.styles.any_metric_branch(),
+            NodeData::Action { style, .. } => style.any_metric_branch(),
+            NodeData::Editor { patch, .. } => patch.chrome.metric_affecting(),
+            _ => false,
+        }
+    }
+}
+
 /// Diff two RESOLVED box styles into dirty classes: padding/border-width/
 /// radii changes may reflow content (LAYOUT); background/border-color/
 /// shadow are paint-only. Identical output = no bits.
-fn box_dirty(a: &crate::style::BoxStyle, b: &crate::style::BoxStyle, out: &mut u8) {
+fn box_dirty(a: &crate::style::BoxStyle, b: &crate::style::BoxStyle, dark: bool, out: &mut u8) {
     const LAYOUT: u8 = 0b0000_0001;
     const PAINT: u8 = 0b0000_0010;
     if a == b {
+        return;
+    }
+    // the no-op decision compares CONCRETE output — authored roles that
+    // resolve to the same RGBA under the live theme produce no work
+    if crate::style::box_resolved_eq(a, b, dark) {
         return;
     }
     *out |= PAINT;
@@ -415,17 +434,25 @@ fn box_dirty(a: &crate::style::BoxStyle, b: &crate::style::BoxStyle, out: &mut u
 }
 
 /// Resolved `VisualStyle` diff — text metrics feed layout too.
-fn visual_dirty(a: &crate::style::VisualStyle, b: &crate::style::VisualStyle, out: &mut u8) {
+fn visual_dirty(
+    a: &crate::style::VisualStyle,
+    b: &crate::style::VisualStyle,
+    dark: bool,
+    out: &mut u8,
+) {
     const LAYOUT: u8 = 0b0000_0001;
     const PAINT: u8 = 0b0000_0010;
     if a == b {
+        return;
+    }
+    if crate::style::visual_resolved_eq(a, b, dark) {
         return;
     }
     *out |= PAINT;
     if a.text_style.size != b.text_style.size || a.text_style.weight != b.text_style.weight {
         *out |= LAYOUT;
     }
-    box_dirty(&a.box_style, &b.box_style, out);
+    box_dirty(&a.box_style, &b.box_style, dark, out);
 }
 
 /// Compare committed payloads for the dirty classification — decisions use
@@ -460,7 +487,7 @@ pub(crate) fn dirty_diff(old: &NodeData, new: &NodeData, dark: bool, forced: boo
                 crate::style::os_enforce_box(v, forced);
             }
             match (ra, rb) {
-                (Some(ra), Some(rb)) => box_dirty(&ra, &rb, &mut d),
+                (Some(ra), Some(rb)) => box_dirty(&ra, &rb, dark, &mut d),
                 (ra, rb) => {
                     if ra.is_some() != rb.is_some() {
                         d |= PAINT | LAYOUT;
@@ -555,7 +582,7 @@ pub(crate) fn dirty_diff(old: &NodeData, new: &NodeData, dark: bool, forced: boo
                 dark,
             );
             crate::style::os_enforce_visual(&mut rb, forced);
-            visual_dirty(&ra, &rb, &mut d);
+            visual_dirty(&ra, &rb, dark, &mut d);
             // state branches' metrics feed layout too — padding in hover/
             // pressed/disabled/focus branches
             for st in [
@@ -618,7 +645,7 @@ pub(crate) fn dirty_diff(old: &NodeData, new: &NodeData, dark: bool, forced: boo
                 let mut cb = crate::style::resolve_text_input_chrome(bp);
                 crate::style::os_enforce_box(&mut ca, forced);
                 crate::style::os_enforce_box(&mut cb, forced);
-                box_dirty(&ca, &cb, &mut d);
+                box_dirty(&ca, &cb, dark, &mut d);
             }
             if aro != bro || ad != bd || aal != bal || asu != bsu {
                 d |= SEMANTICS;
@@ -661,7 +688,7 @@ pub(crate) fn dirty_diff(old: &NodeData, new: &NodeData, dark: bool, forced: boo
             // action's content insets; colors/shadow are paint-only
             let ra = ast.resolve(*ad, false, false, false);
             let rb = bst.resolve(*bd, false, false, false);
-            box_dirty(&ra, &rb, &mut d);
+            box_dirty(&ra, &rb, dark, &mut d);
             // state branches can also carry metrics-bearing fields — only
             // when a branch's patch actually changed
             for (ap, bp) in [ast.hover, ast.pressed, ast.disabled, ast.focus_visible]

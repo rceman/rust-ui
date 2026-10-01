@@ -577,6 +577,109 @@ impl VisualStylePatch {
     }
 }
 
+// ---------------------------------------------------------------------------
+// resolved-concrete comparison — authored identity vs effective value
+// ---------------------------------------------------------------------------
+
+/// Are two borders concretely identical under the current theme? Two
+/// authored roles collapsing to the same RGBA are a no-op; authored
+/// identity alone must not force work.
+fn side_resolved_eq(a: &BorderSide, b: &BorderSide, dark: bool) -> bool {
+    a.width == b.width && resolve_color(a.color, dark) == resolve_color(b.color, dark)
+}
+
+fn shadow_resolved_eq(a: &Option<Shadow>, b: &Option<Shadow>, dark: bool) -> bool {
+    match (a, b) {
+        (None, None) => true,
+        (Some(x), Some(y)) => {
+            x.offset_x == y.offset_x
+                && x.offset_y == y.offset_y
+                && x.blur_sigma == y.blur_sigma
+                && resolve_color(x.color, dark) == resolve_color(y.color, dark)
+        }
+        _ => false,
+    }
+}
+
+/// RESOLVED-concrete box equality — the dirty classifier's no-op gate.
+/// Geometry fields compare authored values (a Dp is already concrete);
+/// colors compare the effective RGBA under the current theme.
+pub(crate) fn box_resolved_eq(a: &BoxStyle, b: &BoxStyle, dark: bool) -> bool {
+    a.padding == b.padding
+        && a.radii == b.radii
+        && resolve_color(a.background, dark) == resolve_color(b.background, dark)
+        && side_resolved_eq(&a.border.top, &b.border.top, dark)
+        && side_resolved_eq(&a.border.right, &b.border.right, dark)
+        && side_resolved_eq(&a.border.bottom, &b.border.bottom, dark)
+        && side_resolved_eq(&a.border.left, &b.border.left, dark)
+        && shadow_resolved_eq(&a.shadow, &b.shadow, dark)
+}
+
+/// RESOLVED-concrete visual equality — box + text foreground/metrics.
+pub(crate) fn visual_resolved_eq(a: &VisualStyle, b: &VisualStyle, dark: bool) -> bool {
+    a.text_style.size == b.text_style.size
+        && a.text_style.weight == b.text_style.weight
+        && resolve_color(a.text_style.foreground, dark)
+            == resolve_color(b.text_style.foreground, dark)
+        && box_resolved_eq(&a.box_style, &b.box_style, dark)
+}
+
+impl BoxStylePatch {
+    /// Does this patch touch a metric-bearing field? A state branch that
+    /// does must drive a layout pass on state transitions, not just paint.
+    pub fn metric_affecting(&self) -> bool {
+        self.padding.top.is_some()
+            || self.padding.right.is_some()
+            || self.padding.bottom.is_some()
+            || self.padding.left.is_some()
+            || self.radii.top_left.is_some()
+            || self.radii.top_right.is_some()
+            || self.radii.bottom_right.is_some()
+            || self.radii.bottom_left.is_some()
+            || self.border.top.width.is_some()
+            || self.border.right.width.is_some()
+            || self.border.bottom.width.is_some()
+            || self.border.left.width.is_some()
+    }
+}
+
+impl TextStylePatch {
+    /// font metrics — size/weight changes reflow text
+    pub fn metric_affecting(&self) -> bool {
+        self.size.is_some() || self.weight.is_some()
+    }
+}
+
+impl VisualStylePatch {
+    pub fn metric_affecting(&self) -> bool {
+        self.box_style.metric_affecting() || self.text_style.metric_affecting()
+    }
+}
+
+impl StateStyles<VisualStylePatch> {
+    /// any state branch carry metrics? — the transition classifier consults
+    /// this once per node; the node's own patch set decides, not the state
+    pub fn any_metric_branch(&self) -> bool {
+        self.base.metric_affecting()
+            || self
+                .hover
+                .as_ref()
+                .is_some_and(VisualStylePatch::metric_affecting)
+            || self
+                .pressed
+                .as_ref()
+                .is_some_and(VisualStylePatch::metric_affecting)
+            || self
+                .disabled
+                .as_ref()
+                .is_some_and(VisualStylePatch::metric_affecting)
+            || self
+                .focus_visible
+                .as_ref()
+                .is_some_and(VisualStylePatch::metric_affecting)
+    }
+}
+
 /// Per-state partial overlays — disabled/pressed/hover/normal is an
 /// exclusive priority chain; `focus_visible` is orthogonal (applies after
 /// the resolved state branch).
@@ -716,6 +819,26 @@ impl ActionStyle {
         }
         self
     }
+    /// Any state branch carry metrics? Transition classification consults
+    /// this — a metric-bearing branch needs layout on enter/leave.
+    pub fn any_metric_branch(&self) -> bool {
+        self.hover
+            .as_ref()
+            .is_some_and(BoxStylePatch::metric_affecting)
+            || self
+                .pressed
+                .as_ref()
+                .is_some_and(BoxStylePatch::metric_affecting)
+            || self
+                .disabled
+                .as_ref()
+                .is_some_and(BoxStylePatch::metric_affecting)
+            || self
+                .focus_visible
+                .as_ref()
+                .is_some_and(BoxStylePatch::metric_affecting)
+    }
+
     /// Resolve the effective `BoxStyle` for the given interaction state:
     /// exclusive disabled > pressed > hover > normal, then focus_visible.
     pub fn resolve(
