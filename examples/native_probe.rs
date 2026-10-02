@@ -192,14 +192,19 @@ mod probe {
     /// monitor transition). `SendMessage` marshals the suggested RECT for
     /// this known system message (PostMessage refuses cross-process pointer
     /// lparams — the prior VirtualAllocEx path silently no-opped).
-    pub fn dpi_changed(hwnd: HWND, _pid: u32, dpi: u32) -> Result<()> {
+    /// Rust owns the semantic proof: expected physical size is computed via
+    /// the shared scale authority and the post-change window rect is read
+    /// back and asserted HERE — PowerShell only collects the result.
+    pub fn dpi_changed(hwnd: HWND, _pid: u32, dpi: u32) -> Result<String> {
         unsafe {
             let s = rust_ui::dev::scale_from_dpi(dpi);
+            let want_w = s.to_physical(500.0);
+            let want_h = s.to_physical(470.0);
             let rect = RECT {
                 left: 0,
                 top: 0,
-                right: s.to_physical(500.0),
-                bottom: s.to_physical(470.0),
+                right: want_w,
+                bottom: want_h,
             };
             SendMessageW(
                 hwnd,
@@ -208,7 +213,21 @@ mod probe {
                 Some(LPARAM(&rect as *const RECT as isize)),
             );
             std::thread::sleep(std::time::Duration::from_millis(300));
-            Ok(())
+            // READ-BACK — the window must actually sit at the suggested size
+            let mut wr = RECT::default();
+            windows::Win32::UI::WindowsAndMessaging::GetWindowRect(hwnd, &mut wr)?;
+            let got_w = wr.right - wr.left;
+            let got_h = wr.bottom - wr.top;
+            if (got_w - want_w).abs() > 4 || (got_h - want_h).abs() > 4 {
+                return Err(Error::new(
+                    E_FAIL.into(),
+                    format!("dpi {dpi}: expected ~{want_w}x{want_h}px, got {got_w}x{got_h}px"),
+                ));
+            }
+            Ok(format!(
+                "{{\"kind\":\"dpi\",\"evidence\":\"regression\",\"dpi\":{dpi},\"window_px\":[{},{},{},{}],\"expected_px\":[{},{}]}}",
+                wr.left, wr.top, wr.right, wr.bottom, want_w, want_h
+            ))
         }
     }
 
@@ -477,14 +496,51 @@ mod probe {
     /// hiragana, sends REAL SendInput keys, then commits with Enter.
     /// This is acceptance-class evidence: the composition path runs through
     /// the OS input pipeline into real WM_IME_* delivery.
-    pub fn ime_japanese(hwnd: HWND, editor: &str, keys: &str) -> Result<String> {
-        // record the BEFORE value — a commit must extend it, never replace
-        // or submit it (submit would route the value out of the draft)
-        let before = uia_value(hwnd, editor)?.unwrap_or_default();
-        ime_japanese_inner(hwnd, keys, &before)
+    /// Observable submit signal — the composer's `turn N` label is the
+    /// real submit counter (Send increments it; a label's name IS its text).
+    pub fn turn_counter(hwnd: HWND) -> Result<Option<u64>> {
+        unsafe {
+            let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
+            let uia: IUIAutomation = CoCreateInstance(&CUIAutomation, None, CLSCTX_ALL)?;
+            let root = uia.ElementFromHandle(hwnd)?;
+            unsafe fn walk(uia: &IUIAutomation, el: &IUIAutomationElement) -> Option<u64> {
+                let n = el.CurrentName().unwrap_or_default().to_string();
+                if let Some(rest) = n.strip_prefix("turn ") {
+                    if let Some(n) = rest.split('|').next().and_then(|t| t.trim().parse().ok()) {
+                        return Some(n);
+                    }
+                }
+                let walker = uia.RawViewWalker().ok()?;
+                let mut ch = walker.GetFirstChildElement(el).ok();
+                while let Some(c) = ch {
+                    if let Some(v) = walk(uia, &c) {
+                        return Some(v);
+                    }
+                    ch = walker.GetNextSiblingElement(&c).ok();
+                }
+                None
+            }
+            let out = walk(&uia, &root);
+            CoUninitialize();
+            Ok(out)
+        }
     }
 
-    pub fn ime_japanese_inner(hwnd: HWND, keys: &str, before: &str) -> Result<String> {
+    pub fn ime_japanese(hwnd: HWND, editor: &str, keys: &str) -> Result<String> {
+        // record the BEFORE value AND submit counter — a commit must extend
+        // the text, never replace it, and MUST NOT submit
+        let before = uia_value(hwnd, editor)?.unwrap_or_default();
+        let submits = turn_counter(hwnd)?.unwrap_or(0);
+        ime_japanese_inner(hwnd, editor, keys, &before, submits)
+    }
+
+    pub fn ime_japanese_inner(
+        hwnd: HWND,
+        editor: &str,
+        keys: &str,
+        before: &str,
+        submits_before: u64,
+    ) -> Result<String> {
         // Microsoft Japanese IME — CLSID + keyboard profile GUID
         let clsid = GUID::from_u128(0x03b5835f_f03c_411b_9ce2_aa23e1171e36);
         let profile = GUID::from_u128(0xa76c93d9_5523_4e90_aafa_4db112f9ac76);
@@ -538,16 +594,12 @@ mod probe {
             let _ = mgr.ChangeCurrentLanguage(0x409);
             drop(mgr);
             CoUninitialize();
-            // ASSERT, don't print: the committed value must be
-            // `before` + new kana — no unintended submit (the draft keeps
-            // its text), no replacement, and real hiragana landed.
-            let after = uia_value(hwnd, "draft")?.unwrap_or_default();
-            let kana = after
-                .chars()
-                .filter(|c| ('\u{3040}'..='\u{30ff}').contains(c))
-                .count();
-            let gained = after.strip_prefix(before).unwrap_or(&after);
-            if after.is_empty() || !after.starts_with(before) {
+            // ASSERT, don't print — every leg is an exact delta:
+            //   before == committed prefix, gained == new committed text,
+            //   gained nonempty AND contains new kana, submit counter
+            //   unchanged (a real observable signal, not prefix inference).
+            let after = uia_value(hwnd, editor)?.unwrap_or_default();
+            if !after.starts_with(before) {
                 return Err(Error::new(
                     E_FAIL.into(),
                     format!(
@@ -555,16 +607,39 @@ mod probe {
                     ),
                 ));
             }
+            let gained = &after[before.len()..];
+            if gained.is_empty() {
+                return Err(Error::new(
+                    E_FAIL.into(),
+                    "IME acceptance failed: nothing committed",
+                ));
+            }
+            // the GAINED suffix must carry real kana — searching `after`
+            // would pass on pre-existing text
+            let kana = gained
+                .chars()
+                .filter(|c| ('\u{3040}'..='\u{30ff}').contains(c))
+                .count();
             if kana == 0 {
                 return Err(Error::new(
                     E_FAIL.into(),
-                    "IME acceptance failed: no hiragana/katakana committed",
+                    format!("IME acceptance failed: gained {gained:?} has no kana"),
+                ));
+            }
+            let submits_after = turn_counter(hwnd)?.unwrap_or(0);
+            if submits_after != submits_before {
+                return Err(Error::new(
+                    E_FAIL.into(),
+                    format!(
+                        "IME committed THROUGH Enter: submit count {submits_before} -> {submits_after}"
+                    ),
                 ));
             }
             Ok(format!(
-                "{{\"kind\":\"ime\",\"evidence\":\"acceptance\",\"keys\":\"{keys}\",\"before\":\"{}\",\"gained\":\"{}\",\"no_submit\":true}}",
+                "{{\"kind\":\"ime\",\"evidence\":\"acceptance\",\"keys\":\"{keys}\",\"before\":\"{}\",\"gained\":\"{}\",\"submits\":{}}}",
                 before.replace('"', "\\\""),
                 gained.replace('"', "\\\""),
+                submits_after,
             ))
         }
     }
@@ -574,6 +649,11 @@ mod probe {
 fn main() {
     use probe::*;
     set_pmv2();
+    // UTF-8 stdout — kana/unicode values must serialize correctly through
+    // the PowerShell capture pipe; the OEM codepage mangles them
+    unsafe {
+        windows::Win32::System::Console::SetConsoleOutputCP(65001);
+    }
     let args: Vec<String> = std::env::args().collect();
     let usage = concat!(
         "usage: native_probe <sub> <window> [args...]

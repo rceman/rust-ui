@@ -153,21 +153,11 @@ function S-Uia {
 function S-Dpi {
   foreach ($dpi in 96, 120, 144, 192) {
     $p = Launch-Composer
-    P-Dpi $p.MainWindowHandle $dpi | Out-Null
-    $g = P-Geometry $p.MainWindowHandle
-    # READ-BACK ASSERTION — the suggested rect is what a synthetic
-    # WM_DPICHANGED can prove (the monitor's real DPI doesn't change):
-    # the window must have been sized to 500x470 Dp * (dpi/96).
-    $wantW = [int](500 * $dpi / 96)
-    $wantH = [int](470 * $dpi / 96)
-    $gotW = $g.window_px[2] - $g.window_px[0]
-    $gotH = $g.window_px[3] - $g.window_px[1]
-    if ([math]::Abs($gotW - $wantW) -gt 4 -or [math]::Abs($gotH - $wantH) -gt 4) {
-      Stop-Composer $p
-      throw "dpi injection failed: dpi=$dpi expected ~${wantW}x${wantH}px, got ${gotW}x${gotH}px"
-    }
-    "dpi=$dpi window_px=${gotW}x${gotH} expected=${wantW}x${wantH}" |
-      Set-Content "$($script:OutDir)\dpi-$dpi.txt"
+    # the PROBE owns the semantic proof: it computes the expected px size
+    # via the shared scale authority and asserts the post-change window
+    # rect — this script only records the result
+    $r = P-Dpi $p.MainWindowHandle $dpi
+    $r | Set-Content "$($script:OutDir)\dpi-$dpi.txt"
     Shot-PrintWindow $p.MainWindowHandle "dpi-$dpi.png"
     Stop-Composer $p
   }
