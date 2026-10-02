@@ -1374,12 +1374,24 @@ impl WindowlessPeer {
     /// Theme palette flip — selection colors follow the palette and the
     /// AUTHORED foreground re-resolves: a role tracks the new theme; an
     /// authored literal is already concrete and stands.
-    pub(crate) fn set_colors(&self, fg: [f32; 4], sel_bg: [f32; 4], sel_fg: [f32; 4], dark: bool) {
+    /// Selection palette + authored-foreground refresh. `forced` is the
+    /// OS system-color resolver — a role foreground under forced colors
+    /// resolves through it (same authority as the render path); literal
+    /// colors pass through the ordinary resolver.
+    pub(crate) fn set_colors(
+        &self,
+        sel_bg: [f32; 4],
+        sel_fg: [f32; 4],
+        dark: bool,
+        forced: Option<&dyn Fn(crate::style::SystemColor) -> [f32; 4]>,
+    ) {
         let mut s = self.shared_mut();
-        let resolved = crate::style::resolve_color(s.host.fg_authored, dark);
+        let resolved = match (s.host.fg_authored, forced) {
+            (crate::style::Color::Role(r), Some(f)) => f(crate::style::system_slot(r)),
+            (c, _) => crate::style::resolve_color(c, dark),
+        };
         s.host.fg = colorref(resolved);
         s.host.cf.crTextColor = colorref(resolved);
-        let _ = fg; // authored path is authoritative; palette fg unused here
         s.host.sel_bg = colorref(sel_bg);
         s.host.sel_fg = colorref(sel_fg);
         s.host.ev(HostEvent::Invalidate);

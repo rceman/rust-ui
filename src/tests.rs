@@ -3660,6 +3660,63 @@ fn native_probe_richedit_paints_text() {
             .is_err(),
             "oversized sigma must be a typed failure"
         );
+        // unrepresentable OFFSET — finite-but-huge would saturate `as i32`
+        // and overflow `x + ox`; rejected BEFORE any integer arithmetic.
+        // Non-finite offsets are degenerate (zero ink), consistent with
+        // the sa<=0 handling — they return Ok without raster work.
+        for bad in [2147483648.0f32, 50000.0] {
+            let b = crate::style::Shadow {
+                color: crate::style::Color::rgba(0, 0, 0, 255),
+                blur_sigma: crate::geom::Dp(0.0),
+                offset_x: crate::geom::Dp(bad),
+                offset_y: crate::geom::Dp(0.0),
+            };
+            assert!(
+                draw_shadow(
+                    &rt,
+                    &box_px,
+                    &CornerRadii::default(),
+                    &b,
+                    false,
+                    ScaleFactor(1.0),
+                    &cache,
+                    1
+                )
+                .is_err(),
+                "finite unrepresentable offset {bad} must be a typed failure"
+            );
+        }
+        for degenerate in [f32::INFINITY, f32::NAN] {
+            let b = crate::style::Shadow {
+                color: crate::style::Color::rgba(0, 0, 0, 255),
+                blur_sigma: crate::geom::Dp(0.0),
+                offset_x: crate::geom::Dp(degenerate),
+                offset_y: crate::geom::Dp(0.0),
+            };
+            unsafe { rt.BeginDraw() };
+            assert!(
+                draw_shadow(
+                    &rt,
+                    &box_px,
+                    &CornerRadii::default(),
+                    &b,
+                    false,
+                    ScaleFactor(1.0),
+                    &cache,
+                    1
+                )
+                .is_ok(),
+                "non-finite offset {degenerate} is zero-ink, not a crash"
+            );
+            unsafe { rt.EndDraw(None, None).unwrap() };
+        }
+        // offset is part of the raster identity — +12 and -12 produced
+        // TWO distinct cached masks (the +12 mask cannot serve -12)
+        let _ = cache.borrow().len();
+        assert!(
+            cache.borrow().len() >= 2,
+            "different offsets must not share a raster"
+        );
     }
 
     // ---- F08: oversized opposing borders never cross --------------------

@@ -438,8 +438,10 @@ pub(crate) fn box_dirty(
     }
 }
 
-/// Resolved `VisualStyle` diff — text metrics feed layout too.
-fn visual_dirty(
+/// Resolved `VisualStyle` diff — text metrics feed layout too. THE shared
+/// interaction-state classifier: the backend's mark_state_dirty consumes
+/// this — it must never reimplement a box-only approximation.
+pub(crate) fn visual_dirty(
     a: &crate::style::VisualStyle,
     b: &crate::style::VisualStyle,
     dark: bool,

@@ -117,6 +117,14 @@ impl PeerCtx {
             let id = ctx.next_id.fetch_add(1, Ordering::SeqCst);
             let (appearance, theme) = ctx.colors.borrow().clone();
             let (_fg, sel_bg, sel_fg) = palette(&theme, &appearance);
+            // forced colors resolve roles through the OS system palette —
+            // creation-time fg is no exception
+            let fg_resolved = match (spec.foreground, appearance.forced_colors) {
+                (crate::style::Color::Role(r), true) => {
+                    sys_color(crate::style::system_slot(r))
+                }
+                (c, _) => crate::style::resolve_color(c, theme.dark),
+            };
             // capability boundary: the peer receives ONLY the resolved
             // foreground — font face/size/weight/selection stay OS-owned.
             // The AUTHORED `Color` is stored — roles re-resolve on theme
@@ -127,7 +135,7 @@ impl PeerCtx {
                 read_only: spec.read_only || spec.disabled,
                 face: "Segoe UI".into(),
                 size_twips: (14.0f32 * 20.0) as i32,
-                fg: crate::style::resolve_color(spec.foreground, theme.dark),
+                fg: fg_resolved,
                 fg_authored: spec.foreground,
                 sel_bg,
                 sel_fg,
@@ -192,8 +200,15 @@ impl crate::node::TextPeer for PeerHandle {
     /// routed into the peer. Resolved against the live appearance, pushed
     /// over all content via the char format.
     fn apply_foreground(&mut self, fg: crate::style::Color) {
-        let (_, theme) = self.ctx.colors.borrow().clone();
-        let c = crate::style::resolve_color(fg, theme.dark);
+        let (app, theme) = self.ctx.colors.borrow().clone();
+        // forced colors: roles resolve through the OS system palette —
+        // the same resolver every render consumer uses
+        let c = match (fg, app.forced_colors) {
+            (crate::style::Color::Role(r), true) => {
+                sys_color(crate::style::system_slot(r))
+            }
+            (c, _) => crate::style::resolve_color(c, theme.dark),
+        };
         let cref = windows::Win32::Foundation::COLORREF(
             ((c[0] * 255.0) as u32)
                 | (((c[1] * 255.0) as u32) << 8)
@@ -506,15 +521,20 @@ where
         // paint all resolve colors through this cell
         {
             let mut c = self.peer_ctx.colors.borrow_mut();
-            if c.1 != self.rt.theme {
+            // compare the WHOLE (appearance, theme) — an appearance-only
+            // change (forced-colors flip, same theme) must still refresh
+            // mounted peer palettes
+            if c.0 != self.rt.appearance() || c.1 != self.rt.theme {
                 *c = (self.rt.appearance(), self.rt.theme.clone());
                 // live theme flip — mounted peers snapshot colors at
                 // create time; push the resolved palette so editor
                 // text/selection follows without a remount
                 let (fg, sel_bg, sel_fg) = palette(&c.1, &c.0);
+                let forced = c.0.forced_colors;
                 for (_, w) in self.peer_ctx.registry.lock().unwrap().iter() {
                     if let Some(p) = w.upgrade() {
-                        p.borrow().set_colors(fg, sel_bg, sel_fg, c.1.dark);
+                        p.borrow()
+                            .set_colors(sel_bg, sel_fg, c.1.dark, forced.then_some(&sys_color));
                     }
                 }
             }
@@ -614,7 +634,7 @@ where
             self.paint()?;
         }
         self.service_peer_events()?;
-        self.rearm_deadline();
+        self.rearm_deadline()?;
         Ok(())
     }
 
@@ -1040,7 +1060,10 @@ where
 
     /// The single framework deadline timer — armed to the sched's earliest
     /// deadline; killed when there's no demand (no persistent polling).
-    pub(crate) fn rearm_deadline(&mut self) {
+    /// Rearm the framework deadline. A FAILED `SetTimer` is surfaced as a
+    /// typed error — silently storing `None` leaves scheduled work asleep
+    /// with no guarantee another turn ever runs.
+    pub(crate) fn rearm_deadline(&mut self) -> UiResult {
         const DEADLINE_ID: usize = 1;
         let next = self.rt.next_deadline();
         match (self.deadline_timer, next) {
@@ -1052,9 +1075,13 @@ where
                     let _ = KillTimer(Some(self.hwnd), DEADLINE_ID);
                     SetTimer(Some(self.hwnd), DEADLINE_ID, due.max(1), None) != 0
                 };
-                // armed state mirrors native truth — a failed SetTimer
-                // leaves deadline_timer None so the next turn retries
-                self.deadline_timer = armed.then_some(n);
+                if !armed {
+                    self.deadline_timer = None;
+                    return Err(UiError::Platform(
+                        "SetTimer(deadline) failed — scheduled work would sleep".into(),
+                    ));
+                }
+                self.deadline_timer = Some(n);
             }
             (Some(_), None) => {
                 unsafe {
@@ -1068,10 +1095,16 @@ where
                     .as_millis() as u32;
                 let armed =
                     unsafe { SetTimer(Some(self.hwnd), DEADLINE_ID, due.max(1), None) != 0 };
-                self.deadline_timer = armed.then_some(n);
+                if !armed {
+                    return Err(UiError::Platform(
+                        "SetTimer(deadline) failed — scheduled work would sleep".into(),
+                    ));
+                }
+                self.deadline_timer = Some(n);
             }
             (None, None) => {}
         }
+        Ok(())
     }
 
     /// The deadline timer fired — drain sched work (frames + chrome) once.
@@ -1109,30 +1142,7 @@ where
         // map. Pruning dead ids happens AFTER their old footprints entered
         // the damage union — never before.
         {
-            let mut new_ink: HashMap<NodeId, LogicalRect> = HashMap::new();
-            for (&id, &r) in self.rects.iter() {
-                let mut i = r;
-                let sh = match self.rt.arena.get(id).map(|n| &n.data) {
-                    Some(crate::node::NodeData::Container { kind, props }) => props
-                        .resolved_box(*kind)
-                        .and_then(|b| b.shadow.map(|s| (b, s))),
-                    Some(crate::node::NodeData::Action {
-                        style, disabled, ..
-                    }) => {
-                        let b = style.resolve(*disabled, false, false, false);
-                        b.shadow.map(|s| (b, s))
-                    }
-                    Some(crate::node::NodeData::Editor { patch, .. }) => {
-                        let c = layout::editor_chrome(patch);
-                        c.shadow.map(|s| (c, s))
-                    }
-                    _ => None,
-                };
-                if let Some((_b, sh)) = sh {
-                    i = i.union(render::shadow_ink_rect(&r, &sh));
-                }
-                new_ink.insert(id, i);
-            }
+            let new_ink = self.ink_map();
             let mut ink = self.committed_ink.borrow_mut();
             // old footprint of a moved/shrunk/removed node is damage too
             for (&id, &old) in ink.iter() {
@@ -1156,12 +1166,73 @@ where
         Ok(())
     }
 
+    /// THE committed-ink authority — per live node, the footprint a paint
+    /// actually deposits: node rect UNION resolved-state shadow ink. The
+    /// resolution runs through `resolved_at` with the LIVE interaction
+    /// state — a hover/pressed-driven shadow change produces real
+    /// old/new footprints, not an all-false approximation. The node rect
+    /// IS the paint clip (this renderer clips per node rect), so the
+    /// recorded footprint is already clip-bounded.
+    fn ink_map(&self) -> HashMap<NodeId, LogicalRect> {
+        let mut m: HashMap<NodeId, LogicalRect> = HashMap::new();
+        for (&id, &r) in self.rects.iter() {
+            let mut i = r;
+            let shadow = self
+                .resolved_at(id, self.interact(id))
+                .and_then(|v| v.box_style.shadow)
+                .or_else(|| {
+                    // editors resolve chrome (non-interactive) — the
+                    // resolved_at path does not cover them
+                    match self.rt.arena.get(id).map(|n| &n.data) {
+                        Some(crate::node::NodeData::Editor { patch, .. }) => {
+                            layout::editor_chrome(patch).shadow
+                        }
+                        Some(crate::node::NodeData::Container { kind, props }) => props
+                            .resolved_box(*kind)
+                            .and_then(|b| b.shadow),
+                        _ => None,
+                    }
+                });
+            if let Some(sh) = shadow {
+                i = i.union(render::shadow_ink_rect(&r, &sh));
+            }
+            m.insert(id, i);
+        }
+        m
+    }
+
     /// Present the frame — D2D target, axis-aligned clips, chrome paint.
+    /// The committed-ink map updates at the SUCCESSFUL paint boundary:
+    /// footprints are computed against the visuals actually resolved for
+    /// THIS paint (live interact state — a state-driven shadow change is
+    /// real old/new ink); a failed draw keeps the last painted truth.
     pub(crate) fn paint(&mut self) -> UiResult {
         if self.hwnd.0.is_null() {
             return Ok(());
         }
+        let new_ink = self.ink_map();
+        {
+            let ink = self.committed_ink.borrow();
+            // paint-only changes damage old UNION new footprints — a grown
+            // shadow invalidates where it now lands AND where it was
+            for (&id, &old) in ink.iter() {
+                let dr = match new_ink.get(&id) {
+                    Some(&new) if new != old => old.union(new),
+                    Some(_) => continue,
+                    None => old,
+                };
+                let acc = self.damage.get().map(|d| d.union(dr)).unwrap_or(dr);
+                self.damage.set(Some(acc));
+            }
+            for (&id, &new) in new_ink.iter() {
+                if !ink.contains_key(&id) {
+                    let acc = self.damage.get().map(|d| d.union(new)).unwrap_or(new);
+                    self.damage.set(Some(acc));
+                }
+            }
+        }
         self.renderer.borrow_mut().draw(&*self)?;
+        *self.committed_ink.borrow_mut() = new_ink;
         // frame committed — the accumulated damage union is consumed
         self.damage.set(None);
         Ok(())
@@ -1701,10 +1772,9 @@ where
         let bits = match (self.resolved_at(id, old), self.resolved_at(id, new)) {
             (Some(a), Some(b)) => {
                 let mut d = 0u8;
-                crate::node::box_dirty(&a.box_style, &b.box_style, self.rt.theme.dark, &mut d);
-                if d == 0 && !crate::style::visual_resolved_eq(&a, &b, self.rt.theme.dark) {
-                    d |= 0b10; // text-only difference — paint
-                }
+                // THE shared classifier — text metric diffs are LAYOUT,
+                // never silently downgraded to paint
+                crate::node::visual_dirty(&a, &b, self.rt.theme.dark, &mut d);
                 d
             }
             (None, None) => 0b10, // unstyled node — repaint (unchanged rule)

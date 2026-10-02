@@ -1048,6 +1048,9 @@ impl ShadowCache {
         self.order.push_back(k.clone());
         self.map.insert(k, (bmp, bytes));
     }
+    pub(crate) fn len(&self) -> usize {
+        self.map.len()
+    }
     /// target/device loss or DPI change — everything derived dies
     pub(crate) fn clear(&mut self) {
         self.map.clear();
@@ -1131,8 +1134,23 @@ pub(crate) fn draw_shadow(
     // normalized radii are part of the raster key — authored proportions
     let norm = radii.normalized(rw, rh);
     let cbits = |v: f32| (v.clamp(0.0, 1.0) * 255.0) as u32;
-    let ox_key = scale.to_physical_f(shadow.offset_x.0).round() as i32;
-    let oy_key = scale.to_physical_f(shadow.offset_y.0).round() as i32;
+    // CHECKED offsets BEFORE integer arithmetic — `as i32` saturates and
+    // a later `x + ox` would wrap/overflow; an offset larger than the max
+    // raster dimension cannot influence the output anyway, so it is an
+    // unrepresentable raster input, not a cast.
+    let ox_f = scale.to_physical_f(shadow.offset_x.0);
+    let oy_f = scale.to_physical_f(shadow.offset_y.0);
+    if !(ox_f.is_finite()
+        && oy_f.is_finite()
+        && ox_f.abs() <= lim
+        && oy_f.abs() <= lim)
+    {
+        return Err(einval().into());
+    }
+    // |offset| <= SHADOW_MAX_DIM, x,y <= w,h <= SHADOW_MAX_DIM — every
+    // x+ox/y+oy below is safely inside i32
+    let ox_key = ox_f.round() as i32;
+    let oy_key = oy_f.round() as i32;
     let key = ShadowKey {
         target_gen,
         width: w as u32,
