@@ -85,6 +85,11 @@ function P-RealType($h,$t)     { Probe @("type",  "$h", $t) }
 # ---- captures (artifact generation is orchestration) ----------------------
 
 function Shot-PrintWindow($h, $name) {
+  # settle: the window's first full frame must have landed — a capture
+  # taken before it lands shows a partially-painted surface (the F12
+  # crop/missing-label artifact). The capture boundary is defined: the
+  # probe asserts the value receipt; the capture is visual evidence only.
+  Start-Sleep -Milliseconds 350
   Add-Type -AssemblyName System.Drawing -ErrorAction SilentlyContinue
   $bmp = New-Object System.Drawing.Bitmap 1000, 950
   $g = [System.Drawing.Graphics]::FromImage($bmp)

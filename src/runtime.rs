@@ -1075,6 +1075,16 @@ where
             .is_some_and(|n| matches!(&n.data, NodeData::Editor { sync, .. } if sync.composing))
     }
 
+    /// The committed mirror for `node` — (applied_text, peer_revision) —
+    /// used by the IME-end reconcile to compare the peer's true text
+    /// against acknowledged committed state.
+    pub(crate) fn committed_editor(&self, node: NodeId) -> Option<(String, TextRevision)> {
+        self.arena.get(node).and_then(|n| match &n.data {
+            NodeData::Editor { sync, .. } => Some((sync.applied_text.clone(), sync.peer_revision)),
+            _ => None,
+        })
+    }
+
     /// Composition flag falls before the final native commit drains —
     /// `composition_end` still runs the proposal verdict.
     pub(crate) fn composition_clear(&mut self, node: NodeId) {

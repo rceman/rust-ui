@@ -1140,11 +1140,7 @@ pub(crate) fn draw_shadow(
     // unrepresentable raster input, not a cast.
     let ox_f = scale.to_physical_f(shadow.offset_x.0);
     let oy_f = scale.to_physical_f(shadow.offset_y.0);
-    if !(ox_f.is_finite()
-        && oy_f.is_finite()
-        && ox_f.abs() <= lim
-        && oy_f.abs() <= lim)
-    {
+    if !(ox_f.is_finite() && oy_f.is_finite() && ox_f.abs() <= lim && oy_f.abs() <= lim) {
         return Err(einval().into());
     }
     // |offset| <= SHADOW_MAX_DIM, x,y <= w,h <= SHADOW_MAX_DIM — every

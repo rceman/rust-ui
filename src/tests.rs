@@ -3864,9 +3864,7 @@ fn native_probe_richedit_paints_text() {
             .unwrap()
         };
         assert!(!praw.is_null());
-        let sel_range: ITextRangeProvider = unsafe {
-            windows_core::Interface::from_raw(praw)
-        };
+        let sel_range: ITextRangeProvider = unsafe { windows_core::Interface::from_raw(praw) };
         unsafe {
             windows::Win32::System::Ole::SafeArrayDestroy(sel_sa);
         }
@@ -3891,9 +3889,7 @@ fn native_probe_richedit_paints_text() {
                     .unwrap()
                 };
                 if !kraw.is_null() {
-                    retained_child = Some(unsafe {
-                        windows_core::Interface::from_raw(kraw)
-                    });
+                    retained_child = Some(unsafe { windows_core::Interface::from_raw(kraw) });
                 }
             }
         }
@@ -4019,7 +4015,10 @@ fn native_probe_richedit_paints_text() {
         // natural_size at the NEW width leaves effective bounds untouched
         let _ = peer.natural_size(999.0).unwrap();
         let (eb2, _) = peer.effective_geometry();
-        assert_eq!(eb2.width, old_b.width, "pending relatch: width write was parked");
+        assert_eq!(
+            eb2.width, old_b.width,
+            "pending relatch: width write was parked"
+        );
         // composition ends -> the pending relatch applies atomically
         peer.set_composing(false);
         peer.finish_pending_relatch().unwrap();
@@ -5505,9 +5504,8 @@ mod native_contract_tests {
             arrival_focus: None,
         };
         // exactly DRAIN_MAX ordinary items -> all drained, nothing left
-        let mut q: std::collections::VecDeque<QueuedMsg> = (0..REENTRANT_DRAIN_MAX)
-            .map(|_| mk(WM_KEYDOWN))
-            .collect();
+        let mut q: std::collections::VecDeque<QueuedMsg> =
+            (0..REENTRANT_DRAIN_MAX).map(|_| mk(WM_KEYDOWN)).collect();
         let mut consumed = 0usize;
         let mut n = 0usize;
         while let Some(m) = next_drain_item(&mut q, consumed) {
@@ -5534,9 +5532,8 @@ mod native_contract_tests {
         assert_eq!(q.len(), 10, "remainder waits for the continuation");
         // TEARDOWN queued at position 129 — beyond the budget — must
         // still be delivered this pass
-        let mut q: std::collections::VecDeque<QueuedMsg> = (0..REENTRANT_DRAIN_MAX)
-            .map(|_| mk(WM_KEYDOWN))
-            .collect();
+        let mut q: std::collections::VecDeque<QueuedMsg> =
+            (0..REENTRANT_DRAIN_MAX).map(|_| mk(WM_KEYDOWN)).collect();
         q.push_back(mk(WM_NCDESTROY));
         let mut consumed = 0usize;
         let mut tore = false;
@@ -5567,9 +5564,8 @@ mod native_contract_tests {
             slot: 2,
             generation: 0,
         };
-        let resolve = |captured: Option<Option<NodeId>>, live: Option<NodeId>| {
-            captured.unwrap_or(live)
-        };
+        let resolve =
+            |captured: Option<Option<NodeId>>, live: Option<NodeId>| captured.unwrap_or(live);
         // replay with captured owner A -> A even though focus moved to B
         assert_eq!(resolve(Some(Some(a)), Some(b)), Some(a));
         // replay that captured NO owner -> None, NOT the new focus B

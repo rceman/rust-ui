@@ -88,6 +88,10 @@ struct Spike {
     /// toggles the draft editor's surgical patch on/off live — exercises
     /// apply_text_style on a mounted peer without remount
     draft_bold: bool,
+    /// count + last text of DraftEdited events the app actually received —
+    /// the observable committed-state contract for the harness
+    draft_edit_count: u32,
+    draft_last_edit: String,
     tile: Rc<dyn CustomRender>,
     turn_counter: u64,
 }
@@ -143,6 +147,8 @@ impl Spike {
             theme_mode: ThemeMode::System,
             reduced: ReducedMotion::System,
             draft_bold: false,
+            draft_edit_count: 0,
+            draft_last_edit: String::new(),
             tile: Rc::new(Tile),
             turn_counter: 0,
         }
@@ -180,6 +186,8 @@ impl Spike {
     fn update(&mut self, msg: Msg, cx: &mut UpdateCtx<Msg>) {
         match msg {
             Msg::DraftEdited(e) => {
+                self.draft_edit_count += 1;
+                self.draft_last_edit = e.text().to_string();
                 let _ = self.draft.accept(e);
             }
             Msg::DraftConflict(c) => {
@@ -296,6 +304,16 @@ impl Spike {
                             self.turn_counter,
                             self.busy,
                             self.notice.as_deref().unwrap_or("-"),
+                        ));
+                        // application-committed state, UIA-readable — the
+                        // harness asserts the app's committed TextValue
+                        // equals the native provider's value
+                        ui.label(format!("draft-echo {}", self.draft.text()));
+                        // observable commit plumbing — edit events the app
+                        // actually saw vs the committed text it holds
+                        ui.label(format!(
+                            "draft-edits {} last {:?}",
+                            self.draft_edit_count, self.draft_last_edit
                         ));
                     });
                 }

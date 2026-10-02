@@ -496,41 +496,63 @@ mod probe {
     /// hiragana, sends REAL SendInput keys, then commits with Enter.
     /// This is acceptance-class evidence: the composition path runs through
     /// the OS input pipeline into real WM_IME_* delivery.
-    /// Observable submit signal — the composer's `turn N` label is the
-    /// real submit counter (Send increments it; a label's name IS its text).
-    pub fn turn_counter(hwnd: HWND) -> Result<Option<u64>> {
+    /// Read a UIA-visible label by `prefix` anywhere under `hwnd`.
+    /// Returns None when the label is absent — callers must not treat a
+    /// missing signal as zero.
+    pub fn uia_label_text(hwnd: HWND, prefix: &str) -> Result<Option<String>> {
         unsafe {
             let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
             let uia: IUIAutomation = CoCreateInstance(&CUIAutomation, None, CLSCTX_ALL)?;
             let root = uia.ElementFromHandle(hwnd)?;
-            unsafe fn walk(uia: &IUIAutomation, el: &IUIAutomationElement) -> Option<u64> {
+            unsafe fn walk(
+                uia: &IUIAutomation,
+                el: &IUIAutomationElement,
+                prefix: &str,
+            ) -> Option<String> {
                 let n = el.CurrentName().unwrap_or_default().to_string();
-                if let Some(rest) = n.strip_prefix("turn ") {
-                    if let Some(n) = rest.split('|').next().and_then(|t| t.trim().parse().ok()) {
-                        return Some(n);
-                    }
+                if n.starts_with(prefix) {
+                    return Some(n);
                 }
                 let walker = uia.RawViewWalker().ok()?;
                 let mut ch = walker.GetFirstChildElement(el).ok();
                 while let Some(c) = ch {
-                    if let Some(v) = walk(uia, &c) {
+                    if let Some(v) = walk(uia, &c, prefix) {
                         return Some(v);
                     }
                     ch = walker.GetNextSiblingElement(&c).ok();
                 }
                 None
             }
-            let out = walk(&uia, &root);
+            let out = walk(&uia, &root, prefix);
             CoUninitialize();
             Ok(out)
         }
     }
 
+    /// Observable submit signal — the composer's `turn N` label is the
+    /// real submit counter (Send increments it; a label's name IS its
+    /// text). The label lives inside the details group — the scenario
+    /// must expand details first; a MISSING signal is a test failure,
+    /// not a zero.
+    pub fn turn_counter(hwnd: HWND) -> Result<Option<u64>> {
+        Ok(uia_label_text(hwnd, "turn ")?.and_then(|n| {
+            n.strip_prefix("turn ")
+                .and_then(|rest| rest.split('|').next())
+                .and_then(|t| t.trim().parse().ok())
+        }))
+    }
+
     pub fn ime_japanese(hwnd: HWND, editor: &str, keys: &str) -> Result<String> {
         // record the BEFORE value AND submit counter — a commit must extend
-        // the text, never replace it, and MUST NOT submit
+        // the text, never replace it, and MUST NOT submit. The counter is
+        // a REQUIRED observable signal: absent = failure, not zero.
         let before = uia_value(hwnd, editor)?.unwrap_or_default();
-        let submits = turn_counter(hwnd)?.unwrap_or(0);
+        let submits = turn_counter(hwnd)?.ok_or_else(|| {
+            Error::new(
+                E_FAIL.into(),
+                "turn counter label not visible — expand details before the IME scenario",
+            )
+        })?;
         ime_japanese_inner(hwnd, editor, keys, &before, submits)
     }
 
@@ -568,27 +590,42 @@ mod probe {
             let mut k = INPUT::default();
             k.r#type = INPUT_KEYBOARD;
             k.Anonymous.ki.wVk = VIRTUAL_KEY(0xF2); // VK_DBE_HIRAGANA
-            let _ = SendInput(&[k], std::mem::size_of::<INPUT>() as i32);
+            // every required input is asserted — SendInput returns the
+            // number of events inserted; 0 means the call was blocked
+            let send1 = |inp: &INPUT| -> Result<()> {
+                let n = SendInput(
+                    std::slice::from_ref(inp),
+                    std::mem::size_of::<INPUT>() as i32,
+                );
+                if n != 1 {
+                    return Err(Error::new(
+                        E_FAIL.into(),
+                        format!("SendInput inserted {n}/1 events"),
+                    ));
+                }
+                Ok(())
+            };
+            send1(&k)?;
             k.Anonymous.ki.dwFlags = KEYEVENTF_KEYUP;
-            let _ = SendInput(&[k], std::mem::size_of::<INPUT>() as i32);
+            send1(&k)?;
             std::thread::sleep(std::time::Duration::from_millis(300));
             // real keystrokes — the OS IME turns ASCII into hiragana preedit
             for ch in keys.chars() {
                 let mut inp = INPUT::default();
                 inp.r#type = INPUT_KEYBOARD;
                 inp.Anonymous.ki.wVk = VIRTUAL_KEY(ch.to_ascii_uppercase() as u16);
-                let _ = SendInput(&[inp], std::mem::size_of::<INPUT>() as i32);
+                send1(&inp)?;
                 inp.Anonymous.ki.dwFlags = KEYEVENTF_KEYUP;
-                let _ = SendInput(&[inp], std::mem::size_of::<INPUT>() as i32);
+                send1(&inp)?;
                 std::thread::sleep(std::time::Duration::from_millis(120));
             }
             // Enter commits the composition
             let mut enter = INPUT::default();
             enter.r#type = INPUT_KEYBOARD;
             enter.Anonymous.ki.wVk = VK_RETURN;
-            let _ = SendInput(&[enter], std::mem::size_of::<INPUT>() as i32);
+            send1(&enter)?;
             enter.Anonymous.ki.dwFlags = KEYEVENTF_KEYUP;
-            let _ = SendInput(&[enter], std::mem::size_of::<INPUT>() as i32);
+            send1(&enter)?;
             std::thread::sleep(std::time::Duration::from_millis(600));
             // restore English — drop the COM object BEFORE CoUninitialize
             let _ = mgr.ChangeCurrentLanguage(0x409);
@@ -626,7 +663,12 @@ mod probe {
                     format!("IME acceptance failed: gained {gained:?} has no kana"),
                 ));
             }
-            let submits_after = turn_counter(hwnd)?.unwrap_or(0);
+            let submits_after = turn_counter(hwnd)?.ok_or_else(|| {
+                Error::new(
+                    E_FAIL.into(),
+                    "turn counter label disappeared during the IME run",
+                )
+            })?;
             if submits_after != submits_before {
                 return Err(Error::new(
                     E_FAIL.into(),
@@ -635,14 +677,55 @@ mod probe {
                     ),
                 ));
             }
+            // the APPLICATION's committed TextValue must equal the native
+            // provider's value — the draft-echo label renders
+            // `draft.text()`; agreement proves native and shared state
+            // converge (a provider-only read could hide a lost commit).
+            let echo = uia_label_text(hwnd, "draft-echo ")?.ok_or_else(|| {
+                Error::new(
+                    E_FAIL.into(),
+                    "draft-echo label missing — the app committed value is unobservable",
+                )
+            })?;
+            let app_committed = echo.trim_start_matches("draft-echo ").to_string();
+            if app_committed != after {
+                return Err(Error::new(
+                    E_FAIL.into(),
+                    format!("app committed {app_committed:?} != native provider value {after:?}"),
+                ));
+            }
             Ok(format!(
-                "{{\"kind\":\"ime\",\"evidence\":\"acceptance\",\"keys\":\"{keys}\",\"before\":\"{}\",\"gained\":\"{}\",\"submits\":{}}}",
-                before.replace('"', "\\\""),
-                gained.replace('"', "\\\""),
+                "{{\"kind\":\"ime\",\"evidence\":\"acceptance\",\"keys\":{},\"before\":{},\"gained\":{},\"submits\":{}}}",
+                crate::json_str(keys),
+                crate::json_str(before),
+                crate::json_str(gained),
                 submits_after,
             ))
         }
     }
+}
+
+#[cfg(windows)]
+/// Complete JSON string escaping — quotes, backslashes, control chars and
+/// newlines all escape; used by EVERY string the harness emits.
+pub fn json_str(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('"');
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if (c as u32) < 0x20 => {
+                out.push_str(&format!("\\u{:04x}", c as u32));
+            }
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
 }
 
 #[cfg(windows)]

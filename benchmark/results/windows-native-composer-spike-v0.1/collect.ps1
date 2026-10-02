@@ -137,11 +137,22 @@ function S-Send {
 
 function S-Ime {
   $p = Launch-Composer
+  # the submit counter + committed echo live inside the details group —
+  # expand it so the probe can REQUIRE the observable signal
+  P-ClickNamed $p.MainWindowHandle "show details" | Out-Null
+  Start-Sleep -Milliseconds 400
   P-ClickNamed $p.MainWindowHandle "draft" | Out-Null
   $r = P-Ime $p.MainWindowHandle "draft" "arigato"
   $r | ConvertTo-Json | Set-Content "$($script:OutDir)\ime.json" -Encoding UTF8
   Shot-PrintWindow $p.MainWindowHandle "ime.png"
   "draft_value=$(P-Value $p.MainWindowHandle 'draft')" | Set-Content "$($script:OutDir)\ime.txt" -Encoding UTF8
+  Stop-Composer $p
+}
+
+function S-Foundation {
+  $p = Launch-Composer
+  P-ClickNamed $p.MainWindowHandle "draft" | Out-Null
+  Shot-PrintWindow $p.MainWindowHandle "final-foundation.png"
   Stop-Composer $p
 }
 
@@ -204,7 +215,8 @@ function S-Theme {
 # ---- driver ----------------------------------------------------------------
 
 $all = @("smoke","typing","unicode","selection","undo","readonly","disabled",
-         "multiline","reorder","send","ime","uia","dpi","idle","scale","theme")
+         "multiline","reorder","send","ime","uia","dpi","idle","scale","theme",
+         "foundation")
 $run = if ($Scenario -eq "all") { $all } else { $Scenario.Split(",") }
 
 $sha = git rev-parse HEAD 2>$null
@@ -229,6 +241,7 @@ foreach ($s in $run) {
     "idle"      { S-Idle }
     "scale"     { S-Scale }
     "theme"     { S-Theme }
+    "foundation"{ S-Foundation }
     default     { Write-Warning "unknown scenario $s" }
   }
   Write-Output "scenario $s done"

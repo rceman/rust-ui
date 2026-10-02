@@ -65,6 +65,10 @@ pub(crate) struct PerfCounters {
     /// preedit leaking into the committed channel is a defect we count,
     /// not a value we route
     pub preedit_commits_suppressed: AtomicU64,
+    /// IME-end reconcile emitted a commit — the final EN_CHANGE arrived
+    /// while the composing flag was still up and had to be reconstructed
+    /// from peer-vs-mirror divergence.
+    pub ime_reconciled_commits: AtomicU64,
 }
 
 impl PerfCounters {
@@ -77,6 +81,7 @@ impl PerfCounters {
             native_caret_redraws: AtomicU64::new(0),
             native_timer_fires: AtomicU64::new(0),
             preedit_commits_suppressed: AtomicU64::new(0),
+            ime_reconciled_commits: AtomicU64::new(0),
         }
     }
 }
@@ -120,9 +125,7 @@ impl PeerCtx {
             // forced colors resolve roles through the OS system palette —
             // creation-time fg is no exception
             let fg_resolved = match (spec.foreground, appearance.forced_colors) {
-                (crate::style::Color::Role(r), true) => {
-                    sys_color(crate::style::system_slot(r))
-                }
+                (crate::style::Color::Role(r), true) => sys_color(crate::style::system_slot(r)),
                 (c, _) => crate::style::resolve_color(c, theme.dark),
             };
             // capability boundary: the peer receives ONLY the resolved
@@ -204,9 +207,7 @@ impl crate::node::TextPeer for PeerHandle {
         // forced colors: roles resolve through the OS system palette —
         // the same resolver every render consumer uses
         let c = match (fg, app.forced_colors) {
-            (crate::style::Color::Role(r), true) => {
-                sys_color(crate::style::system_slot(r))
-            }
+            (crate::style::Color::Role(r), true) => sys_color(crate::style::system_slot(r)),
             (c, _) => crate::style::resolve_color(c, theme.dark),
         };
         let cref = windows::Win32::Foundation::COLORREF(
@@ -462,10 +463,7 @@ where
     /// post rolls the flag back and surfaces a typed error — the caller's
     /// fatal path propagates it. Guaranteed-progress semantics are real.
     pub(crate) fn wake_pump(&self) -> UiResult {
-        if self.hwnd.0.is_null()
-            || self.closed.load(Ordering::SeqCst)
-            || self.pump_queued.get()
-        {
+        if self.hwnd.0.is_null() || self.closed.load(Ordering::SeqCst) || self.pump_queued.get() {
             return Ok(()); // nothing to wake, or already armed
         }
         self.pump_queued.set(true);
@@ -533,8 +531,12 @@ where
                 let forced = c.0.forced_colors;
                 for (_, w) in self.peer_ctx.registry.lock().unwrap().iter() {
                     if let Some(p) = w.upgrade() {
-                        p.borrow()
-                            .set_colors(sel_bg, sel_fg, c.1.dark, forced.then_some(&sys_color));
+                        p.borrow().set_colors(
+                            sel_bg,
+                            sel_fg,
+                            c.1.dark,
+                            forced.then_some(&sys_color),
+                        );
                     }
                 }
             }
@@ -1187,9 +1189,9 @@ where
                         Some(crate::node::NodeData::Editor { patch, .. }) => {
                             layout::editor_chrome(patch).shadow
                         }
-                        Some(crate::node::NodeData::Container { kind, props }) => props
-                            .resolved_box(*kind)
-                            .and_then(|b| b.shadow),
+                        Some(crate::node::NodeData::Container { kind, props }) => {
+                            props.resolved_box(*kind).and_then(|b| b.shadow)
+                        }
                         _ => None,
                     }
                 });
@@ -2257,6 +2259,14 @@ where
         }
         self.service_peer_events()?;
         if let Some(id) = owner {
+            // RECONCILE the final commit — the ending EN_CHANGE can drain
+            // while the composing flag is still up (suppressed as preedit),
+            // so notification delivery alone cannot guarantee the app's
+            // committed TextValue observes the commit. Compare the peer's
+            // true text to the committed mirror and emit the commit edit.
+            if let Some(peer) = self.peer_for(id) {
+                self.reconcile_commit(&peer)?;
+            }
             // the final committed edit must be ACKNOWLEDGED (pumped into
             // committed runtime state) before pending proposals resolve —
             // otherwise a stale-base proposal can overwrite the commit
@@ -2267,6 +2277,46 @@ where
             }
         }
         self.turn()
+    }
+
+    /// Post-composition truth reconcile: if the peer's text differs from
+    /// the runtime's committed mirror, the final commit was suppressed as
+    /// preedit during composition — emit it now, before proposal verdicts.
+    /// No-op when peer and mirror already agree (IME cancelled, or the
+    /// commit already routed normally).
+    fn reconcile_commit(&mut self, peer: &Rc<RefCell<WindowlessPeer>>) -> UiResult {
+        let (text, node, base, binding) = {
+            let p = peer.borrow();
+            (p.text()?, p.node(), p.peer_rev(), p.binding())
+        };
+        let Some(binding) = binding else {
+            return Ok(());
+        };
+        let Some((committed, mirror_base)) = self.rt.committed_editor(node) else {
+            return Ok(());
+        };
+        if text == committed {
+            return Ok(()); // already in agreement — nothing to commit
+        }
+        // the reconcile base must be the mirror's peer_revision — the
+        // sequence of real commits, not the peer's possibly-advanced counter
+        let result = crate::text::TextRevision::mint();
+        let _ = base;
+        self.rt.edit_event(
+            node,
+            TextEdit {
+                text,
+                base: mirror_base,
+                result,
+                origin: EditOrigin::NativePeer,
+                binding,
+            },
+        )?;
+        peer.borrow().record_commit(result);
+        self.counters
+            .ime_reconciled_commits
+            .fetch_add(1, Ordering::Relaxed);
+        Ok(())
     }
 
     /// Backend teardown — UIA disconnects BEFORE peers/surfaces/model die.
