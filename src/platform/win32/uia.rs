@@ -650,8 +650,9 @@ unsafe fn fence_range_array(
 
 /// SAFEARRAY of IRawElementProviderSimple -> same shape, each element
 /// fenced through `fence_provider` — same ownership contract as
-/// fence_range_array.
-unsafe fn fence_provider_array(
+/// fence_range_array. `pub(crate)` so the F07 fixture can drive the real
+/// path against a nonempty array of genuine native provider references.
+pub(crate) unsafe fn fence_provider_array(
     sa: *mut SAFEARRAY,
     snap: &Arc<Snapshot>,
     node: NodeId,

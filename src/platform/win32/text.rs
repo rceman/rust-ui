@@ -1134,10 +1134,13 @@ impl WindowlessPeer {
     pub(crate) fn natural_size(&self, width_dip: f32) -> UiResult<(f32, f32)> {
         {
             let mut s = self.shared_mut();
-            // while a relatch is pending the effective geometry is still
-            // the old one — measure AT it; writing the new width would
-            // corrupt the host callbacks' coordinate space mid-composition
-            if self.pending_relatch.borrow().is_none() {
+            // the effective geometry authority is `host.bounds` — while
+            // COMPOSING (or a relatch already parked) it holds the old
+            // space msftedit still renders in. Layout measures BEFORE
+            // apply_bounds, so gating on `pending_relatch` alone installs
+            // the freeze too late: a mid-composition width write would
+            // corrupt host callbacks' coordinate space.
+            if !self.composing.get() && self.pending_relatch.borrow().is_none() {
                 s.host.bounds.width = width_dip;
                 if s.host.bounds.height <= 0.0 {
                     // scratch height — the service reports natural extent
@@ -1222,6 +1225,14 @@ impl WindowlessPeer {
     /// While composition is active the whole relatch is DEFERRED —
     /// neither the latched space nor the bookkeeping is touched.
     pub(crate) fn apply_bounds(&self, bounds: LogicalRect, scale: ScaleFactor) -> UiResult {
+        if self.composing.get() {
+            // an active IME composition owns the effective geometry —
+            // EVERY write defers whole (bounds AND scale together) until
+            // ime_end: measurement, same-scale moves and scale relatch
+            // all share the one frozen space msftedit still renders in
+            *self.pending_relatch.borrow_mut() = Some((bounds, scale));
+            return Ok(());
+        }
         let prev = self.shared().host.scale;
         let needs_relatch = self.activation.get() != Activation::Inactive && prev != scale;
         if !needs_relatch {
@@ -1231,12 +1242,6 @@ impl WindowlessPeer {
                 s.host.scale = scale;
             }
             return self.ensure_in_place();
-        }
-        if self.composing.get() {
-            // an active IME composition owns UI activation — the relatch
-            // defers whole (bounds AND scale together) until ime_end
-            *self.pending_relatch.borrow_mut() = Some((bounds, scale));
-            return Ok(());
         }
         // 1. selection snapshot — checked; abort rather than lose it
         let sel = self.selection_utf16()?;
@@ -1378,6 +1383,25 @@ impl WindowlessPeer {
     /// OS system-color resolver — a role foreground under forced colors
     /// resolves through it (same authority as the render path); literal
     /// colors pass through the ordinary resolver.
+    /// The effective (fg, sel_bg, sel_fg) this peer would apply — the
+    /// RESOLVED output, including forced-color system slots. Comparing
+    /// these values (not appearance/theme descriptors) is how the
+    /// backend detects a real palette change.
+    pub(crate) fn effective_colors(
+        &self,
+        sel_bg: [f32; 4],
+        sel_fg: [f32; 4],
+        dark: bool,
+        forced: Option<&dyn Fn(crate::style::SystemColor) -> [f32; 4]>,
+    ) -> ([f32; 4], [f32; 4], [f32; 4]) {
+        let s = self.shared();
+        let fg = match (s.host.fg_authored, forced) {
+            (crate::style::Color::Role(r), Some(f)) => f(crate::style::system_slot(r)),
+            (c, _) => crate::style::resolve_color(c, dark),
+        };
+        (fg, sel_bg, sel_fg)
+    }
+
     pub(crate) fn set_colors(
         &self,
         sel_bg: [f32; 4],
@@ -1385,11 +1409,8 @@ impl WindowlessPeer {
         dark: bool,
         forced: Option<&dyn Fn(crate::style::SystemColor) -> [f32; 4]>,
     ) {
+        let (resolved, sel_bg, sel_fg) = self.effective_colors(sel_bg, sel_fg, dark, forced);
         let mut s = self.shared_mut();
-        let resolved = match (s.host.fg_authored, forced) {
-            (crate::style::Color::Role(r), Some(f)) => f(crate::style::system_slot(r)),
-            (c, _) => crate::style::resolve_color(c, dark),
-        };
         s.host.fg = colorref(resolved);
         s.host.cf.crTextColor = colorref(resolved);
         s.host.sel_bg = colorref(sel_bg);
@@ -1577,6 +1598,35 @@ impl crate::node::TextPeer for WindowlessPeer {
     fn attach(&mut self, node: NodeId) {
         self.node = node;
         self.shared_mut().host.node = Some(node);
+    }
+}
+
+#[cfg(test)]
+impl WindowlessPeer {
+    /// TEST SEAM — write text into the real service WITHOUT the
+    /// programmatic-ack channel (no sink Edit) — the same bytes a real
+    /// IME commit leaves behind.
+    pub(crate) fn native_write_for_test(&self, text: &str) -> UiResult {
+        unsafe {
+            let h = windows_core::HSTRING::from(text);
+            self.tx()
+                .TxSetText(windows_core::PCWSTR(h.as_ptr()))
+                .map_err(|e| UiError::Platform(format!("TxSetText: {e}")))?;
+        }
+        Ok(())
+    }
+
+    /// TEST SEAM — emit the host Change notification EN_CHANGE raises.
+    pub(crate) fn emit_change_for_test(&self) {
+        self.shared_mut().host.ev(HostEvent::Change);
+    }
+
+    /// TEST SEAM — the colors actually applied to the host
+    /// (fg, sel_bg, sel_fg as COLORREF channels) — the F08 assertion
+    /// surface: "the peer palette refreshed" must mean THESE changed.
+    pub(crate) fn applied_colors_for_test(&self) -> (u32, u32, u32) {
+        let s = self.shared();
+        (s.host.fg.0, s.host.sel_bg.0, s.host.sel_fg.0)
     }
 }
 

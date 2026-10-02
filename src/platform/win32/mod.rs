@@ -108,24 +108,52 @@ pub(crate) struct PeerCtx {
     next_id: AtomicU64,
     /// live theme colors for peer creation (updated on theme switch)
     pub colors: std::cell::RefCell<(Appearance, Theme)>,
+    /// THE system-color authority for the peer palette path — one fn so
+    /// a test can move the RESOLVED palette under identical descriptors
+    pub sys_resolver: std::cell::Cell<fn(crate::style::SystemColor) -> [f32; 4]>,
 }
 
 impl PeerCtx {
+    #[cfg(test)]
+    pub(crate) fn for_test() -> UiResult<Rc<PeerCtx>> {
+        Ok(Rc::new(PeerCtx {
+            lib: Msftedit::load()?,
+            hwnd: std::cell::Cell::new(HWND::default()),
+            scale: std::cell::Cell::new(space::ScaleFactor::ONE),
+            hot: std::cell::Cell::new(None),
+            pressed: std::cell::Cell::new(None),
+            focus: std::cell::Cell::new(None),
+            sink: Arc::new(Mutex::new(Vec::new())),
+            registry: Arc::new(Mutex::new(HashMap::new())),
+            timer_pool: Arc::new(Mutex::new(crate::platform::win32::text::TimerPool::new())),
+            next_id: AtomicU64::new(1),
+            sys_resolver: std::cell::Cell::new(sys_color),
+            colors: std::cell::RefCell::new((
+                Appearance {
+                    dark: false,
+                    forced_colors: false,
+                },
+                Theme::light(),
+            )),
+        }))
+    }
+
     /// The `peer_factory` closure passed into `Runtime::new`. The ctx is
     /// UI-thread-only (peers are windowless COM objects) — the registry is
     /// a routing index of Weak handles, not a second owner.
-    fn make_factory(
+    pub(crate) fn make_factory(
         self: &Rc<PeerCtx>,
     ) -> impl Fn(crate::node::PeerSpec) -> UiResult<Box<dyn crate::node::TextPeer>> + 'static {
         let ctx = self.clone();
         move |spec| {
             let id = ctx.next_id.fetch_add(1, Ordering::SeqCst);
             let (appearance, theme) = ctx.colors.borrow().clone();
-            let (_fg, sel_bg, sel_fg) = palette(&theme, &appearance);
+            let resolver = ctx.sys_resolver.get();
+            let (_fg, sel_bg, sel_fg) = palette(&theme, &appearance, &resolver);
             // forced colors resolve roles through the OS system palette —
             // creation-time fg is no exception
             let fg_resolved = match (spec.foreground, appearance.forced_colors) {
-                (crate::style::Color::Role(r), true) => sys_color(crate::style::system_slot(r)),
+                (crate::style::Color::Role(r), true) => resolver(crate::style::system_slot(r)),
                 (c, _) => crate::style::resolve_color(c, theme.dark),
             };
             // capability boundary: the peer receives ONLY the resolved
@@ -206,8 +234,9 @@ impl crate::node::TextPeer for PeerHandle {
         let (app, theme) = self.ctx.colors.borrow().clone();
         // forced colors: roles resolve through the OS system palette —
         // the same resolver every render consumer uses
+        let resolver = self.ctx.sys_resolver.get();
         let c = match (fg, app.forced_colors) {
-            (crate::style::Color::Role(r), true) => sys_color(crate::style::system_slot(r)),
+            (crate::style::Color::Role(r), true) => resolver(crate::style::system_slot(r)),
             (c, _) => crate::style::resolve_color(c, theme.dark),
         };
         let cref = windows::Win32::Foundation::COLORREF(
@@ -235,7 +264,13 @@ impl crate::node::TextPeer for PeerHandle {
 }
 
 /// Theme palette handed to peers (fg/selection colors as `COLORREF` floats).
-pub(crate) fn palette(theme: &Theme, appearance: &Appearance) -> ([f32; 4], [f32; 4], [f32; 4]) {
+/// `sys` is THE system-color authority — the palette's resolved output
+/// moves with it even when (appearance, theme) are identical.
+pub(crate) fn palette(
+    theme: &Theme,
+    appearance: &Appearance,
+    sys: &dyn Fn(crate::style::SystemColor) -> [f32; 4],
+) -> ([f32; 4], [f32; 4], [f32; 4]) {
     // forced colors: the peer's selection palette follows the OS system
     // colors — the same resolver every other consumer uses
     if appearance.forced_colors {
@@ -245,8 +280,8 @@ pub(crate) fn palette(theme: &Theme, appearance: &Appearance) -> ([f32; 4], [f32
             } else {
                 [0.09, 0.09, 0.11, 1.0]
             },
-            sys_color(crate::style::SystemColor::Highlight),
-            sys_color(crate::style::SystemColor::HighlightText),
+            sys(crate::style::SystemColor::Highlight),
+            sys(crate::style::SystemColor::HighlightText),
         );
     }
     if theme.dark {
@@ -339,8 +374,6 @@ where
     pub counters: Arc<PerfCounters>,
     /// ended by WM_DESTROY — the pump exits
     pub closed: Arc<AtomicBool>,
-    /// appearance snapshot the last review ran under
-    last_appearance: Appearance,
     /// last fatal backend error surfaced from a WndProc
     fatal: Option<crate::UiError>,
     /// `turn()` is executing — native reentrancy (e.g. `SetFocus` inside
@@ -370,7 +403,7 @@ where
     arrival_focus: std::cell::Cell<Option<Option<NodeId>>>,
     /// the peer that received WM_IME_STARTCOMPOSITION — composition owns
     /// it through END, even if focus moved meanwhile
-    ime_owner: std::cell::Cell<Option<NodeId>>,
+    pub(crate) ime_owner: std::cell::Cell<Option<NodeId>>,
     /// a reentrant push exceeded REENTRANT_QUEUE_CAP — surfaced as
     /// QueueOverflow by the next drain (typed failure, never silent loss)
     queue_overflowed: std::cell::Cell<bool>,
@@ -384,6 +417,61 @@ where
     /// node -> the ink footprint it committed at the LAST paint — the old
     /// half of the damage union
     committed_ink: std::cell::RefCell<HashMap<NodeId, LogicalRect>>,
+    /// the effective colors LAST pushed to mounted peers — per-peer
+    /// (fg, sel_bg, sel_fg) resolved output keyed by NodeId. Compared
+    /// against a fresh resolution every turn: descriptor-equal
+    /// GetSysColor drift still refreshes.
+    applied_palette: std::cell::RefCell<Option<Vec<(NodeId, ([f32; 4], [f32; 4], [f32; 4]))>>>,
+}
+
+#[cfg(test)]
+impl<S, M, U, V> Backend<S, M, U, V>
+where
+    M: 'static,
+    U: Fn(&mut S, M, &mut UpdateCtx<'_, M>),
+    V: Fn(&S, &mut crate::Ui<'_, '_, M>),
+{
+    /// Headless backend for queue/teardown/ownership tests — wraps a
+    /// caller-built Runtime with a NULL HWND (no window, no presenter
+    /// target). `drain_reentrant`, `shutdown` and the owner pins run the
+    /// real production paths.
+    pub(crate) fn for_test(
+        rt: crate::runtime::Runtime<S, M, U, V>,
+        peer_ctx: Rc<PeerCtx>,
+    ) -> UiResult<Self> {
+        Ok(Backend {
+            rt,
+            hwnd: HWND::default(),
+            peer_ctx,
+            renderer: RefCell::new(Renderer::new()?),
+            rects: HashMap::new(),
+            order: Vec::new(),
+            focus: None,
+            hot: None,
+            pressed: None,
+            native_capture: None,
+            mouse: Point { x: 0.0, y: 0.0 },
+            deadline_timer: None,
+            tooltip_for: None,
+            uia: None,
+            counters: Arc::new(PerfCounters::new()),
+            closed: Arc::new(AtomicBool::new(false)),
+            fatal: None,
+            in_turn: std::cell::Cell::new(false),
+            reentrant_queue: std::cell::RefCell::new(std::collections::VecDeque::new()),
+            arrival_focus: std::cell::Cell::new(None),
+            ime_owner: std::cell::Cell::new(None),
+            queue_overflowed: std::cell::Cell::new(false),
+            pending_lead_surrogate: std::cell::Cell::new(None),
+            in_dispatch: std::cell::Cell::new(false),
+            pump_queued: std::cell::Cell::new(false),
+            deferred_native: std::collections::VecDeque::new(),
+            state_dirty: std::cell::Cell::new(0),
+            damage: std::cell::Cell::new(None),
+            committed_ink: std::cell::RefCell::new(HashMap::new()),
+            applied_palette: std::cell::RefCell::new(None),
+        })
+    }
 }
 
 /// The deferred-native-delivery contract (private to this backend).
@@ -502,6 +590,11 @@ where
         // a pump post may still be in flight after this turn settles — it
         // clears the flag so a later reentrant call re-arms the post
         self.pump_queued.set(false);
+        // safe-point: a cross-thread mailbox wake whose post failed is a
+        // broken progress guarantee — surface typed, same as wake_pump
+        if self.rt.mailbox.take_wake_failure() {
+            return Err(UiError::Platform("mailbox wake post failed".into()));
+        }
         // peer-emitted semantic events (ack edits, selections)
         let items: Vec<NativeSinkItem> = std::mem::take(&mut *self.peer_ctx.sink.lock().unwrap());
         for it in items {
@@ -515,30 +608,43 @@ where
             }
         }
         let updated = self.rt.pump()?;
-        // the view may have re-staged a theme this turn — peers + layout +
-        // paint all resolve colors through this cell
+        // peer-creation spec stays current — new peers mount with the
+        // live (appearance, theme)
+        *self.peer_ctx.colors.borrow_mut() = (self.rt.appearance(), self.rt.theme.clone());
+        // EFFECTIVE palette refresh — compare the RESOLVED color output
+        // peers would apply, never the descriptors: a GetSysColor change
+        // under identical (appearance, theme) is real palette drift, and
+        // pre-seeding an applied-cache with descriptors would hide it.
         {
-            let mut c = self.peer_ctx.colors.borrow_mut();
-            // compare the WHOLE (appearance, theme) — an appearance-only
-            // change (forced-colors flip, same theme) must still refresh
-            // mounted peer palettes
-            if c.0 != self.rt.appearance() || c.1 != self.rt.theme {
-                *c = (self.rt.appearance(), self.rt.theme.clone());
-                // live theme flip — mounted peers snapshot colors at
-                // create time; push the resolved palette so editor
-                // text/selection follows without a remount
-                let (fg, sel_bg, sel_fg) = palette(&c.1, &c.0);
-                let forced = c.0.forced_colors;
-                for (_, w) in self.peer_ctx.registry.lock().unwrap().iter() {
-                    if let Some(p) = w.upgrade() {
-                        p.borrow().set_colors(
-                            sel_bg,
-                            sel_fg,
-                            c.1.dark,
-                            forced.then_some(&sys_color),
-                        );
-                    }
+            let appearance = self.rt.appearance();
+            let dark = self.rt.theme.dark;
+            let forced = appearance.forced_colors;
+            let sys = self.peer_ctx.sys_resolver.get();
+            let (_fg, sel_bg, sel_fg) = palette(&self.rt.theme, &appearance, &sys);
+            let resolver = forced.then_some(&sys as &dyn Fn(crate::style::SystemColor) -> [f32; 4]);
+            // per-peer effective tuple — keyed by full NodeId so a same-
+            // slot recreate compares fresh
+            let peers: Vec<(u32, Rc<RefCell<WindowlessPeer>>)> = self
+                .peer_ctx
+                .registry
+                .lock()
+                .unwrap()
+                .iter()
+                .filter_map(|(slot, w)| w.upgrade().map(|p| (*slot, p)))
+                .collect();
+            let current: Vec<(NodeId, ([f32; 4], [f32; 4], [f32; 4]))> = peers
+                .iter()
+                .map(|(_, p)| {
+                    let p = p.borrow();
+                    (p.node(), p.effective_colors(sel_bg, sel_fg, dark, resolver))
+                })
+                .collect();
+            let mut applied = self.applied_palette.borrow_mut();
+            if applied.as_ref() != Some(&current) {
+                for (_, p) in &peers {
+                    p.borrow().set_colors(sel_bg, sel_fg, dark, resolver);
                 }
+                *applied = Some(current);
             }
         }
         // scheduler due work: frames -> events, chrome -> render side
@@ -767,6 +873,24 @@ where
     }
     pub(crate) fn send_focused(&mut self, msg: u32, wparam: usize, lparam: isize) -> UiResult {
         if let Some(id) = self.focused_target() {
+            self.deliver_native(id, msg, wparam, lparam)?;
+        }
+        Ok(())
+    }
+
+    /// IME delivery owner — the pinned composition peer while a
+    /// composition is live; the focus-captured target otherwise
+    /// (STARTCOMPOSITION establishes the pin, so it resolves through the
+    /// arrival snapshot before `ime_owner` is set).
+    pub(crate) fn ime_target(&self) -> Option<NodeId> {
+        self.ime_owner.get().or_else(|| self.focused_target())
+    }
+
+    /// Native IME traffic goes to the composition OWNER — a focus change
+    /// mid-composition must not redirect preedit/candidate handling or
+    /// the ending commit to another peer.
+    pub(crate) fn send_ime(&mut self, msg: u32, wparam: usize, lparam: isize) -> UiResult {
+        if let Some(id) = self.ime_target() {
             self.deliver_native(id, msg, wparam, lparam)?;
         }
         Ok(())
@@ -1138,34 +1262,36 @@ where
         // prune stale ids — backend cache holds live NodeIds only
         self.rects = rects;
         self.order = order;
-        // Damage contract: compute the NEW committed ink per node first,
-        // diff against the OLD map, union both halves for every changed /
-        // moved / removed id into `damage`, and only THEN install the new
-        // map. Pruning dead ids happens AFTER their old footprints entered
-        // the damage union — never before.
-        {
-            let new_ink = self.ink_map();
-            let mut ink = self.committed_ink.borrow_mut();
-            // old footprint of a moved/shrunk/removed node is damage too
-            for (&id, &old) in ink.iter() {
-                let dr = match new_ink.get(&id) {
-                    Some(&new) if new != old => old.union(new),
-                    Some(_) => continue,
-                    None => old,
-                };
-                let acc = self.damage.get().map(|d| d.union(dr)).unwrap_or(dr);
+        // Damage contract: compute the PROPOSED ink for the new layout and
+        // union old-committed + proposed into `damage` — but do NOT
+        // install it. `committed_ink` is owned exclusively by successful
+        // paint completion; a relayout that never reaches a working paint
+        // must not replace the last-painted truth.
+        let proposed = self.ink_map();
+        self.accumulate_ink_damage(&proposed);
+        Ok(())
+    }
+
+    /// Union the OLD committed ink and a NEW proposed map into `damage`
+    /// for every changed/moved/removed id — and brand-new nodes too.
+    /// Reads, never writes, the committed snapshot.
+    fn accumulate_ink_damage(&self, new_ink: &HashMap<NodeId, LogicalRect>) {
+        let ink = self.committed_ink.borrow();
+        for (&id, &old) in ink.iter() {
+            let dr = match new_ink.get(&id) {
+                Some(&new) if new != old => old.union(new),
+                Some(_) => continue,
+                None => old,
+            };
+            let acc = self.damage.get().map(|d| d.union(dr)).unwrap_or(dr);
+            self.damage.set(Some(acc));
+        }
+        for (&id, &new) in new_ink.iter() {
+            if !ink.contains_key(&id) {
+                let acc = self.damage.get().map(|d| d.union(new)).unwrap_or(new);
                 self.damage.set(Some(acc));
             }
-            // a brand-new node's ink is damage even without a dirty mark
-            for (&id, &new) in new_ink.iter() {
-                if !ink.contains_key(&id) {
-                    let acc = self.damage.get().map(|d| d.union(new)).unwrap_or(new);
-                    self.damage.set(Some(acc));
-                }
-            }
-            *ink = new_ink;
         }
-        Ok(())
     }
 
     /// THE committed-ink authority — per live node, the footprint a paint
@@ -1204,40 +1330,48 @@ where
     }
 
     /// Present the frame — D2D target, axis-aligned clips, chrome paint.
-    /// The committed-ink map updates at the SUCCESSFUL paint boundary:
-    /// footprints are computed against the visuals actually resolved for
-    /// THIS paint (live interact state — a state-driven shadow change is
-    /// real old/new ink); a failed draw keeps the last painted truth.
+    /// `committed_ink` is owned EXCLUSIVELY by successful paint
+    /// completion: the proposed map is computed against the visuals this
+    /// paint resolved (live interact state), damage unions old+new, and
+    /// only a draw that SUCCEEDED replaces the painted snapshot. A failed
+    /// draw leaves the previous committed ink and the damage intact.
     pub(crate) fn paint(&mut self) -> UiResult {
+        self.paint_inner(|be| be.renderer.borrow_mut().draw(be))
+    }
+
+    fn paint_inner(&mut self, draw: impl FnOnce(&Self) -> UiResult) -> UiResult {
         if self.hwnd.0.is_null() {
             return Ok(());
         }
         let new_ink = self.ink_map();
-        {
-            let ink = self.committed_ink.borrow();
-            // paint-only changes damage old UNION new footprints — a grown
-            // shadow invalidates where it now lands AND where it was
-            for (&id, &old) in ink.iter() {
-                let dr = match new_ink.get(&id) {
-                    Some(&new) if new != old => old.union(new),
-                    Some(_) => continue,
-                    None => old,
-                };
-                let acc = self.damage.get().map(|d| d.union(dr)).unwrap_or(dr);
-                self.damage.set(Some(acc));
-            }
-            for (&id, &new) in new_ink.iter() {
-                if !ink.contains_key(&id) {
-                    let acc = self.damage.get().map(|d| d.union(new)).unwrap_or(new);
-                    self.damage.set(Some(acc));
-                }
-            }
-        }
-        self.renderer.borrow_mut().draw(&*self)?;
+        self.accumulate_ink_damage(&new_ink);
+        draw(&*self)?;
+        // commit boundary — ONLY here does proposed ink become the
+        // last-painted snapshot, and damage is consumed
         *self.committed_ink.borrow_mut() = new_ink;
-        // frame committed — the accumulated damage union is consumed
         self.damage.set(None);
         Ok(())
+    }
+
+    #[cfg(test)]
+    pub(crate) fn paint_for_test(&mut self, draw_ok: bool) -> UiResult {
+        self.paint_inner(|_| {
+            if draw_ok {
+                Ok(())
+            } else {
+                Err(UiError::Platform("injected paint failure".into()))
+            }
+        })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn damage_rect(&self) -> Option<LogicalRect> {
+        self.damage.get()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn committed_ink_map(&self) -> HashMap<NodeId, LogicalRect> {
+        self.committed_ink.borrow().clone()
     }
 
     // ----- tooltip ------------------------------------------------------------
@@ -1576,8 +1710,11 @@ where
         if msg != WM_KEYDOWN {
             return Ok(());
         }
-        // semantic focus: Space/Enter on a button is Press
-        if let Some(focus) = self.focus {
+        // semantic focus: Space/Enter on a button is Press — a deferred
+        // replay delivers to the ARRIVAL-captured owner: an explicitly
+        // absent owner must not activate a newly focused button, and a
+        // captured A must not be redirected to B
+        if let Some(focus) = self.focused_target() {
             match ev {
                 Key::Space | Key::Enter => {
                     self.push_input(focus, NodeEvent::Press)?;
@@ -1907,7 +2044,6 @@ where
         self.rt.set_appearance(appearance);
         self.rt.refresh_reduced();
         *self.peer_ctx.colors.borrow_mut() = (appearance, self.rt.theme.clone());
-        self.last_appearance = appearance;
         self.turn()
     }
 
@@ -2180,38 +2316,35 @@ where
     /// - a push-side overflow flag is surfaced here as QueueOverflow.
     pub(crate) fn drain_reentrant(&mut self) -> UiResult {
         let hwnd = self.hwnd;
-        let mut first_err: Option<UiError> = None;
-        let mut consumed = 0usize;
-        loop {
-            // TEARDOWN BYPASSES THE BUDGET — mandatory cleanup can never
-            // be stranded behind a full queue of ordinary work
-            let m = crate::platform::win32::window::next_drain_item(
-                &mut self.reentrant_queue.borrow_mut(),
-                consumed,
-            );
-            let Some(m) = m else { break };
-            if !crate::platform::win32::window::is_teardown(m.msg) {
-                consumed += 1;
-            }
+        // drain a LOCAL queue — items pushed by reentrant arrivals during
+        // dispatch land in the live cell and are appended BEHIND the
+        // undrained remainder when it is restored
+        let mut q = std::mem::take(&mut *self.reentrant_queue.borrow_mut());
+        let out = crate::platform::win32::window::drain_queue(&mut q, |m| {
             self.in_dispatch.set(true);
             self.arrival_focus.set(m.arrival_focus);
-            let r = crate::platform::win32::window::wndproc::dispatch_owned(hwnd, m, self);
+            let r =
+                crate::platform::win32::window::wndproc::dispatch_owned(hwnd, m, self).map(|_| ());
             self.arrival_focus.set(None);
             self.in_dispatch.set(false);
-            if let Err(e) = r
-                && first_err.is_none()
-            {
-                first_err = Some(e);
-            }
+            r
+        });
+        {
+            let mut cell = self.reentrant_queue.borrow_mut();
+            q.extend(cell.drain(..));
+            *cell = q;
         }
-        // remaining work -> checked continuation (shared wake authority)
-        if !self.reentrant_queue.borrow().is_empty() {
+        // remaining ordinary work -> checked continuation (shared wake
+        // authority). Post-teardown there IS no remainder — the closed
+        // window's queue was disposed, and a post on a dead hwnd is
+        // declined by the closed check inside wake_pump anyway.
+        if out.remainder {
             self.wake_pump()?;
         }
         if self.queue_overflowed.replace(false) {
             return Err(UiError::QueueOverflow);
         }
-        if let Some(e) = first_err {
+        if let Some(e) = out.first_err {
             return Err(e);
         }
         Ok(())
@@ -2259,17 +2392,20 @@ where
         }
         self.service_peer_events()?;
         if let Some(id) = owner {
-            // RECONCILE the final commit — the ending EN_CHANGE can drain
-            // while the composing flag is still up (suppressed as preedit),
-            // so notification delivery alone cannot guarantee the app's
-            // committed TextValue observes the commit. Compare the peer's
-            // true text to the committed mirror and emit the commit edit.
+            // ACKNOWLEDGE FIRST: a final committed EN_CHANGE drained while
+            // composing was down may already be QUEUED — pump it into the
+            // shared mirror BEFORE comparing, or reconcile would emit a
+            // duplicate commit that splits native/shared revisions
+            self.rt.pump()?;
+            // RECONCILE only the remaining divergence — the ending commit
+            // that arrived while `composing` was still up (suppressed as
+            // preedit) never queued, so peer-vs-mirror divergence is the
+            // ground truth; agreement = nothing to rebuild
             if let Some(peer) = self.peer_for(id) {
                 self.reconcile_commit(&peer)?;
             }
-            // the final committed edit must be ACKNOWLEDGED (pumped into
-            // committed runtime state) before pending proposals resolve —
-            // otherwise a stale-base proposal can overwrite the commit
+            // acknowledge the reconciliation edit, THEN resolve proposals
+            // against the true committed revision, then relatch
             self.rt.pump()?;
             self.rt.composition_end(id)?;
             if let Some(peer) = self.peer_for(id) {
@@ -2479,6 +2615,7 @@ where
         registry: Arc::new(Mutex::new(HashMap::new())),
         timer_pool: Arc::new(Mutex::new(crate::platform::win32::text::TimerPool::new())),
         next_id: AtomicU64::new(1),
+        sys_resolver: std::cell::Cell::new(sys_color),
         colors: std::cell::RefCell::new((appearance, Theme::dark())),
     });
     let factory_ctx = peer_ctx.clone();
@@ -2527,7 +2664,6 @@ where
         uia: None,
         counters: Arc::new(PerfCounters::new()),
         closed: Arc::new(AtomicBool::new(false)),
-        last_appearance: appearance,
         fatal: None,
         in_turn: std::cell::Cell::new(false),
         reentrant_queue: std::cell::RefCell::new(std::collections::VecDeque::new()),
@@ -2541,6 +2677,7 @@ where
         state_dirty: std::cell::Cell::new(0),
         damage: std::cell::Cell::new(None),
         committed_ink: std::cell::RefCell::new(HashMap::new()),
+        applied_palette: std::cell::RefCell::new(None),
     });
     backend.rt.theme = theme;
 
@@ -2575,20 +2712,28 @@ where
         .scale
         .set(space::ScaleFactor(scale.0.max(0.5)));
 
-    // mailbox -> posted pump (no polling)
+    // mailbox -> posted pump (no polling). A failed post is NOT
+    // ignorable: the latch surfaces it at the next turn's safe point and
+    // the released edge lets the next enqueue retry — a stranded wake is
+    // a typed failure, never a silent sleep-forever.
     let closed = backend.closed.clone();
+    let mb = backend.rt.mailbox.clone();
     let hwnd_raw = hwnd.0 as isize as usize;
     backend.rt.mailbox.install_wake(Arc::new(move || {
         if closed.load(Ordering::SeqCst) {
             return;
         }
-        unsafe {
-            let _ = PostMessageW(
+        let posted = unsafe {
+            PostMessageW(
                 Some(HWND(hwnd_raw as *mut c_void)),
                 WM_PUMP,
                 WPARAM(0),
                 LPARAM(0),
-            );
+            )
+            .is_ok()
+        };
+        if !posted {
+            mb.wake_post_failed();
         }
     }));
 
@@ -2717,7 +2862,7 @@ fn os_appearance() -> Appearance {
 /// GetSysColor-backed forced-colors resolver — the OS palette for the
 /// shared SystemColor slots. Installed on the runtime so the classifier
 /// and renderer resolve the same concrete colors.
-fn sys_color(sc: crate::style::SystemColor) -> [f32; 4] {
+pub(crate) fn sys_color(sc: crate::style::SystemColor) -> [f32; 4] {
     use windows::Win32::Graphics::Gdi::{GetSysColor, SYS_COLOR_INDEX};
     let idx = match sc {
         crate::style::SystemColor::Window => SYS_COLOR_INDEX(5), // COLOR_WINDOW

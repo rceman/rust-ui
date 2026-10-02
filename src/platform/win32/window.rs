@@ -61,17 +61,96 @@ pub(crate) fn is_teardown(msg: u32) -> bool {
 
 /// Pop the next drain item. Ordinary messages count against the per-pass
 /// budget; TEARDOWN bypasses it entirely — a mandatory shutdown queued
-/// behind 128 ordinary items still runs THIS drain. Budget-exhausted
-/// ordinary items stay queued for the continuation.
+/// behind ordinary items still runs THIS drain: when the budget is
+/// exhausted the backlog is SWEPT for teardown, not just the front.
+/// Budget-exhausted ordinary items stay queued for the continuation.
 pub(crate) fn next_drain_item(
     q: &mut std::collections::VecDeque<QueuedMsg>,
     consumed: usize,
 ) -> Option<QueuedMsg> {
-    match q.front() {
-        Some(m) if is_teardown(m.msg) => q.pop_front(),
-        _ if consumed < REENTRANT_DRAIN_MAX => q.pop_front(),
-        _ => None,
+    if let Some(m) = q.front()
+        && is_teardown(m.msg)
+    {
+        return q.pop_front();
     }
+    if consumed < REENTRANT_DRAIN_MAX {
+        return q.pop_front();
+    }
+    // budget exhausted — teardown is mandatory cleanup, never ordinary
+    // work: sweep the whole backlog so a destruction queued behind 128+
+    // items is delivered THIS pass instead of stranding on the
+    // continuation (which a closed window suppresses by contract).
+    let idx = q.iter().position(|m| is_teardown(m.msg))?;
+    q.remove(idx)
+}
+
+/// Outcome of one `drain_queue` pass — the caller maps it onto wake
+/// continuation and overflow surfacing.
+pub(crate) struct DrainOutcome {
+    /// mandatory teardown was dispatched this pass
+    pub tore: bool,
+    /// ordinary items DISPOSED without dispatch after teardown ran —
+    /// a closed window owns no further work
+    pub disposed: usize,
+    /// first ordinary-dispatch error (draining continues regardless —
+    /// an early failure can never skip a later teardown)
+    pub first_err: Option<crate::UiError>,
+    /// ordinary work remains after the budget — caller must schedule the
+    /// continuation (skipped entirely when `tore`)
+    pub remainder: bool,
+}
+
+/// THE reentrant-queue drain policy — verbatim-testable authority shared
+/// by `Backend::drain_reentrant`. Contract:
+///
+/// - ordinary items dispatch FIFO under `REENTRANT_DRAIN_MAX`;
+/// - an item error is RECORDED and the pass continues — mandatory
+///   teardown can never be skipped by an earlier failed input;
+/// - teardown is delivered THIS pass however deep it sits (sweep);
+/// - once teardown ran, every remaining ordinary item is disposed of
+///   WITHOUT dispatch — a dead window takes no further work;
+/// - a non-teardown remainder means the caller owes a continuation wake.
+pub(crate) fn drain_queue(
+    q: &mut std::collections::VecDeque<QueuedMsg>,
+    mut dispatch: impl FnMut(QueuedMsg) -> crate::UiResult,
+) -> DrainOutcome {
+    let mut out = DrainOutcome {
+        tore: false,
+        disposed: 0,
+        first_err: None,
+        remainder: false,
+    };
+    let mut consumed = 0usize;
+    loop {
+        let Some(m) = next_drain_item(q, consumed) else {
+            break;
+        };
+        if out.tore {
+            // post-teardown remainder — dispose, do not dispatch
+            out.disposed += 1;
+            continue;
+        }
+        if is_teardown(m.msg) {
+            out.tore = true;
+        } else {
+            consumed += 1;
+        }
+        if let Err(e) = dispatch(m)
+            && out.first_err.is_none()
+        {
+            out.first_err = Some(e);
+        }
+    }
+    out.remainder = !q.is_empty();
+    if out.tore {
+        // closed-window contract — the ordinary remainder is dropped
+        // deterministically; nothing may be dispatched or deferred for a
+        // dead hwnd (inclusive of items the loop never reached)
+        out.disposed += q.len();
+        q.clear();
+        out.remainder = false;
+    }
+    out
 }
 
 /// Bound on the owned reentrant queue — allocation is bounded, not merely
@@ -399,22 +478,25 @@ pub(crate) mod wndproc {
             }
             WM_IME_STARTCOMPOSITION => {
                 // runtime boundary first (EN_CHANGE routing keys off it),
-                // then the peer sees the real composition start
+                // then the peer sees the real composition start — the pin
+                // is established inside ime_start from the arrival owner
                 be.ime_start();
-                be.send_focused(msg, wparam.0, lparam.0)?;
+                be.send_ime(msg, wparam.0, lparam.0)?;
                 be.service_peer_events()?;
                 LRESULT(0)
             }
             WM_IME_ENDCOMPOSITION => {
-                // native end first; ime_end clears the flag THEN drains —
-                // the final commit must land as committed text
-                be.send_focused(msg, wparam.0, lparam.0)?;
+                // native end first — delivered to the PINNED composition
+                // owner; ime_end clears the flag THEN drains — the final
+                // commit must land as committed text
+                be.send_ime(msg, wparam.0, lparam.0)?;
                 be.ime_end()?;
                 LRESULT(0)
             }
             WM_IME_COMPOSITION | WM_IME_NOTIFY => {
-                // richedit sees the raw message; preedit never becomes an edit
-                be.send_focused(msg, wparam.0, lparam.0)?;
+                // richedit sees the raw message; preedit never becomes an
+                // edit — routed to the pinned owner, not current focus
+                be.send_ime(msg, wparam.0, lparam.0)?;
                 be.service_peer_events()?;
                 LRESULT(0)
             }

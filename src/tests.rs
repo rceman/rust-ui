@@ -3176,6 +3176,48 @@ thread_local! {
 }
 
 #[cfg(windows)]
+/// A real hidden host HWND for native-peer tests — msftedit's
+/// TxGetDC/scale plumbing needs a live window, not a null handle.
+#[cfg(windows)]
+fn probe_hwnd() -> windows::Win32::Foundation::HWND {
+    use windows::Win32::Foundation::*;
+    use windows::Win32::UI::WindowsAndMessaging::*;
+    use windows::core::*;
+    unsafe {
+        let _ = windows::Win32::System::Ole::OleInitialize(None);
+        let _ = windows::Win32::System::Com::CoInitializeEx(
+            None,
+            windows::Win32::System::Com::COINIT_APARTMENTTHREADED,
+        );
+        let cls = w!("rustui_probe_px");
+        let wc = WNDCLASSEXW {
+            cbSize: std::mem::size_of::<WNDCLASSEXW>() as u32,
+            lpszClassName: cls,
+            hInstance: windows::Win32::System::LibraryLoader::GetModuleHandleW(None)
+                .unwrap()
+                .into(),
+            lpfnWndProc: Some(probe_wndproc),
+            ..Default::default()
+        };
+        let _ = RegisterClassExW(&wc);
+        CreateWindowExW(
+            WINDOW_EX_STYLE(0),
+            cls,
+            w!("probe"),
+            WS_OVERLAPPEDWINDOW,
+            0,
+            0,
+            800,
+            500,
+            None,
+            None,
+            None,
+            None,
+        )
+        .expect("probe hwnd")
+    }
+}
+
 unsafe extern "system" fn probe_wndproc(
     hwnd: windows::Win32::Foundation::HWND,
     msg: u32,
@@ -3825,7 +3867,7 @@ fn native_probe_richedit_paints_text() {
             actionable: false,
             enabled: true,
             peer_node: true,
-            native: Some(frag),
+            native: Some(frag.clone()),
         }])
         .expect("rebuild");
 
@@ -3902,6 +3944,66 @@ fn native_probe_richedit_paints_text() {
             let _ = unsafe { c.GetPropertyValue(UIA_NamePropertyId) }; // may err legitimately
         }
 
+        // REQUIRED NONEMPTY PROVIDER ARRAY — drive fence_provider_array
+        // with a real array holding genuine native provider references
+        // (the peer's own provider + its enclosing element). The fixture
+        // FAILS unless the array is nonempty AND at least one element is
+        // extracted — conditional extraction is the vacuous proof this
+        // corrects.
+        let prov_simple: IRawElementProviderSimple = frag.cast().expect("prov simple");
+        let enc_simple: IRawElementProviderSimple = enclosing.cast().expect("enc simple");
+        let in_sa = unsafe {
+            windows::Win32::System::Ole::SafeArrayCreateVector(
+                windows::Win32::System::Variant::VT_UNKNOWN,
+                0,
+                2,
+            )
+        };
+        assert!(!in_sa.is_null(), "input provider array must allocate");
+        for (i, p) in [&prov_simple, &enc_simple].iter().enumerate() {
+            let idx = i as i32;
+            unsafe {
+                windows::Win32::System::Ole::SafeArrayPutElement(
+                    in_sa,
+                    &idx,
+                    windows_core::Interface::as_raw(*p) as *const core::ffi::c_void,
+                )
+                .expect("put native provider element");
+            }
+        }
+        let fenced_sa =
+            unsafe { crate::platform::win32::uia::fence_provider_array(in_sa, &root.snap, node) }
+                .expect("fence_provider_array must succeed");
+        assert!(!fenced_sa.is_null(), "fenced provider array required");
+        let (flo, fhi) = unsafe {
+            (
+                windows::Win32::System::Ole::SafeArrayGetLBound(fenced_sa, 1).unwrap(),
+                windows::Win32::System::Ole::SafeArrayGetUBound(fenced_sa, 1).unwrap(),
+            )
+        };
+        assert_eq!(fhi - flo + 1, 2, "fenced array must carry both elements");
+        // extract and RETAIN a real child provider from the array
+        let mut craw: *mut core::ffi::c_void = std::ptr::null_mut();
+        unsafe {
+            windows::Win32::System::Ole::SafeArrayGetElement(
+                fenced_sa,
+                &flo,
+                &mut craw as *mut _ as *mut core::ffi::c_void,
+            )
+            .expect("child extraction must not be skipped");
+        }
+        assert!(!craw.is_null(), "extracted child element must exist");
+        let arr_child: IRawElementProviderSimple =
+            unsafe { windows_core::Interface::from_raw(craw) };
+        unsafe {
+            windows::Win32::System::Ole::SafeArrayDestroy(fenced_sa);
+        }
+        // the extracted provider answers while its node is live
+        assert!(
+            unsafe { arr_child.GetPropertyValue(UIA_ControlTypePropertyId) }.is_ok(),
+            "extracted provider must answer while live"
+        );
+
         // REMOVE the node — every retained native object must die
         root.rebuild(vec![]).unwrap();
         assert!(
@@ -3924,6 +4026,10 @@ fn native_probe_richedit_paints_text() {
         assert!(
             unsafe { sel_range.GetText(-1) }.is_err(),
             "a range extracted from a retained selection array must die"
+        );
+        assert!(
+            unsafe { arr_child.GetPropertyValue(UIA_ControlTypePropertyId) }.is_err(),
+            "a provider extracted from a nonempty array must die on removal"
         );
         if let Some(c) = &retained_child {
             assert!(
@@ -3980,7 +4086,7 @@ fn native_probe_richedit_paints_text() {
             hwnd,
             ScaleFactor(1.0),
             &cfg(),
-            sink,
+            sink.clone(),
             std::sync::Arc::new(std::sync::Mutex::new(
                 crate::platform::win32::text::TimerPool::new(),
             )),
@@ -4019,6 +4125,52 @@ fn native_probe_richedit_paints_text() {
             eb2.width, old_b.width,
             "pending relatch: width write was parked"
         );
+
+        // REAL ORDER — measure BEFORE the bounds/scale request: with
+        // composition active, natural_size(new_width) runs first and the
+        // effective geometry is already frozen; the later apply_bounds
+        // parks, never retroactively widening the space the service used
+        let mut peer2 = crate::platform::win32::WindowlessPeer::create(
+            14,
+            &lib,
+            hwnd,
+            ScaleFactor(1.0),
+            &cfg(),
+            sink.clone(),
+            std::sync::Arc::new(std::sync::Mutex::new(
+                crate::platform::win32::text::TimerPool::new(),
+            )),
+        )
+        .expect("peer create");
+        crate::node::TextPeer::initialize(
+            &mut peer2,
+            "abc",
+            crate::text::TextRevision::mint(),
+            crate::text::BindingToken::mint(),
+        )
+        .expect("initialize");
+        peer2.apply_bounds(island_dip, ScaleFactor(1.0)).unwrap();
+        peer2.set_composing(true);
+        // measure at the NEW width first — host geometry must NOT absorb it
+        let _ = peer2.natural_size(999.0).unwrap();
+        let (eb4, es4) = peer2.effective_geometry();
+        assert_eq!(
+            eb4.width, island_dip.width,
+            "measure-first ordering: new width must not leak into the frozen space"
+        );
+        assert_eq!(es4, ScaleFactor(1.0));
+        // THEN the bounds/scale request arrives — defers whole
+        peer2.apply_bounds(new_b, ScaleFactor(2.0)).unwrap();
+        let (eb5, es5) = peer2.effective_geometry();
+        assert_eq!(eb5.x, island_dip.x);
+        assert_eq!(es5, ScaleFactor(1.0));
+        // composition ends — the parked relatch applies atomically
+        peer2.set_composing(false);
+        peer2.finish_pending_relatch().unwrap();
+        let (eb6, es6) = peer2.effective_geometry();
+        assert_eq!(es6, ScaleFactor(2.0));
+        assert_eq!(eb6.x, new_b.x);
+        crate::node::TextPeer::release(&mut peer2);
         // composition ends -> the pending relatch applies atomically
         peer.set_composing(false);
         peer.finish_pending_relatch().unwrap();
@@ -5422,7 +5574,7 @@ mod native_contract_tests {
     use crate::platform::win32::text::TimerPool;
     use crate::platform::win32::window::{
         NATIVE_TIMER_BASE, NATIVE_TIMER_CAP, QueuedMsg, REENTRANT_DRAIN_MAX, REENTRANT_QUEUE_CAP,
-        deferrable_arrival, focus_targeted, is_teardown, next_drain_item,
+        deferrable_arrival, drain_queue, focus_targeted, is_teardown, next_drain_item,
     };
     use windows::Win32::UI::WindowsAndMessaging::*;
 
@@ -5546,6 +5698,591 @@ mod native_contract_tests {
         }
         assert!(tore, "teardown past the drain bound must still dispatch");
         assert!(q.is_empty());
+    }
+
+    /// F01 BLOCKER — the reproduced trace: 138 ordinary items THEN
+    /// destruction. The teardown must be dispatched THIS pass (swept out
+    /// of the backlog past the exhausted budget), the pass's ordinary
+    /// dispatch count is exactly the budget, and the remainder is
+    /// DISPOSED — a dead window takes no further work.
+    #[test]
+    fn drain_teardown_behind_exhausted_budget_disposes_remainder() {
+        let mk = |msg: u32| QueuedMsg {
+            msg,
+            wparam: 0,
+            lparam: 0,
+            rect: None,
+            arrival_focus: None,
+        };
+        let mut q: std::collections::VecDeque<QueuedMsg> = (0..REENTRANT_DRAIN_MAX + 10)
+            .map(|_| mk(WM_KEYDOWN))
+            .collect();
+        q.push_back(mk(WM_NCDESTROY));
+        let mut ordinary = 0usize;
+        let mut shutdowns = 0usize;
+        let out = drain_queue(&mut q, |m| {
+            if is_teardown(m.msg) {
+                shutdowns += 1;
+            } else {
+                ordinary += 1;
+            }
+            Ok(())
+        });
+        assert_eq!(ordinary, REENTRANT_DRAIN_MAX, "budget bound is exact");
+        assert_eq!(shutdowns, 1, "mandatory cleanup ran exactly once");
+        assert!(out.tore);
+        assert_eq!(
+            out.disposed, 10,
+            "the ordinary remainder is disposed, never dispatched"
+        );
+        assert!(q.is_empty());
+        assert!(
+            !out.remainder,
+            "no continuation is owed after a dead window"
+        );
+    }
+
+    /// F01 — an earlier delivery error must not skip a later teardown:
+    /// the first error is recorded AND destruction still runs.
+    #[test]
+    fn drain_delivery_error_does_not_skip_teardown() {
+        let mk = |msg: u32| QueuedMsg {
+            msg,
+            wparam: 0,
+            lparam: 0,
+            rect: None,
+            arrival_focus: None,
+        };
+        let mut q: std::collections::VecDeque<QueuedMsg> =
+            std::collections::VecDeque::from([mk(WM_KEYDOWN), mk(WM_NCDESTROY), mk(WM_CHAR)]);
+        let mut shutdowns = 0usize;
+        let mut post_teardown_dispatched = 0usize;
+        let out = drain_queue(&mut q, |m| {
+            if is_teardown(m.msg) {
+                shutdowns += 1;
+                return Ok(());
+            }
+            if shutdowns > 0 {
+                post_teardown_dispatched += 1;
+            }
+            Err(UiError::Platform("delivery failed".into()))
+        });
+        assert_eq!(shutdowns, 1, "teardown ran despite the earlier error");
+        assert!(matches!(out.first_err, Some(UiError::Platform(_))));
+        assert_eq!(
+            post_teardown_dispatched, 0,
+            "nothing dispatches after teardown"
+        );
+        assert_eq!(out.disposed, 1, "the trailing ordinary item is disposed");
+        assert!(q.is_empty());
+    }
+
+    /// F01 — the REAL backend drain against a mounted peer: 138 ordinary
+    /// items + destruction must run `shutdown()` exactly once (the peer is
+    /// released) and leave the queue empty.
+    #[test]
+    fn backend_drain_runs_shutdown_and_disposes_remainder() {
+        struct S {
+            v: TextValue,
+        }
+        let s = S {
+            v: TextValue::new("x"),
+        };
+        let mut rig = Rig::new(
+            s,
+            |_: &mut S, _: Msg, _: &mut UpdateCtx<Msg>| {},
+            |s: &S, ui: &mut Ui<Msg>| {
+                ui.text_input(&s.v).on_edit(Msg::Edited);
+            },
+        );
+        rig.view().unwrap();
+        let editor = rig.root_children()[0];
+        let peer = rig.peer_id(editor).unwrap();
+        let Rig { rt, peers, .. } = rig;
+        let mut be = crate::platform::win32::Backend::for_test(
+            rt,
+            crate::platform::win32::PeerCtx::for_test().unwrap(),
+        )
+        .unwrap();
+        let mk = |msg: u32| QueuedMsg {
+            msg,
+            wparam: 0,
+            lparam: 0,
+            rect: None,
+            arrival_focus: None,
+        };
+        for _ in 0..REENTRANT_DRAIN_MAX + 10 {
+            be.reentrant_queue.borrow_mut().push_back(mk(WM_KEYDOWN));
+        }
+        be.reentrant_queue.borrow_mut().push_back(mk(WM_NCDESTROY));
+        be.drain_reentrant().unwrap();
+        // REAL shutdown proof: the mounted peer was released exactly once
+        let rec = peers.recs.lock().unwrap().get(&peer).unwrap().clone();
+        assert_eq!(
+            rec.released, 1,
+            "shutdown must release the mounted peer exactly once"
+        );
+        assert!(be.closed.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(
+            be.reentrant_queue.borrow().is_empty(),
+            "the ordinary remainder is disposed with the dead window"
+        );
+    }
+
+    /// F01 — painted-key replay ownership: a queued Enter captured with
+    /// NO owner must not press the newly focused button; a queued Enter
+    /// captured for A must not be redirected to B.
+    #[test]
+    fn replayed_painted_key_honors_captured_owner() {
+        struct S {
+            a: u32,
+            b: u32,
+        }
+        let s = S { a: 0, b: 0 };
+        let mut rig = Rig::new(
+            s,
+            |s: &mut S, m: Msg, _: &mut UpdateCtx<Msg>| match m {
+                Msg::Scoped(1, _) => s.a += 1,
+                Msg::Scoped(2, _) => s.b += 1,
+                _ => {}
+            },
+            |_: &S, ui: &mut Ui<Msg>| {
+                ui.button("a").on_press(|| Msg::Scoped(1, 0));
+                ui.button("b").on_press(|| Msg::Scoped(2, 0));
+            },
+        );
+        rig.view().unwrap();
+        let kids = rig.root_children();
+        let (a, b) = (kids[0], kids[1]);
+        let Rig { rt, .. } = rig;
+        let mut be = crate::platform::win32::Backend::for_test(
+            rt,
+            crate::platform::win32::PeerCtx::for_test().unwrap(),
+        )
+        .unwrap();
+        // focus moved to B AFTER the messages were queued
+        be.focus = Some(b);
+        let key = |owner: Option<Option<NodeId>>| QueuedMsg {
+            msg: WM_KEYDOWN,
+            wparam: windows::Win32::UI::Input::KeyboardAndMouse::VK_RETURN.0 as usize,
+            lparam: 0,
+            rect: None,
+            arrival_focus: owner,
+        };
+        // captured owner = explicitly None — must NOT activate focused B
+        be.reentrant_queue.borrow_mut().push_back(key(Some(None)));
+        be.drain_reentrant().unwrap();
+        assert_eq!(
+            (be.rt.state.a, be.rt.state.b),
+            (0, 0),
+            "a no-owner replay must not press the newly focused button"
+        );
+        // captured owner = A — must press A even though B holds focus
+        be.reentrant_queue
+            .borrow_mut()
+            .push_back(key(Some(Some(a))));
+        be.drain_reentrant().unwrap();
+        assert_eq!(
+            (be.rt.state.a, be.rt.state.b),
+            (1, 0),
+            "a captured owner must receive the key, not current focus"
+        );
+    }
+
+    /// A Backend over a REAL msftedit peer — the runtime's peer factory
+    /// is the production `make_factory`, so registry/attach/focus and
+    /// `ime_end`'s reconcile all run the production path.
+    struct ImeS {
+        v: TextValue,
+        conflicts: Vec<TextConflict>,
+    }
+
+    type ImeBackend = crate::platform::win32::Backend<
+        ImeS,
+        Msg,
+        Box<dyn Fn(&mut ImeS, Msg, &mut UpdateCtx<Msg>)>,
+        Box<dyn Fn(&ImeS, &mut Ui<'_, '_, Msg>)>,
+    >;
+
+    fn ime_backend(text: &str) -> (ImeBackend, NodeId) {
+        let peer_ctx = crate::platform::win32::PeerCtx::for_test().unwrap();
+        let hwnd = probe_hwnd();
+        peer_ctx.hwnd.set(hwnd);
+        let factory = peer_ctx.make_factory();
+        let app = App::new(
+            ImeS {
+                v: TextValue::new(text),
+                conflicts: Vec::new(),
+            },
+            Box::new(|s: &mut ImeS, m: Msg, _: &mut UpdateCtx<Msg>| match m {
+                Msg::Edited(e) => {
+                    let _ = s.v.accept(e);
+                }
+                Msg::Conflicted(c) => s.conflicts.push(c),
+                _ => {}
+            }) as Box<dyn Fn(&mut ImeS, Msg, &mut UpdateCtx<Msg>)>,
+            Box::new(|s: &ImeS, ui: &mut Ui<Msg>| {
+                ui.text_input(&s.v)
+                    .on_edit(Msg::Edited)
+                    .on_conflict(Msg::Conflicted);
+            }) as Box<dyn Fn(&ImeS, &mut Ui<Msg>)>,
+        );
+        let rt = crate::app::runtime_for(
+            app,
+            Box::new(factory),
+            Theme::light(),
+            Appearance {
+                dark: false,
+                forced_colors: false,
+            },
+        );
+        let mut be = ImeBackend::for_test(rt, peer_ctx).unwrap();
+        // be.hwnd stays NULL — pump/review/attach/IME all run production
+        // paths, but paint() is a no-op by design so no D2D target is ever
+        // created on a test thread (a foreign-thread HwndRenderTarget
+        // perturbs other native paint tests running in parallel)
+        be.turn().unwrap();
+        let node = be.rt.root_children()[0];
+        (be, node)
+    }
+
+    /// F05 — `ime_end` ordering against a REAL msftedit peer + real
+    /// Runtime: drain notifications, ACKNOWLEDGE already-queued commits,
+    /// then reconcile only the remaining divergence.
+    ///
+    /// Branch A (suppress=false): the final commit's Change notification
+    /// survived composition and lands at the end — it must be pumped into
+    /// the shared mirror BEFORE reconcile, or reconcile emits a duplicate
+    /// commit that splits native/shared revisions.
+    /// Branch B (suppress=true): the notification drained while composing
+    /// was still marked — suppressed as preedit — so reconcile must
+    /// reconstruct the divergence.
+    ///
+    /// Both assert: native text == shared committed text, peer revision
+    /// == mirror revision, a stale proposal conflicts, and the NEXT
+    /// genuine native edit is accepted.
+    #[test]
+    fn ime_end_commit_acknowledgement_both_branches() {
+        for suppress in [false, true] {
+            let (mut be, node) = ime_backend("abc");
+            let peer = be.peer_for(node).unwrap();
+            // PRECONDITION: composition pinned to this peer — and it must
+            // stay pinned even if focus moves mid-composition
+            be.focus = Some(node);
+            be.ime_start();
+            assert_eq!(be.ime_owner.get(), Some(node));
+            be.focus = Some(NodeId {
+                slot: 99,
+                generation: 0,
+            });
+            assert_eq!(
+                be.ime_target(),
+                Some(node),
+                "composition owner stays pinned over a focus move"
+            );
+            // a stale proposal queued on the pre-commit base
+            be.rt.state.v.replace("proposal");
+            be.rt.review_for_test().unwrap();
+            assert!(be.rt.state.v.pending().is_some());
+            // the final native commit lands in the service
+            peer.borrow().native_write_for_test("abc+tail").unwrap();
+            peer.borrow().emit_change_for_test();
+            if suppress {
+                // branch B — the notification drains while composing is
+                // STILL marked: suppressed as preedit, mirror stays stale
+                be.service_peer_events().unwrap();
+                assert_eq!(
+                    &*be.rt.state.v.text(),
+                    "abc",
+                    "suppressed commit must not reach the mirror"
+                );
+            }
+            // ACTION: composition ends
+            be.ime_end().unwrap();
+            // POSTCONDITION — native == shared, revisions agree
+            let peer_now = be.peer_for(node).unwrap();
+            assert_eq!(
+                peer_now.borrow().text().unwrap(),
+                "abc+tail",
+                "suppress={suppress}: native text must equal the commit"
+            );
+            assert_eq!(
+                &*be.rt.state.v.text(),
+                "abc+tail",
+                "suppress={suppress}: shared TextValue must equal native"
+            );
+            let (_t, mirror_rev) = be.rt.committed_editor(node).unwrap();
+            assert_eq!(
+                mirror_rev,
+                peer_now.borrow().peer_rev(),
+                "suppress={suppress}: native/shared revisions must agree"
+            );
+            // the stale-base proposal CONFLICTED, never overwrote the commit
+            assert!(
+                !be.rt.state.conflicts.is_empty(),
+                "suppress={suppress}: proposal on a stale base must conflict"
+            );
+            // the NEXT genuine native edit is accepted — no revision wedge
+            peer_now
+                .borrow()
+                .native_write_for_test("abc+tail+more")
+                .unwrap();
+            peer_now.borrow().emit_change_for_test();
+            be.service_peer_events().unwrap();
+            be.rt.pump().unwrap();
+            assert_eq!(
+                &*be.rt.state.v.text(),
+                "abc+tail+more",
+                "suppress={suppress}: next edit must accept (no divergence)"
+            );
+            drop(peer_now);
+            drop(peer);
+            be.shutdown();
+        }
+    }
+
+    /// F08 — effective palette refresh compares RESOLVED OUTPUT. Two
+    /// legs: a forced-colors flip moves the applied selection colors even
+    /// when the theme is unchanged, and a same-descriptor palette drift
+    /// (system colors moved, appearance/theme identical) still refreshes
+    /// the mounted peer.
+    #[test]
+    fn effective_palette_refresh_compares_resolved_output() {
+        fn cref(c: [f32; 4]) -> u32 {
+            ((c[0] * 255.0 + 0.5) as u32)
+                | (((c[1] * 255.0 + 0.5) as u32) << 8)
+                | (((c[2] * 255.0 + 0.5) as u32) << 16)
+        }
+        let (mut be, node) = ime_backend("x");
+        let peer = be.peer_for(node).unwrap();
+        let before = peer.borrow().applied_colors_for_test();
+        // LEG 1 — forced-colors flip: the REAL GetSysColor resolver path
+        be.rt.set_appearance(Appearance {
+            dark: false,
+            forced_colors: true,
+        });
+        be.turn().unwrap();
+        let after_flip = peer.borrow().applied_colors_for_test();
+        let expected_sel = cref(crate::platform::win32::sys_color(
+            crate::style::SystemColor::Highlight,
+        ));
+        assert_eq!(
+            after_flip.1, expected_sel,
+            "forced-colors flip must push the system selection colors"
+        );
+        assert_ne!(
+            before, after_flip,
+            "a palette flip must change applied peer colors"
+        );
+        // LEG 2 — same-descriptor palette drift: system colors move while
+        // (appearance, theme) are byte-identical — the effective-output
+        // compare must still push
+        be.peer_ctx.sys_resolver.set(|_| [0.5, 0.25, 0.75, 1.0]);
+        be.turn().unwrap();
+        let after_drift = peer.borrow().applied_colors_for_test();
+        assert_eq!(
+            after_drift.1,
+            cref([0.5, 0.25, 0.75, 1.0]),
+            "same-descriptor palette drift must refresh applied sel colors"
+        );
+        assert_ne!(
+            after_flip, after_drift,
+            "descriptor-equal drift still moves the applied palette"
+        );
+        drop(peer);
+        be.shutdown();
+    }
+
+    /// F09 — committed_ink is owned by successful paint. Covers:
+    /// paint-only shadow transition (hover), move, remove, failed paint.
+    #[test]
+    fn committed_ink_commits_only_on_successful_paint() {
+        use crate::style::{
+            BoxStylePatch, ButtonStylePatch, Shadow, ShadowPatch, VisualStylePatch,
+        };
+        let sh = |dx: f32| Shadow {
+            offset_x: crate::geom::Dp(dx),
+            offset_y: crate::geom::Dp(2.0),
+            blur_sigma: crate::geom::Dp(4.0),
+            color: crate::style::Color::Role(crate::theme::ColorRole::Shadow),
+        };
+        struct S {
+            hover_shadow: bool,
+            moved: bool,
+            show: bool,
+        }
+        let s0 = S {
+            hover_shadow: false,
+            moved: false,
+            show: true,
+        };
+        let app = App::new(
+            s0,
+            Box::new(|_: &mut S, _: Msg, _: &mut UpdateCtx<Msg>| {})
+                as Box<dyn Fn(&mut S, Msg, &mut UpdateCtx<Msg>)>,
+            Box::new(|s: &S, ui: &mut Ui<Msg>| {
+                ui.column(
+                    crate::Column::new().padding(if s.moved {
+                        crate::Space::Lg
+                    } else {
+                        crate::Space::Xs
+                    }),
+                    |ui| {
+                        if s.show {
+                            let mut p = ButtonStylePatch::new();
+                            if s.hover_shadow {
+                                p = p.hover(VisualStylePatch {
+                                    box_style: BoxStylePatch {
+                                        shadow: ShadowPatch::Set(sh(8.0)),
+                                        ..Default::default()
+                                    },
+                                    ..Default::default()
+                                });
+                            }
+                            ui.button("b").style(p).on_press(press_msg);
+                        }
+                    },
+                );
+            }) as Box<dyn Fn(&S, &mut Ui<Msg>)>,
+        );
+        let peer_ctx = crate::platform::win32::PeerCtx::for_test().unwrap();
+        let hwnd = probe_hwnd();
+        peer_ctx.hwnd.set(hwnd);
+        let pf = peer_ctx.make_factory();
+        let rt = crate::app::runtime_for(
+            app,
+            Box::new(pf),
+            Theme::light(),
+            Appearance {
+                dark: false,
+                forced_colors: false,
+            },
+        );
+        let mut be = crate::platform::win32::Backend::for_test(rt, peer_ctx).unwrap();
+        be.hwnd = hwnd;
+        be.turn().unwrap();
+        be.relayout().unwrap();
+        // the column wraps the button — resolve the BUTTON's NodeId
+        let btn = {
+            let col = be.rt.root_children()[0];
+            let g = be.rt.arena.get(col).unwrap();
+            let slot = g.children[0];
+            NodeId {
+                slot,
+                generation: be.rt.arena.generation_of(slot),
+            }
+        };
+        // first successful paint commits the initial ink
+        be.paint_for_test(true).unwrap();
+        let ink0 = be.committed_ink_map()[&btn];
+        assert!(be.damage_rect().is_none(), "paint consumed the damage");
+
+        // PAINT-ONLY SHADOW TRANSITION (hover) — the node's rect does not
+        // move; only the resolved ink changes
+        be.rt.state.hover_shadow = true;
+        be.rt.review_for_test().unwrap();
+        be.hot = Some(btn);
+        be.relayout().unwrap();
+        let d = be.damage_rect().expect("hover shadow must produce damage");
+        assert_eq!(
+            d.union(ink0),
+            d,
+            "damage must cover the OLD footprint, got {d:?} vs {ink0:?}"
+        );
+        // committed_ink still holds the OLD painted truth until paint
+        assert_eq!(
+            be.committed_ink_map()[&btn],
+            ink0,
+            "relayout must NOT replace the committed snapshot"
+        );
+        be.paint_for_test(true).unwrap();
+        let ink1 = be.committed_ink_map()[&btn];
+        assert_ne!(ink1, ink0, "hover shadow grows the committed footprint");
+
+        // FAILED PAINT — proposed ink is computed + damaged, but the
+        // committed snapshot must survive untouched and damage persists
+        be.rt.state.hover_shadow = false;
+        be.rt.review_for_test().unwrap();
+        be.hot = None;
+        be.relayout().unwrap();
+        let r = be.paint_for_test(false);
+        assert!(r.is_err(), "injected paint failure propagates");
+        assert_eq!(
+            be.committed_ink_map()[&btn],
+            ink1,
+            "a failed paint leaves the last committed snapshot intact"
+        );
+        assert!(
+            be.damage_rect().is_some(),
+            "a failed paint must NOT consume the accumulated damage"
+        );
+        // a successful paint then commits the pending change
+        be.paint_for_test(true).unwrap();
+        assert_eq!(be.committed_ink_map()[&btn], ink0);
+        assert!(be.damage_rect().is_none());
+
+        // MOVE — the old footprint is damaged even though the node lives
+        be.rt.state.moved = true;
+        be.rt.review_for_test().unwrap();
+        be.relayout().unwrap();
+        let d = be.damage_rect().expect("a move must damage");
+        assert_eq!(d.union(ink0), d, "move damage covers the old rect");
+        be.paint_for_test(true).unwrap();
+        let ink2 = be.committed_ink_map()[&btn];
+        assert_ne!(ink2, ink0, "moved node commits a new footprint");
+
+        // REMOVE — the node's old ink enters damage; the committed entry
+        // is pruned only after a successful paint
+        be.rt.state.show = false;
+        be.rt.review_for_test().unwrap();
+        be.relayout().unwrap();
+        let d = be.damage_rect().expect("removal must damage old ink");
+        assert_eq!(
+            d.union(ink2),
+            d,
+            "removal damage must cover the last painted footprint"
+        );
+        be.paint_for_test(true).unwrap();
+        assert!(
+            !be.committed_ink_map().contains_key(&btn),
+            "removed node's committed ink is pruned at successful paint"
+        );
+        be.shutdown();
+    }
+
+    /// F01 — the IME delivery owner is the PINNED composition peer, not
+    /// current focus: COMPOSITION/ENDCOMPOSITION must resolve to it.
+    #[test]
+    fn ime_delivery_targets_pinned_owner() {
+        struct S;
+        let mut rig = Rig::new(
+            S,
+            |_: &mut S, _: Msg, _: &mut UpdateCtx<Msg>| {},
+            |_: &S, ui: &mut Ui<Msg>| {
+                ui.label("x");
+            },
+        );
+        rig.view().unwrap();
+        let Rig { rt, .. } = rig;
+        let mut be = crate::platform::win32::Backend::for_test(
+            rt,
+            crate::platform::win32::PeerCtx::for_test().unwrap(),
+        )
+        .unwrap();
+        let a = NodeId {
+            slot: 7,
+            generation: 1,
+        };
+        let b = NodeId {
+            slot: 8,
+            generation: 1,
+        };
+        // focus on B, no composition pinned -> IME resolves focus
+        be.focus = Some(b);
+        assert_eq!(be.ime_target(), Some(b));
+        // composition pinned to A -> focus move MUST NOT redirect
+        be.ime_owner.set(Some(a));
+        assert_eq!(be.ime_target(), Some(a));
     }
 
     /// F01 owner discriminator — a replayed message with an explicitly

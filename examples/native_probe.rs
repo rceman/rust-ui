@@ -321,8 +321,55 @@ mod probe {
             let r = el.CurrentBoundingRectangle()?;
             CoUninitialize();
             Ok(format!(
-                "{{\"kind\":\"uia-rect\",\"name\":\"{name}\",\"rect_px\":[{},{},{},{}]}}",
-                r.left, r.top, r.right, r.bottom
+                "{{\"kind\":\"uia-rect\",\"name\":{},\"rect_px\":[{},{},{},{}]}}",
+                crate::json_str(name),
+                r.left,
+                r.top,
+                r.right,
+                r.bottom
+            ))
+        }
+    }
+
+    /// UIA bounding rect of an element whose NAME starts with `prefix` —
+    /// the only honest lookup for dynamic label text (turn/draft-echo/
+    /// draft-edits change every run). Returns name + rect.
+    pub fn uia_rect_prefix(hwnd: HWND, prefix: &str) -> Result<String> {
+        unsafe {
+            let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
+            let uia: IUIAutomation = CoCreateInstance(&CUIAutomation, None, CLSCTX_ALL)?;
+            let root = uia.ElementFromHandle(hwnd)?;
+            unsafe fn find(
+                uia: &IUIAutomation,
+                el: &IUIAutomationElement,
+                prefix: &str,
+            ) -> Option<IUIAutomationElement> {
+                let n = el.CurrentName().unwrap_or_default().to_string();
+                if n.starts_with(prefix) {
+                    return Some(el.clone());
+                }
+                let walker = uia.RawViewWalker().ok()?;
+                let mut ch = walker.GetFirstChildElement(el).ok();
+                while let Some(c) = ch {
+                    if let Some(f) = find(uia, &c, prefix) {
+                        return Some(f);
+                    }
+                    ch = walker.GetNextSiblingElement(&c).ok();
+                }
+                None
+            }
+            let el = find(&uia, &root, prefix)
+                .ok_or_else(|| Error::new(E_FAIL.into(), "uia element with prefix not found"))?;
+            let r = el.CurrentBoundingRectangle()?;
+            let n = el.CurrentName().unwrap_or_default().to_string();
+            CoUninitialize();
+            Ok(format!(
+                "{{\"kind\":\"uia-rect-prefix\",\"name\":{},\"rect_px\":[{},{},{},{}]}}",
+                crate::json_str(&n),
+                r.left,
+                r.top,
+                r.right,
+                r.bottom
             ))
         }
     }
@@ -338,7 +385,8 @@ mod probe {
             let en = el.CurrentIsEnabled()?.as_bool();
             CoUninitialize();
             Ok(format!(
-                "{{\"kind\":\"uia-enabled\",\"name\":\"{name}\",\"enabled\":{en}}}"
+                "{{\"kind\":\"uia-enabled\",\"name\":{},\"enabled\":{en}}}",
+                crate::json_str(name)
             ))
         }
     }
@@ -398,7 +446,8 @@ mod probe {
                         std::thread::sleep(std::time::Duration::from_millis(200));
                         CoUninitialize();
                         return Ok(format!(
-                            "{{\"kind\":\"invoke\",\"evidence\":\"acceptance\",\"name\":\"{name}\"}}"
+                            "{{\"kind\":\"invoke\",\"evidence\":\"acceptance\",\"name\":{}}}",
+                            crate::json_str(name)
                         ));
                     }
                     Err(e) => {
@@ -436,8 +485,10 @@ mod probe {
             .ok_or_else(|| Error::new(E_FAIL.into(), "ScreenToClient failed"))?;
             click_post(hwnd, pt.0.x, pt.0.y)?;
             Ok(format!(
-                "{{\"kind\":\"click-named\",\"evidence\":\"regression\",\"name\":\"{name}\",\"client_px\":[{},{}]}}",
-                pt.0.x, pt.0.y
+                "{{\"kind\":\"click-named\",\"evidence\":\"regression\",\"name\":{},\"client_px\":[{},{}]}}",
+                crate::json_str(name),
+                pt.0.x,
+                pt.0.y
             ))
         }
     }
@@ -467,9 +518,9 @@ mod probe {
                     out.push(',');
                 }
                 out.push_str(&format!(
-                    "{{\"depth\":{},\"ct\":{},\"name\":\"{}\",\"rect_px\":[{:.0},{:.0},{:.0},{:.0}],\"enabled\":{},\"focusable\":{}}}",
+                    "{{\"depth\":{},\"ct\":{},\"name\":{},\"rect_px\":[{:.0},{:.0},{:.0},{:.0}],\"enabled\":{},\"focusable\":{}}}",
                     depth, ct,
-                    name.replace('\\', "\\\\").replace('"', "\\\""),
+                    crate::json_str(&name),
                     r.left, r.top, r.right, r.bottom, enabled, focusable
                 ));
                 let walker = uia.RawViewWalker().unwrap();
@@ -788,7 +839,10 @@ fn main() {
     let hwnd = match resolve_window(&args[2]) {
         Ok(h) => h,
         Err(e) => {
-            eprintln!("{{\"error\":\"window '{}' not found: {e}\"}}", args[2]);
+            eprintln!(
+                "{{\"error\":{}}}",
+                crate::json_str(&format!("window '{}' not found: {e}", args[2]))
+            );
             std::process::exit(2);
         }
     };
@@ -806,8 +860,8 @@ fn main() {
         }
         "type" => type_text(hwnd, &args[3]).map(|_| {
             format!(
-                "{{\"kind\":\"type\",\"evidence\":\"acceptance\",\"text\":\"{}\"}}",
-                args[3]
+                "{{\"kind\":\"type\",\"evidence\":\"acceptance\",\"text\":{}}}",
+                crate::json_str(&args[3])
             )
         }),
         "click-post" => {
@@ -821,8 +875,8 @@ fn main() {
         }
         "type-post" => type_post(hwnd, &args[3]).map(|_| {
             format!(
-                "{{\"kind\":\"type-post\",\"evidence\":\"regression\",\"text\":\"{}\"}}",
-                args[3]
+                "{{\"kind\":\"type-post\",\"evidence\":\"regression\",\"text\":{}}}",
+                crate::json_str(&args[3])
             )
         }),
         // unicode payload as HEX-encoded UTF-8 — argv is unsafe for
@@ -870,16 +924,16 @@ fn main() {
             })
         }
         "uia-rect" => uia_rect(hwnd, &args[3]),
+        "uia-rect-prefix" => uia_rect_prefix(hwnd, &args[3]),
         "uia-enabled" => uia_enabled(hwnd, &args[3]),
         "uia-count" => uia_count(hwnd),
         "invoke" => invoke(hwnd, &args[3]),
         "click-named" => click_named(hwnd, &args[3]),
         "value" => uia_value(hwnd, &args[3]).map(|v| {
             format!(
-                "{{\"kind\":\"value\",\"evidence\":\"acceptance\",\"name\":\"{}\",\"value\":{}}}",
-                args[3],
-                v.map(|s| format!("\"{}\"", s.replace('"', "\\\"")))
-                    .unwrap_or("null".into())
+                "{{\"kind\":\"value\",\"evidence\":\"acceptance\",\"name\":{},\"value\":{}}}",
+                crate::json_str(&args[3]),
+                v.map(|s| crate::json_str(&s)).unwrap_or("null".into())
             )
         }),
         "dpichange" => {
@@ -906,7 +960,7 @@ fn main() {
             println!("{json}");
         }
         Err(e) => {
-            eprintln!("{{\"error\":\"{e}\"}}");
+            eprintln!("{{\"error\":{}}}", crate::json_str(&format!("{e}")));
             std::process::exit(1);
         }
     }

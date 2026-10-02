@@ -213,6 +213,9 @@ pub(crate) struct Mailbox {
     /// wake seam — set once by the run loop; `pending` delivers edges
     wake: Mutex<Option<Arc<dyn Fn() + Send + Sync>>>,
     pending_wake: AtomicBool,
+    /// a wake callback reported its post failed — latched for the run
+    /// loop's `take_wake_failure` safe point
+    wake_failed: AtomicBool,
 }
 
 impl Mailbox {
@@ -225,6 +228,7 @@ impl Mailbox {
             }),
             wake: Mutex::new(None),
             pending_wake: AtomicBool::new(false),
+            wake_failed: AtomicBool::new(false),
         })
     }
 
@@ -245,6 +249,21 @@ impl Mailbox {
         if pending {
             self.poke_ui();
         }
+    }
+
+    /// The wake callback's post FAILED — latch it for the run loop's
+    /// safe-point check AND release the pending edge so the NEXT enqueue
+    /// retries the callback. A dead wake is retried + reported, never
+    /// silently swallowed (which would strand every queued envelope).
+    pub(crate) fn wake_post_failed(&self) {
+        self.wake_failed.store(true, Ordering::SeqCst);
+        self.pending_wake.store(false, Ordering::SeqCst);
+    }
+
+    /// Run-loop safe point: did a cross-thread wake post fail since the
+    /// last check? Latch cleared on read — each failure surfaces once.
+    pub(crate) fn take_wake_failure(&self) -> bool {
+        self.wake_failed.swap(false, Ordering::SeqCst)
     }
 
     /// Edge-triggered wake — coalesced by `pending_wake`.
@@ -385,6 +404,7 @@ impl Mailbox {
             w.take()
         };
         self.pending_wake.store(false, Ordering::SeqCst);
+        self.wake_failed.store(false, Ordering::SeqCst);
         let (dropped, waiters) = {
             let mut st = self.state.lock().unwrap();
             st.closed = true;

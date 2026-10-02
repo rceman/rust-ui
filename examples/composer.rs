@@ -301,22 +301,27 @@ impl Spike {
             ui.group("details", |ui| {
                 if self.show_details {
                     ui.surface(Surface::new().padding(Space::Sm), |ui| {
-                        ui.label(format!(
-                            "turn {} | busy {} | notice {}",
-                            self.turn_counter,
-                            self.busy,
-                            self.notice.as_deref().unwrap_or("-"),
-                        ));
-                        // application-committed state, UIA-readable — the
-                        // harness asserts the app's committed TextValue
-                        // equals the native provider's value
-                        ui.label(format!("draft-echo {}", self.draft.text()));
-                        // observable commit plumbing — edit events the app
-                        // actually saw vs the committed text it holds
-                        ui.label(format!(
-                            "draft-edits {} last {:?}",
-                            self.draft_edit_count, self.draft_last_edit
-                        ));
+                        // Surface children overlay — stack the diagnostics
+                        // vertically with the public column primitive so
+                        // each label owns a distinct rect
+                        ui.column(Column::new().gap(Space::Xs), |ui| {
+                            ui.label(format!(
+                                "turn {} | busy {} | notice {}",
+                                self.turn_counter,
+                                self.busy,
+                                self.notice.as_deref().unwrap_or("-"),
+                            ));
+                            // application-committed state, UIA-readable —
+                            // the harness asserts the app's committed
+                            // TextValue equals the native provider's value
+                            ui.label(format!("draft-echo {}", self.draft.text()));
+                            // observable commit plumbing — edit events the
+                            // app actually saw vs the committed text
+                            ui.label(format!(
+                                "draft-edits {} last {:?}",
+                                self.draft_edit_count, self.draft_last_edit
+                            ));
+                        });
                     });
                 }
             });

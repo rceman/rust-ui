@@ -157,6 +157,39 @@ function S-Ime {
   Stop-Composer $p
 }
 
+function S-Details {
+  # F12 — the details diagnostics are THREE distinct vertically-ordered
+  # rects (real layout, not a PrintWindow artifact). UIA screen rects are
+  # the authority; the screen capture is the visual receipt.
+  $p = Launch-Composer
+  P-ClickNamed $p.MainWindowHandle "show details" | Out-Null
+  Start-Sleep -Milliseconds 400
+  $rects = @()
+  foreach ($pre in @("turn ", "draft-echo ", "draft-edits ")) {
+    $r = P-RectPrefix $p.MainWindowHandle $pre
+    $rects += ,$r
+  }
+  if ($rects.Count -ne 3) { throw "expected 3 detail labels, got $($rects.Count)" }
+  $ok = $true
+  for ($i = 0; $i -lt 2; $i++) {
+    $a = $rects[$i].rect_px; $b = $rects[$i+1].rect_px
+    # strict vertical order: a's bottom must be at/above b's top (no overlap)
+    if ($a[3] -gt $b[1]) { $ok = $false }
+  }
+  if (-not $ok) { throw "detail labels overlap: $($rects | ForEach-Object { $_.rect_px -join ',' } | Out-String)" }
+  # F11 — complete JSON escaping: a backslash in committed text must
+  # round-trip through BOTH 'type' and 'value' emissions as valid JSON
+  P-ClickNamed $p.MainWindowHandle "draft" | Out-Null
+  P-Text $p.MainWindowHandle "draft-prefill\q" | Out-Null
+  $v = P-Value $p.MainWindowHandle "draft"
+  if ($v -ne "draft-prefill\q") { throw "value round-trip failed: $v" }
+  ($rects | ConvertTo-Json -Depth 5) | Set-Content "$($script:OutDir)\details-layout.json" -Encoding UTF8
+  Shot-Screen $p.MainWindowHandle "details-screen.png"
+  Shot-PrintWindow $p.MainWindowHandle "details-pw.png"
+  Stop-Composer $p
+  "details ok" | Set-Content "$($script:OutDir)\details.txt"
+}
+
 function S-Foundation {
   $p = Launch-Composer
   P-ClickNamed $p.MainWindowHandle "draft" | Out-Null
@@ -223,8 +256,8 @@ function S-Theme {
 # ---- driver ----------------------------------------------------------------
 
 $all = @("smoke","typing","unicode","selection","undo","readonly","disabled",
-         "multiline","reorder","send","ime","uia","dpi","idle","scale","theme",
-         "foundation")
+         "multiline","reorder","send","ime","details","uia","dpi","idle",
+         "scale","theme","foundation")
 $run = if ($Scenario -eq "all") { $all } else { $Scenario.Split(",") }
 
 $sha = git rev-parse HEAD 2>$null
@@ -244,6 +277,7 @@ foreach ($s in $run) {
     "reorder"   { S-Reorder }
     "send"      { S-Send }
     "ime"       { S-Ime }
+    "details"   { S-Details }
     "uia"       { S-Uia }
     "dpi"       { S-Dpi }
     "idle"      { S-Idle }

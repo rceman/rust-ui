@@ -59,6 +59,7 @@ function Probe($a) {
 function P-Geometry($h)      { Probe @("geometry",  "$h") }
 function P-UiaTree($h)       { Probe @("uia",       "$h") }
 function P-Rect($h,$n)       { Probe @("uia-rect",  "$h", $n) }
+function P-RectPrefix($h,$n) { Probe @("uia-rect-prefix", "$h", $n) }
 function P-Enabled($h,$n)    { (Probe @("uia-enabled","$h",$n)).enabled }
 function P-Count($h)         { (Probe @("uia-count","$h")).children }
 function P-Value($h,$n)      { (Probe @("value",    "$h", $n)).value }
@@ -101,4 +102,17 @@ function Shot-PrintWindow($h, $name) {
   $nw::PrintWindow($h, $dc, 2) | Out-Null
   $g.ReleaseHdc($dc); $g.Dispose()
   $bmp.Save("$($script:OutDir)\$name"); $bmp.Dispose()
+}
+
+function Shot-Screen($h, $name) {
+  # PHYSICAL-DISPLAY capture — BitBlt the window's on-screen rect from the
+  # actual desktop. This is the honest visual-fidelity route: PrintWindow
+  # asks the window to REPAINT into a DC and can crop native text; the
+  # screen is what a human actually sees.
+  $r = (P-Geometry $h).window_px
+  $x = [int]$r[0]; $y = [int]$r[1]; $w = [int]($r[2]-$r[0]); $hgt = [int]($r[3]-$r[1])
+  $bmp = New-Object System.Drawing.Bitmap $w,$hgt
+  $g = [System.Drawing.Graphics]::FromImage($bmp)
+  $g.CopyFromScreen($x,$y,0,0,(New-Object System.Drawing.Size $w,$hgt))
+  $bmp.Save("$($script:OutDir)\$name"); $g.Dispose(); $bmp.Dispose()
 }
