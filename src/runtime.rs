@@ -1075,6 +1075,16 @@ where
             .is_some_and(|n| matches!(&n.data, NodeData::Editor { sync, .. } if sync.composing))
     }
 
+    /// Composition flag falls before the final native commit drains —
+    /// `composition_end` still runs the proposal verdict.
+    pub(crate) fn composition_clear(&mut self, node: NodeId) {
+        if let Some(n) = self.arena.get_mut(node)
+            && let NodeData::Editor { sync, .. } = &mut n.data
+        {
+            sync.composing = false;
+        }
+    }
+
     /// `TextPeerSync::composition_end` — ONE implementation.
     pub(crate) fn composition_end(&mut self, node: NodeId) -> UiResult {
         enum After {

@@ -788,6 +788,14 @@ pub(crate) struct WindowlessPeer {
     /// Ui = additionally UI-active — focus owner only (msftedit allows a
     /// single UI-active control per container).
     activation: Cell<Activation>,
+    /// IME composition owns this peer's UI activation — a scale relatch
+    /// (deactivate + TOM mutation) is DEFERRED until composition ends
+    /// rather than interrupting marked input
+    pub(crate) composing: Cell<bool>,
+    /// bounds/scale waiting on composition end — the latched format space
+    /// must stay internally consistent, so BOTH move together, never
+    /// piecemeal before the native transition
+    pending_relatch: std::cell::RefCell<Option<(LogicalRect, ScaleFactor)>>,
     /// msftedit-derived single-line height in DIP — `natural_size` reports
     /// cy = line_count × line; dividing by EM_GETLINECOUNT gives the real
     /// metric regardless of content. 0 = unmeasured.
@@ -981,6 +989,8 @@ impl WindowlessPeer {
                 sink,
                 multiline: cfg.multiline,
                 activation: Cell::new(Activation::Inactive),
+                composing: Cell::new(false),
+                pending_relatch: std::cell::RefCell::new(None),
                 line_h: Cell::new(0.0),
             };
             std::mem::forget(guard);
@@ -1150,43 +1160,100 @@ impl WindowlessPeer {
     /// would latch a 0×0 space and draw nothing). The client rect is a live
     /// property (`TxGetClientRect` reads `host.bounds`) — never relatched,
     /// matching the proven mascot contract.
+    /// Composition flag set/cleared by the backend's ime_start/ime_end.
+    pub(crate) fn set_composing(&self, v: bool) {
+        self.composing.set(v);
+    }
+
+    /// The activation state — a checked state machine, not a bool.
+    pub(crate) fn activation_state(&self) -> Activation {
+        self.activation.get()
+    }
+
+    /// Composition has ended — apply a deferred scale relatch now.
+    /// The native transition runs with composition already cleared.
+    pub(crate) fn finish_pending_relatch(&self) -> UiResult {
+        let Some((bounds, scale)) = self.pending_relatch.borrow_mut().take() else {
+            return Ok(());
+        };
+        self.apply_bounds(bounds, scale)
+    }
+
+    /// Global bounds (window DIP) + DPI scale — updates without recreate.
+    /// The first non-empty bounds activate the text service (the format
+    /// space latches at activation, so activating at mount — before layout —
+    /// would latch a 0x0 space and draw nothing). The client rect is a live
+    /// property (`TxGetClientRect` reads `host.bounds`) — never relatched,
+    /// matching the proven mascot contract.
+    ///
+    /// RELATCH ORDERING (the correctness contract):
+    /// 1. snapshot the selection BEFORE any native transition (checked —
+    ///    a failed snapshot aborts the relatch rather than losing it);
+    /// 2. deactivate under the CURRENT (old) latched space — the state
+    ///    flags only move AFTER the native transition succeeds, and a
+    ///    partial failure records the activation level actually reached;
+    /// 3. only then are `host.bounds`/`host.scale` written — bookkeeping
+    ///    never precedes the native transition;
+    /// 4. reactivate, restore the selection (sorted extent + active end),
+    ///    restore UI activation.
+    /// While composition is active the whole relatch is DEFERRED —
+    /// neither the latched space nor the bookkeeping is touched.
     pub(crate) fn apply_bounds(&self, bounds: LogicalRect, scale: ScaleFactor) -> UiResult {
         let prev = self.shared().host.scale;
-        self.shared_mut().host.bounds = bounds;
-        self.shared_mut().host.scale = scale;
-        if self.activation.get() != Activation::Inactive && prev != scale {
-            // the service latches its view in *physical px* at activation —
-            // a scale change re-interprets the same DIP bounds as different
-            // px, so the peer must relatch or every draw lands at the stale
-            // scale's coordinates (the row-1 defect). Relatch preserves the
-            // NATIVE editing state: the COM object stays alive, so text,
-            // undo history and composition survive by contract; the
-            // selection/active-end direction is snapshotted and restored
-            // because deactivate is free to collapse it.
-            let was_ui = self.activation.get() == Activation::Ui;
-            let sel = self.selection_utf16().ok();
-            unsafe {
-                if was_ui {
-                    self.tx()
-                        .OnTxUIDeactivate()
-                        .map_err(|e| UiError::Platform(format!("OnTxUIDeactivate: {e}")))?;
-                }
-                self.tx()
-                    .OnTxInPlaceDeactivate()
-                    .map_err(|e| UiError::Platform(format!("OnTxInPlaceDeactivate: {e}")))?;
+        let needs_relatch = self.activation.get() != Activation::Inactive && prev != scale;
+        if !needs_relatch {
+            {
+                let mut s = self.shared_mut();
+                s.host.bounds = bounds;
+                s.host.scale = scale;
             }
-            self.activation.set(Activation::Inactive);
-            self.ensure_in_place()?;
-            if let Some((anchor, focus)) = sel {
-                self.restore_selection_utf16(anchor, focus)?;
-            }
+            return self.ensure_in_place();
+        }
+        if self.composing.get() {
+            // an active IME composition owns UI activation — the relatch
+            // defers whole (bounds AND scale together) until ime_end
+            *self.pending_relatch.borrow_mut() = Some((bounds, scale));
+            return Ok(());
+        }
+        // 1. selection snapshot — checked; abort rather than lose it
+        let sel = self.selection_utf16()?;
+        let was_ui = self.activation.get() == Activation::Ui;
+        // 2. deactivate under the OLD latched space
+        unsafe {
             if was_ui {
-                self.set_ui_active(true)?;
+                self.tx()
+                    .OnTxUIDeactivate()
+                    .map_err(|e| UiError::Platform(format!("OnTxUIDeactivate: {e}")))?;
+                self.activation.set(Activation::InPlace);
             }
-        } else {
-            self.ensure_in_place()?;
+            if let Err(e) = self.tx().OnTxInPlaceDeactivate() {
+                // truth: native reached InPlace — record what happened
+                self.activation.set(Activation::InPlace);
+                return Err(UiError::Platform(format!("OnTxInPlaceDeactivate: {e}")));
+            }
+        }
+        self.activation.set(Activation::Inactive);
+        // 3. now the bookkeeping may move
+        {
+            let mut s = self.shared_mut();
+            s.host.bounds = bounds;
+            s.host.scale = scale;
+        }
+        // 4. reactivate + restore (checked)
+        self.ensure_in_place()?;
+        self.restore_selection_utf16(sel.0, sel.1)?;
+        if was_ui {
+            self.set_ui_active(true)?;
         }
         Ok(())
+    }
+
+    /// Establish a backward selection (anchor > focus) — test-only seam
+    /// for the relatch regression: TOM needs the sorted extent +
+    /// tomSelStartActive flag, the same route restore_selection_utf16 uses.
+    #[cfg(test)]
+    pub(crate) fn set_backward_selection_utf16(&self, anchor: usize, focus: usize) -> UiResult {
+        self.restore_selection_utf16(anchor, focus)
     }
 
     /// Re-apply a directional (anchor, focus) selection after a relatch —
@@ -1206,8 +1273,12 @@ impl WindowlessPeer {
             let sel: ITextSelection = doc
                 .GetSelection()
                 .map_err(|e| UiError::Platform(format!("GetSelection: {e}")))?;
-            sel.SetStart(anchor as i32)
-                .and_then(|_| sel.SetEnd(focus as i32))
+            // DIRECTIONAL RESTORE — SetEnd collapses when anchor > focus
+            // (TOM contract): restore the SORTED extent first, then the
+            // active-end flag establishes direction without collapsing.
+            let (lo, hi) = (anchor.min(focus), anchor.max(focus));
+            sel.SetStart(lo as i32)
+                .and_then(|_| sel.SetEnd(hi as i32))
                 .map_err(|e| UiError::Platform(format!("restore selection: {e}")))?;
             let mut flags = sel
                 .GetFlags()

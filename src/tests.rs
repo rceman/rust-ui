@@ -3455,40 +3455,55 @@ fn native_probe_richedit_paints_text() {
         )
         .expect("initialize");
         peer.apply_bounds(island_dip, ScaleFactor(1.0)).unwrap();
-        // focus -> UI-active, then type + drag a selection (anchor!=focus)
+        // focus -> UI-active — the precondition is ASSERTED, not assumed
         peer.send(0x0007 /*WM_SETFOCUS*/, 0, 0).unwrap();
+        assert_eq!(
+            peer.activation_state(),
+            crate::platform::win32::text::Activation::Ui,
+            "peer must be UI-active before the relatch leg"
+        );
         for c in " XY".encode_utf16() {
             peer.send(0x0102 /*WM_CHAR*/, c as usize, 0).unwrap();
         }
-        // select the last two chars: shift+left,left
-        for _ in 0..2 {
-            peer.send(0x0100 /*WM_KEYDOWN*/, 0x10 /*VK_SHIFT*/ as usize, 0)
-                .unwrap();
-            peer.send(0x0100, 0x25 /*VK_LEFT*/ as usize, 0).unwrap();
-            peer.send(0x0101, 0x25, 0).unwrap();
-            peer.send(0x0101, 0x10, 0).unwrap();
-        }
-        let sel_before = peer.selection_utf16().expect("sel before");
+        // BACKWARD selection established through TOM — the same
+        // directional API the restore path uses (SetStart/SetEnd collapse
+        // is precisely why sorted-extent + active-end restore exists).
         let text_before = peer.text().expect("text before");
-        // undo exists for the typed edits
-        let can_undo_before = peer
+        let len = text_before.encode_utf16().count();
+        assert!(len >= 4, "precondition: enough text to select");
+        peer.set_backward_selection_utf16(len - 1, len - 3)
+            .expect("establish backward selection");
+        let (anchor, focus) = peer.selection_utf16().expect("sel before");
+        // NON-VACUOUS PRECONDITIONS — the test proves nothing unless the
+        // backward selection and undo history genuinely exist
+        assert!(
+            focus < anchor,
+            "precondition: backward selection (anchor={anchor} focus={focus}) not established"
+        );
+        assert_ne!(anchor, focus, "precondition: selection must be nonempty");
+        let can_undo = peer
             .send(0x00C6 /*EM_CANUNDO*/, 0, 0)
             .map(|s| s.lr != 0)
             .unwrap_or(false);
+        assert!(can_undo, "precondition: undo history must exist");
 
         peer.apply_bounds(island_dip, ScaleFactor(1.5)).unwrap();
 
         assert_eq!(peer.text().unwrap(), text_before, "text lost on relatch");
+        let (a2, f2) = peer.selection_utf16().unwrap();
         assert_eq!(
-            peer.selection_utf16().unwrap(),
-            sel_before,
-            "directional selection lost on relatch"
+            (a2, f2),
+            (anchor, focus),
+            "directional selection/extent lost on relatch"
+        );
+        assert!(f2 < a2, "direction must still be backward");
+        assert_eq!(
+            peer.activation_state(),
+            crate::platform::win32::text::Activation::Ui,
+            "UI activation not restored"
         );
         let can_undo_after = peer.send(0x00C6, 0, 0).map(|s| s.lr != 0).unwrap_or(false);
-        assert_eq!(
-            can_undo_before, can_undo_after,
-            "undo history changed across relatch"
-        );
+        assert!(can_undo_after, "undo history lost across relatch");
         // a fresh measurement must produce a fresh result (not stale state)
         let (_, h2) = peer.natural_size(400.0).expect("fresh natural_size");
         assert!(h2 > 0.0, "fresh measurement returned empty extent");

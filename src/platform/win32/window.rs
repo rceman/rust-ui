@@ -350,6 +350,12 @@ pub(crate) mod wndproc {
                 )?;
                 LRESULT(0)
             }
+            WM_SYSKEYDOWN | WM_SYSKEYUP => {
+                // system-key semantics are OS-owned — the deferrable route
+                // exists so a reentrant arrival still reaches THIS branch;
+                // dispatch resolves to the OS default, never drops it
+                unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
+            }
             WM_CHAR | WM_SYSCHAR => {
                 // full (msg,wparam,lparam) — the repeat/scan/alt flags in
                 // lparam are part of the native contract
@@ -369,10 +375,9 @@ pub(crate) mod wndproc {
                 LRESULT(0)
             }
             WM_IME_ENDCOMPOSITION => {
-                // peer commits first, its events drain, THEN queued
-                // proposals resolve against the final text
+                // native end first; ime_end clears the flag THEN drains —
+                // the final commit must land as committed text
                 be.send_focused(msg, wparam.0, lparam.0)?;
-                be.service_peer_events()?;
                 be.ime_end()?;
                 LRESULT(0)
             }

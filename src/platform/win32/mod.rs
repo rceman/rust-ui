@@ -333,6 +333,9 @@ where
     /// a reentrant push exceeded REENTRANT_QUEUE_CAP — surfaced as
     /// QueueOverflow by the next drain (typed failure, never silent loss)
     queue_overflowed: std::cell::Cell<bool>,
+    /// pending UTF-16 lead surrogate awaiting its trail unit (WM_CHAR
+    /// pairing for the public Key::Char route)
+    pending_lead_surrogate: std::cell::Cell<Option<u16>>,
     /// accumulated ink damage since the last committed paint — union of
     /// every paint-dirty node's OLD committed ink and NEW ink (a moved or
     /// removed shadow must damage where it used to be). Cleared by paint().
@@ -915,10 +918,22 @@ where
             let (a, f) = p.selection_utf16()?;
             (p.text()?, a, f, p.peer_rev(), p.node())
         };
+        // a selection notification during composition reflects PREEDIT
+        // coordinates — suppressed like commits; the committed snapshot
+        // is the only state consumers may observe
+        if self.rt.composition_active(node) {
+            return Ok(());
+        }
+        // checked conversions — a failed UTF-16->UTF-8 index is a typed
+        // failure, never a fallback to (0,0) or end-of-text
+        let to_utf8 = |i: usize| {
+            crate::text::utf16_index_to_utf8(&text, i)
+                .ok_or_else(|| UiError::Platform(format!("selection offset {i} not representable")))
+        };
         let sel = TextSelection {
             revision: rev,
-            anchor: crate::text::utf16_index_to_utf8(&text, anchor).unwrap_or(text.len()),
-            focus: crate::text::utf16_index_to_utf8(&text, focus).unwrap_or(text.len()),
+            anchor: to_utf8(anchor)?,
+            focus: to_utf8(focus)?,
         };
         self.rt.selection_event(node, sel)?;
         Ok(())
@@ -1476,8 +1491,12 @@ where
             windows::Win32::UI::Input::KeyboardAndMouse::GetKeyState(VK_CONTROL.0 as i32)
         } < 0;
         match (submit, multiline, shift, ctrl) {
-            (SubmitPolicy::Enter, true, true, _) => SubmitDecision::Edit, // newline
-            (SubmitPolicy::Enter, _, false, _) => SubmitDecision::Submit,
+            // single-line has no newline affordance — Enter submits under
+            // ANY modifier state (Shift is meaningless without a newline)
+            (SubmitPolicy::Enter, false, _, _) => SubmitDecision::Submit,
+            // multiline: plain Enter submits; Shift+Enter is the newline
+            (SubmitPolicy::Enter, true, true, _) => SubmitDecision::Edit,
+            (SubmitPolicy::Enter, true, false, _) => SubmitDecision::Submit,
             (SubmitPolicy::ModifierEnter, _, _, true) => SubmitDecision::Submit,
             _ => SubmitDecision::Edit,
         }
@@ -1894,10 +1913,42 @@ where
     /// WM_CHAR/WM_SYSCHAR — the focused peer sees the raw message with its
     /// real lparam (repeat count, scan code, alt flag are part of the
     /// native text-input contract)
+    /// WM_CHAR/WM_SYSCHAR — a focused NATIVE peer sees the raw message;
+    /// a focused painted/custom node sees the public semantic route
+    /// (`Key::Char`). Surrogate pairs are joined here so consumers get a
+    /// complete `char` — never a lone lead unit.
     pub(crate) fn char_msg(&mut self, msg: u32, wparam: usize, lparam: isize) -> UiResult {
-        if let Some(id) = self.focus {
+        let Some(id) = self.focused_target() else {
+            return self.turn();
+        };
+        if self.peer_for(id).is_some() {
             self.deliver_native(id, msg, wparam, lparam)?;
             self.service_peer_events()?;
+            return self.turn();
+        }
+        if msg != WM_CHAR {
+            return Ok(()); // WM_SYSCHAR carries no portable semantic
+        }
+        let unit = wparam as u32;
+        let ch = if (0xD800..0xDC00).contains(&unit) {
+            self.pending_lead_surrogate.set(Some(unit as u16));
+            return self.turn(); // pair not yet complete
+        } else if (0xDC00..0xE000).contains(&unit) {
+            let Some(lead) = self.pending_lead_surrogate.take() else {
+                return self.turn(); // stray trail unit — drop
+            };
+            char::from_u32(0x10000 + (((lead as u32) - 0xD800) << 10) + (unit - 0xDC00))
+        } else {
+            char::from_u32(unit)
+        };
+        if let Some(c) = ch {
+            self.push_input(
+                id,
+                NodeEvent::Key(KeyEvent {
+                    key: Key::Char(c),
+                    modifiers: modifiers_now(),
+                }),
+            )?;
         }
         self.turn()
     }
@@ -1985,11 +2036,28 @@ where
     pub(crate) fn ime_start(&mut self) {
         if let Some(id) = self.focus {
             self.rt.composition_start(id);
+            if let Some(peer) = self.peer_for(id) {
+                peer.borrow().set_composing(true);
+            }
         }
     }
+    /// The composition-boundary flag falls BEFORE the final drain — a
+    /// commit emitted by the end must route as committed text, not be
+    /// discarded as residual preedit. Proposals resolve last, against the
+    /// TRUE committed revision.
     pub(crate) fn ime_end(&mut self) -> UiResult {
         if let Some(id) = self.focus {
+            if let Some(peer) = self.peer_for(id) {
+                peer.borrow().set_composing(false);
+            }
+            self.rt.composition_clear(id);
+        }
+        self.service_peer_events()?;
+        if let Some(id) = self.focus {
             self.rt.composition_end(id)?;
+            if let Some(peer) = self.peer_for(id) {
+                peer.borrow().finish_pending_relatch()?;
+            }
         }
         self.turn()
     }
@@ -2196,6 +2264,7 @@ where
         reentrant_queue: std::cell::RefCell::new(std::collections::VecDeque::new()),
         arrival_focus: std::cell::Cell::new(None),
         queue_overflowed: std::cell::Cell::new(false),
+        pending_lead_surrogate: std::cell::Cell::new(None),
         in_dispatch: std::cell::Cell::new(false),
         pump_queued: std::cell::Cell::new(false),
         deferred_native: std::collections::VecDeque::new(),
