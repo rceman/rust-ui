@@ -404,7 +404,12 @@ impl Node {
 /// Diff two RESOLVED box styles into dirty classes: padding/border-width/
 /// radii changes may reflow content (LAYOUT); background/border-color/
 /// shadow are paint-only. Identical output = no bits.
-fn box_dirty(a: &crate::style::BoxStyle, b: &crate::style::BoxStyle, dark: bool, out: &mut u8) {
+pub(crate) fn box_dirty(
+    a: &crate::style::BoxStyle,
+    b: &crate::style::BoxStyle,
+    dark: bool,
+    out: &mut u8,
+) {
     const LAYOUT: u8 = 0b0000_0001;
     const PAINT: u8 = 0b0000_0010;
     if a == b {

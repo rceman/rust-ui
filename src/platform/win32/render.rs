@@ -357,7 +357,13 @@ impl Renderer {
             let d = super::space::dpi_of(dpi) as f32;
             target.SetDpi(d, d);
         }
-        let bg = role_color(crate::theme::ColorRole::Background, dark);
+        // forced colors route through the SAME resolver as every other
+        // role consumer — the window clear is not an exempt path
+        let bg = resolve_render(
+            crate::style::Color::Role(crate::theme::ColorRole::Background),
+            dark,
+            forced,
+        );
         unsafe {
             target.BeginDraw();
             target.Clear(Some(&bg));
@@ -466,7 +472,7 @@ impl Renderer {
                         // style resolution can't erase (Focus role,
                         // outside the box); see Action arm for the same
                         if be.focus == Some(id) && !*disabled {
-                            paint_focus_ring(&target, &br, dark)?;
+                            paint_focus_ring(&target, &br, dark, forced)?;
                         }
                         let wide: Vec<u16> = text.as_ref().encode_utf16().collect();
                         let fmt = fmt_for(&vs.text_style, 0)?;
@@ -511,7 +517,7 @@ impl Renderer {
                         )?;
                         // focus ENFORCEMENT — same independent ring layer
                         if be.focus == Some(id) && !*disabled {
-                            paint_focus_ring(&target, &clip, dark)?;
+                            paint_focus_ring(&target, &clip, dark, forced)?;
                         }
                     }
                     // NOTE: no axis-aligned clip around the peer draw —
@@ -532,6 +538,7 @@ impl Renderer {
                     let mut canvas = D2dCanvas {
                         target: &target,
                         dark,
+                        forced,
                         geo_stack: Vec::new(),
                         path_geos: Vec::new(),
                     };
@@ -585,7 +592,7 @@ impl Renderer {
                         // focus ENFORCEMENT — the ring lives at paint, a
                         // layer consumer patches can never erase
                         if be.focus == Some(id) && !*disabled {
-                            paint_focus_ring(&target, &clip, dark)?;
+                            paint_focus_ring(&target, &clip, dark, forced)?;
                         }
                     }
                 }
@@ -732,6 +739,8 @@ unsafe extern "system" fn tip_wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPAR
 struct D2dCanvas<'a> {
     target: &'a ID2D1RenderTarget,
     dark: bool,
+    /// forced-colors resolver — canvas fill/text roles are NOT exempt
+    forced: Option<&'a dyn Fn(crate::style::SystemColor) -> [f32; 4]>,
     /// built geometries kept alive for the paint call's borrow scope
     geo_stack: Vec<ID2D1PathGeometry>,
     path_geos: Vec<ID2D1Geometry>,
@@ -788,7 +797,9 @@ impl Canvas for D2dCanvas<'_> {
                 return;
             }
             let color = match paint {
-                Paint::FillRole(r) => role_color(r, self.dark),
+                Paint::FillRole(r) => {
+                    resolve_render(crate::style::Color::Role(r), self.dark, self.forced)
+                }
                 Paint::Rgba(r, g, b, a) => D2D1_COLOR_F {
                     r: r as f32 / 255.0,
                     g: g as f32 / 255.0,
@@ -811,7 +822,11 @@ impl Canvas for D2dCanvas<'_> {
             let Ok(lay) = d.factory.CreateTextLayout(&wide, fmt, f32::MAX, f32::MAX) else {
                 return;
             };
-            let c = role_color(run.color_role, self.dark);
+            let c = resolve_render(
+                crate::style::Color::Role(run.color_role),
+                self.dark,
+                self.forced,
+            );
             if let Ok(brush) = self.target.CreateSolidColorBrush(&c, None) {
                 self.target.DrawTextLayout(
                     Vector2 {
@@ -996,10 +1011,13 @@ struct ShadowKey {
     sigma: u32,
     color: u32,
     scale: u32,
+    /// raster bakes the offset-exclusion — same mask CANNOT serve another
+    /// offset (the exclusion window translates with it)
+    offset_px: (i32, i32),
 }
 
 #[derive(Default)]
-struct ShadowCache {
+pub(crate) struct ShadowCache {
     map: std::collections::HashMap<ShadowKey, (ID2D1Bitmap, usize)>,
     order: std::collections::VecDeque<ShadowKey>,
     bytes: usize,
@@ -1011,10 +1029,10 @@ const SHADOW_CACHE_MAX_BYTES: usize = 32 * 1024 * 1024;
 const SHADOW_MAX_DIM: u32 = 4096;
 
 impl ShadowCache {
-    fn get(&self, k: &ShadowKey) -> Option<&ID2D1Bitmap> {
+    pub(crate) fn get(&self, k: &ShadowKey) -> Option<&ID2D1Bitmap> {
         self.map.get(k).map(|(b, _)| b)
     }
-    fn insert(&mut self, k: ShadowKey, bmp: ID2D1Bitmap, bytes: usize) {
+    pub(crate) fn insert(&mut self, k: ShadowKey, bmp: ID2D1Bitmap, bytes: usize) {
         // FIFO eviction under both bounds — cache is reuse, not storage
         while self.map.len() >= SHADOW_CACHE_MAX_ENTRIES
             || self.bytes + bytes > SHADOW_CACHE_MAX_BYTES
@@ -1031,7 +1049,7 @@ impl ShadowCache {
         self.map.insert(k, (bmp, bytes));
     }
     /// target/device loss or DPI change — everything derived dies
-    fn clear(&mut self) {
+    pub(crate) fn clear(&mut self) {
         self.map.clear();
         self.order.clear();
         self.bytes = 0;
@@ -1045,7 +1063,7 @@ impl ShadowCache {
 /// draw it as a bitmap offset by (dx, dy). Raster results are cached
 /// bounded per renderer/target generation — the same resolved shadow on
 /// consecutive frames does zero raster work.
-fn draw_shadow(
+pub(crate) fn draw_shadow(
     target: &ID2D1RenderTarget,
     r: &D2D_RECT_F,
     radii: &CornerRadii,
@@ -1060,28 +1078,48 @@ fn draw_shadow(
     if sa <= 0.0 || !shadow.offset_x.0.is_finite() || !shadow.offset_y.0.is_finite() {
         return Ok(());
     }
+    let einval =
+        || windows::core::Error::from_hresult(windows::core::HRESULT(0x8007_0057u32 as i32));
     let scale = dpi;
-    // DIP->device px: blur pad + extent in physical pixels (checked)
-    let pad_dip = (sigma * 3.0).max(1.0);
-    let pad = scale.to_physical_f(pad_dip).ceil() as usize;
+    // CHECKED BEFORE ARITHMETIC — every float->usize conversion happens
+    // only after the value proves finite and in-range; `2 * pad` and the
+    // extent additions are checked_mul/checked_add, never wrapping.
+    let pad_dip = sigma * 3.0;
+    if !pad_dip.is_finite() || pad_dip < 0.0 {
+        return Err(einval().into());
+    }
+    let pad_px_f = scale.to_physical_f(pad_dip.max(1.0));
     let rw = (r.right - r.left).max(0.0);
     let rh = (r.bottom - r.top).max(0.0);
-    let w = scale.to_physical_f(rw).ceil() as usize + 2 * pad;
-    let h = scale.to_physical_f(rh).ceil() as usize + 2 * pad;
+    let w_px_f = scale.to_physical_f(rw);
+    let h_px_f = scale.to_physical_f(rh);
+    let lim = SHADOW_MAX_DIM as f32;
+    if ![pad_px_f, w_px_f, h_px_f]
+        .iter()
+        .all(|v| v.is_finite() && *v >= 0.0 && *v <= lim)
+    {
+        return Err(einval().into()); // unrepresentable raster — typed failure
+    }
+    let pad = pad_px_f.ceil() as usize;
+    let w_px = w_px_f.ceil() as usize;
+    let h_px = h_px_f.ceil() as usize;
+    let Some(two_pad) = pad.checked_mul(2) else {
+        return Err(einval().into());
+    };
+    let Some(w) = w_px.checked_add(two_pad) else {
+        return Err(einval().into());
+    };
+    let Some(h) = h_px.checked_add(two_pad) else {
+        return Err(einval().into());
+    };
     if w == 0 || h == 0 {
         return Ok(()); // degenerate box — zero ink, not a failure
     }
     if w > SHADOW_MAX_DIM as usize || h > SHADOW_MAX_DIM as usize {
-        return Err(windows::core::Error::from_hresult(windows::core::HRESULT(
-            0x8007_0057u32 as i32, // E_INVALIDARG — extent overflow is a defect
-        ))
-        .into());
+        return Err(einval().into()); // extent overflow is a defect
     }
     let Some(n_px) = w.checked_mul(h) else {
-        return Err(windows::core::Error::from_hresult(windows::core::HRESULT(
-            0x8007_0057u32 as i32,
-        ))
-        .into());
+        return Err(einval().into());
     };
     let bytes = n_px.checked_mul(4).unwrap_or(usize::MAX);
     if bytes > SHADOW_CACHE_MAX_BYTES {
@@ -1093,6 +1131,8 @@ fn draw_shadow(
     // normalized radii are part of the raster key — authored proportions
     let norm = radii.normalized(rw, rh);
     let cbits = |v: f32| (v.clamp(0.0, 1.0) * 255.0) as u32;
+    let ox_key = scale.to_physical_f(shadow.offset_x.0).round() as i32;
+    let oy_key = scale.to_physical_f(shadow.offset_y.0).round() as i32;
     let key = ShadowKey {
         target_gen,
         width: w as u32,
@@ -1107,6 +1147,7 @@ fn draw_shadow(
         sigma: sigma.to_bits(),
         color: (cbits(sa) << 24) | (cbits(sr) << 16) | (cbits(sg) << 8) | cbits(sb),
         scale: scale.0.to_bits(),
+        offset_px: (ox_key, oy_key),
     };
     let bw = rw / 2.0;
     let bh = rh / 2.0;
@@ -1214,11 +1255,14 @@ fn draw_shadow(
     // bitmap lands at `r + offset`. A translucent box fill must not show
     // shadow ink through itself, so exclude the ORIGINAL silhouette:
     // mask-space pixel (x,y) maps to box-local (x - offset_px, y - offset_px).
-    let ox_px = scale.to_physical_f(shadow.offset_x.0).round() as i32;
-    let oy_px = scale.to_physical_f(shadow.offset_y.0).round() as i32;
+    // bitmap pixel x lands at box-local (x + ox_px) once drawn at +offset —
+    // the ORIGINAL silhouette covers mask positions (x+ox, y+oy), so the
+    // exclusion samples solid at +offset, never -offset.
+    let ox_px = ox_key;
+    let oy_px = oy_key;
     let excl = |i: usize| -> f32 {
-        let x = (i % w) as i32 - ox_px;
-        let y = (i / w) as i32 - oy_px;
+        let x = (i % w) as i32 + ox_px;
+        let y = (i / w) as i32 + oy_px;
         if x < 0 || y < 0 || x >= w as i32 || y >= h as i32 {
             0.0
         } else {
@@ -1274,7 +1318,7 @@ fn draw_shadow(
 
 /// Paint one resolved `BoxStyle` at `r` — shadow under, fill, then per-side
 /// borders (later sides own shared corners, T<R<B<L).
-fn paint_box(
+pub(crate) fn paint_box(
     target: &ID2D1RenderTarget,
     r: &D2D_RECT_F,
     style: &BoxStyle,
@@ -1341,20 +1385,6 @@ fn paint_box(
                 // that is released right after PopLayer (ManuallyDrop in
                 // the field type is an ABI detail, not a leak license).
                 let mask = box_geometry(target, r, &style.radii)?;
-                let mut params = D2D1_LAYER_PARAMETERS {
-                    contentBounds: D2D_RECT_F {
-                        left: f32::MIN,
-                        top: f32::MIN,
-                        right: f32::MAX,
-                        bottom: f32::MAX,
-                    },
-                    geometricMask: std::mem::ManuallyDrop::new(Some(mask.clone())),
-                    maskAntialiasMode: D2D1_ANTIALIAS_MODE_ALIASED,
-                    maskTransform: Matrix3x2::identity(),
-                    opacity: 1.0,
-                    opacityBrush: std::mem::ManuallyDrop::new(None),
-                    layerOptions: D2D1_LAYER_OPTIONS_NONE,
-                };
                 // RAII-paired layer: EVERY fallible allocation happens
                 // BEFORE PushLayer — a `?` between push/pop would strand
                 // the layer and leak the params' borrowed mask clone.
@@ -1363,12 +1393,26 @@ fn paint_box(
                 // adjacent inner corners — corner cells split on the
                 // diagonal, so arbitrarily thick opposing sides can never
                 // overlap.
-                let (lw, tw, rw, bw) = (
-                    style.border.left.width.0,
-                    style.border.top.width.0,
-                    style.border.right.width.0,
-                    style.border.bottom.width.0,
+                let (mut lw, mut tw, mut rw, mut bw) = (
+                    style.border.left.width.0.max(0.0),
+                    style.border.top.width.0.max(0.0),
+                    style.border.right.width.0.max(0.0),
+                    style.border.bottom.width.0.max(0.0),
                 );
+                // BOUNDED — opposing insets whose sum exceeds the box
+                // extent would cross; scale both so they exactly fill
+                // (degenerate inner corner at the midline, never overlap)
+                let (w, h) = (r.right - r.left, r.bottom - r.top);
+                if lw + rw > w && w > 0.0 {
+                    let k = w / (lw + rw);
+                    lw *= k;
+                    rw *= k;
+                }
+                if tw + bw > h && h > 0.0 {
+                    let k = h / (tw + bw);
+                    tw *= k;
+                    bw *= k;
+                }
                 let trapezoids: [[Vector2; 4]; 4] = [
                     // top side: outer top edge, inner edge inset by lw/rw
                     [
@@ -1475,6 +1519,23 @@ fn paint_box(
                     }
                     parts_v.push((b, geo));
                 }
+                // the mask clone is acquired ONLY after every fallible
+                // allocation — a `?` before this point can no longer
+                // strand a ManuallyDrop addref
+                let mut params = D2D1_LAYER_PARAMETERS {
+                    contentBounds: D2D_RECT_F {
+                        left: f32::MIN,
+                        top: f32::MIN,
+                        right: f32::MAX,
+                        bottom: f32::MAX,
+                    },
+                    geometricMask: std::mem::ManuallyDrop::new(Some(mask.clone())),
+                    maskAntialiasMode: D2D1_ANTIALIAS_MODE_ALIASED,
+                    maskTransform: Matrix3x2::identity(),
+                    opacity: 1.0,
+                    opacityBrush: std::mem::ManuallyDrop::new(None),
+                    layerOptions: D2D1_LAYER_OPTIONS_NONE,
+                };
                 target.PushLayer(&params, None);
                 for (b, geo) in &parts_v {
                     target.FillGeometry(geo, b, None);
@@ -1500,10 +1561,21 @@ fn shrink_radii(r: &CornerRadii, d: f32) -> CornerRadii {
 /// Required focus indicator — painted OUTSIDE the box in the Focus role.
 /// This is the enforcement layer: it runs at render after every style
 /// layer resolved, so no consumer patch can erase focus visibility.
-unsafe fn paint_focus_ring(target: &ID2D1RenderTarget, r: &D2D_RECT_F, dark: bool) -> Result<()> {
+unsafe fn paint_focus_ring(
+    target: &ID2D1RenderTarget,
+    r: &D2D_RECT_F,
+    dark: bool,
+    forced: Option<&dyn Fn(crate::style::SystemColor) -> [f32; 4]>,
+) -> Result<()> {
     unsafe {
-        let ring = target
-            .CreateSolidColorBrush(&role_color(crate::theme::ColorRole::Focus, dark), None)?;
+        let ring = target.CreateSolidColorBrush(
+            &resolve_render(
+                crate::style::Color::Role(crate::theme::ColorRole::Focus),
+                dark,
+                forced,
+            ),
+            None,
+        )?;
         let outer = D2D1_ROUNDED_RECT {
             rect: D2D_RECT_F {
                 left: r.left - 2.0,

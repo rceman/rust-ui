@@ -219,7 +219,20 @@ impl crate::node::TextPeer for PeerHandle {
 }
 
 /// Theme palette handed to peers (fg/selection colors as `COLORREF` floats).
-pub(crate) fn palette(theme: &Theme, _appearance: &Appearance) -> ([f32; 4], [f32; 4], [f32; 4]) {
+pub(crate) fn palette(theme: &Theme, appearance: &Appearance) -> ([f32; 4], [f32; 4], [f32; 4]) {
+    // forced colors: the peer's selection palette follows the OS system
+    // colors — the same resolver every other consumer uses
+    if appearance.forced_colors {
+        return (
+            if theme.dark {
+                [0.94, 0.94, 0.94, 1.0]
+            } else {
+                [0.09, 0.09, 0.11, 1.0]
+            },
+            sys_color(crate::style::SystemColor::Highlight),
+            sys_color(crate::style::SystemColor::HighlightText),
+        );
+    }
     if theme.dark {
         (
             [0.94, 0.94, 0.94, 1.0],
@@ -240,6 +253,14 @@ pub(crate) const WM_PUMP: u32 = WM_APP + 7;
 /// generation-fenced UIA actions routed through the UI thread
 pub(crate) const WM_UIA_PRESS: u32 = WM_APP + 8;
 pub(crate) const WM_UIA_FOCUS: u32 = WM_APP + 9;
+
+/// Interaction state snapshot for transition classification.
+#[derive(Copy, Clone, PartialEq)]
+struct InteractState {
+    pressed: bool,
+    hot: bool,
+    focus: bool,
+}
 
 /// The Enter-fork decision — Submit (semantic only, peer never sees the
 /// key) or Edit (delivered to the peer, never also submits).
@@ -1070,11 +1091,13 @@ where
         // prune stale ids — backend cache holds live NodeIds only
         self.rects = rects;
         self.order = order;
-        // record the committed ink footprint per node — damage unions
-        // consult THIS (the old half) plus the node's current contribution
+        // Damage contract: compute the NEW committed ink per node first,
+        // diff against the OLD map, union both halves for every changed /
+        // moved / removed id into `damage`, and only THEN install the new
+        // map. Pruning dead ids happens AFTER their old footprints entered
+        // the damage union — never before.
         {
-            let mut ink = self.committed_ink.borrow_mut();
-            ink.retain(|id, _| self.rt.arena.is_live(*id));
+            let mut new_ink: HashMap<NodeId, LogicalRect> = HashMap::new();
             for (&id, &r) in self.rects.iter() {
                 let mut i = r;
                 let sh = match self.rt.arena.get(id).map(|n| &n.data) {
@@ -1096,8 +1119,27 @@ where
                 if let Some((_b, sh)) = sh {
                     i = i.union(render::shadow_ink_rect(&r, &sh));
                 }
-                ink.insert(id, i);
+                new_ink.insert(id, i);
             }
+            let mut ink = self.committed_ink.borrow_mut();
+            // old footprint of a moved/shrunk/removed node is damage too
+            for (&id, &old) in ink.iter() {
+                let dr = match new_ink.get(&id) {
+                    Some(&new) if new != old => old.union(new),
+                    Some(_) => continue,
+                    None => old,
+                };
+                let acc = self.damage.get().map(|d| d.union(dr)).unwrap_or(dr);
+                self.damage.set(Some(acc));
+            }
+            // a brand-new node's ink is damage even without a dirty mark
+            for (&id, &new) in new_ink.iter() {
+                if !ink.contains_key(&id) {
+                    let acc = self.damage.get().map(|d| d.union(new)).unwrap_or(new);
+                    self.damage.set(Some(acc));
+                }
+            }
+            *ink = new_ink;
         }
         Ok(())
     }
@@ -1306,8 +1348,9 @@ where
             // semantic node events
             let ev = match phase {
                 crate::node::PointerPhase::Down => {
+                    let old = self.interact(id);
                     self.pressed = Some(id);
-                    self.mark_state_dirty(id);
+                    self.mark_state_dirty(id, old);
                     NodeEvent::Pointer(
                         PointerEvent {
                             position: pos,
@@ -1319,9 +1362,10 @@ where
                 }
                 crate::node::PointerPhase::Up => {
                     let was_pressed = self.pressed == Some(id);
+                    let old = self.interact(id);
                     self.pressed = None;
                     if was_pressed {
-                        self.mark_state_dirty(id);
+                        self.mark_state_dirty(id, old);
                     }
                     // press = down+up on the same node
                     if was_pressed {
@@ -1560,8 +1604,13 @@ where
         if self.focus == node {
             return Ok(());
         }
-        for id in [self.focus, node].into_iter().flatten() {
-            self.mark_state_dirty(id);
+        let olds: Vec<(NodeId, InteractState)> = [self.focus, node]
+            .into_iter()
+            .flatten()
+            .map(|id| (id, self.interact(id)))
+            .collect();
+        for (id, old) in olds {
+            self.mark_state_dirty(id, old);
         }
         if let Some(old) = self.focus {
             if self.rt.arena.is_live(old) {
@@ -1580,19 +1629,77 @@ where
         Ok(())
     }
 
-    /// An interaction-state transition on `id` — metric-bearing branches
-    /// need LAYOUT|PAINT, paint-only branches only PAINT. One classifier
-    /// for every hover/press/focus mark.
-    fn mark_state_dirty(&self, id: NodeId) {
-        let bits = if self
-            .rt
-            .arena
-            .get(id)
-            .is_some_and(|n| n.state_metric_affecting())
-        {
-            0b11
-        } else {
-            0b10
+    /// The resolved interaction-state inputs — what the visual would be
+    /// IF (pressed,hot,focus) held these values. Callers snapshot it
+    /// BEFORE and AFTER flipping the state fields.
+    fn interact(&self, id: NodeId) -> InteractState {
+        InteractState {
+            pressed: self.pressed == Some(id),
+            hot: self.hot == Some(id),
+            focus: self.focus == Some(id),
+        }
+    }
+
+    /// Resolve the node's effective visual under a hypothetical
+    /// interaction state — the compare target for transition
+    /// classification. Same recipe+patch+state chain the renderer runs.
+    fn resolved_at(&self, id: NodeId, st: InteractState) -> Option<crate::style::VisualStyle> {
+        let n = self.rt.arena.get(id)?;
+        let dark = self.rt.theme.dark;
+        let forced = self.rt.forced_resolver();
+        match &n.data {
+            NodeData::Button {
+                variant,
+                size,
+                style,
+                disabled,
+                ..
+            } => {
+                let state = crate::style::StyleState::classify(*disabled, st.pressed, st.hot);
+                let mut v =
+                    crate::style::resolve_button(*variant, *size, style, state, st.focus, dark);
+                crate::style::os_enforce_visual(&mut v, forced);
+                Some(v)
+            }
+            NodeData::Action {
+                style, disabled, ..
+            } => {
+                let mut b = style.resolve(*disabled, st.pressed, st.hot, st.focus);
+                crate::style::os_enforce_box(&mut b, forced);
+                Some(crate::style::VisualStyle {
+                    box_style: b,
+                    text_style: crate::style::TextStyle::default(),
+                })
+            }
+            NodeData::Editor { patch, .. } => {
+                let mut b = crate::style::resolve_text_input_chrome(patch);
+                crate::style::os_enforce_box(&mut b, forced);
+                Some(crate::style::VisualStyle {
+                    box_style: b,
+                    text_style: crate::style::TextStyle::default(),
+                })
+            }
+            _ => None,
+        }
+    }
+
+    /// An interaction-state transition on `id` — classify by the ACTUAL
+    /// old->new resolved visual difference, never by "some branch
+    /// somewhere has metrics". Identical resolved output = no work;
+    /// metric-bearing fields moving = LAYOUT|PAINT; paint-only = PAINT.
+    fn mark_state_dirty(&self, id: NodeId, old: InteractState) {
+        let new = self.interact(id);
+        let bits = match (self.resolved_at(id, old), self.resolved_at(id, new)) {
+            (Some(a), Some(b)) => {
+                let mut d = 0u8;
+                crate::node::box_dirty(&a.box_style, &b.box_style, self.rt.theme.dark, &mut d);
+                if d == 0 && !crate::style::visual_resolved_eq(&a, &b, self.rt.theme.dark) {
+                    d |= 0b10; // text-only difference — paint
+                }
+                d
+            }
+            (None, None) => 0b10, // unstyled node — repaint (unchanged rule)
+            _ => 0b11,
         };
         self.state_dirty.set(self.state_dirty.get() | bits);
     }
@@ -1611,6 +1718,11 @@ where
         };
         if hit != self.hot {
             let old_hot = self.hot;
+            let olds: Vec<(NodeId, InteractState)> = [old_hot, hit]
+                .into_iter()
+                .flatten()
+                .map(|id| (id, self.interact(id)))
+                .collect();
             if let Some(old) = old_hot
                 && self.peer_for(old).is_none()
             {
@@ -1628,8 +1740,8 @@ where
                 self.rt.sched_unarm_tooltip(old);
             }
             self.hot = hit;
-            for id in [old_hot, hit].into_iter().flatten() {
-                self.mark_state_dirty(id);
+            for (id, old) in olds {
+                self.mark_state_dirty(id, old);
             }
             if let Some(id) = hit {
                 if self.peer_for(id).is_none() {
@@ -1679,6 +1791,16 @@ where
     /// Pointer left the window — hot leaves, tooltip disarms.
     pub(crate) fn leave(&mut self) -> UiResult {
         if let Some(old) = self.hot.take() {
+            // hover-left is a transition — the old hot=true resolved
+            // visual may differ from the cleared state
+            self.mark_state_dirty(
+                old,
+                InteractState {
+                    pressed: self.pressed == Some(old),
+                    hot: true,
+                    focus: self.focus == Some(old),
+                },
+            );
             if self.peer_for(old).is_none() {
                 self.push_input(
                     old,
@@ -2122,12 +2244,24 @@ where
         if let Some(pr) = self.pressed
             && !ok(pr)
         {
+            let st = InteractState {
+                pressed: true,
+                hot: self.hot == Some(pr),
+                focus: self.focus == Some(pr),
+            };
             self.pressed = None;
+            self.mark_state_dirty(pr, st);
         }
         if let Some(h) = self.hot
             && !ok(h)
         {
+            let st = InteractState {
+                pressed: self.pressed == Some(h),
+                hot: true,
+                focus: self.focus == Some(h),
+            };
             self.hot = None;
+            self.mark_state_dirty(h, st);
         }
         let valid = self.focus.is_some_and(|f| ok(f));
         if !valid {
