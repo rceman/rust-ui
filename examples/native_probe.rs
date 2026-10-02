@@ -719,14 +719,21 @@ fn main() {
             let mut bytes = Vec::with_capacity(hexs.len() / 2);
             let mut ok = true;
             for pair in hexs.as_bytes().chunks(2) {
-                match std::str::from_utf8(pair).ok().and_then(|h| u8::from_str_radix(h, 16).ok()) {
+                match std::str::from_utf8(pair)
+                    .ok()
+                    .and_then(|h| u8::from_str_radix(h, 16).ok())
+                {
                     Some(b) => bytes.push(b),
-                    None => { ok = false; break; }
+                    None => {
+                        ok = false;
+                        break;
+                    }
                 }
             }
             match String::from_utf8(bytes) {
                 Ok(text) if ok => type_post(hwnd, &text).map(|_| {
-                    "{\"kind\":\"type-post\",\"evidence\":\"regression\",\"via\":\"hex\"}".to_string()
+                    "{\"kind\":\"type-post\",\"evidence\":\"regression\",\"via\":\"hex\"}"
+                        .to_string()
                 }),
                 _ => Err(windows::core::Error::new(
                     windows::Win32::Foundation::E_FAIL.into(),
