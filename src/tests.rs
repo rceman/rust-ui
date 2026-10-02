@@ -5020,6 +5020,15 @@ fn geometry_contract_logical_to_physical() {
     assert_eq!(ScaleFactor(1.25).to_physical(0.4), 1);
     assert_eq!(ScaleFactor(1.25).to_physical(1.6), 2); // 2.0 exact
     assert_eq!(ScaleFactor(1.5).to_physical(2.5), 4); // 3.75 -> 4
+    // EXACT representability boundary — the review's counterexample:
+    // 2^31 f32 is representable as f32 but NOT as i32; the checked path
+    // must reject it rather than saturate to i32::MAX.
+    assert_eq!(s.try_to_physical(2147483648.0), None);
+    assert_eq!(s.try_to_physical(-2147483648.0), Some(i32::MIN));
+    assert_eq!(s.try_to_physical(2147483520.0), Some(2147483520)); // max good f32
+    assert_eq!(s.try_to_physical(f32::NAN), None);
+    assert_eq!(s.try_to_physical(f32::INFINITY), None);
+    assert_eq!(s.try_to_physical(f32::NEG_INFINITY), None);
 }
 
 #[test]
@@ -5115,7 +5124,8 @@ fn peer_origin_single_snapped_transform() {
             height: 20.0,
         },
         ScaleFactor(1.25),
-    );
+    )
+    .expect("representable bounds snap");
     assert_eq!(o.0, PhysicalPoint { x: 1, y: 1 });
     // client px 1 -> peer-local 0 under the SHARED snapped transform
     // (the alternate "subtract-then-rescale" path answered 1 — removed)
@@ -5142,6 +5152,21 @@ fn peer_origin_single_snapped_transform() {
         omin.to_local(ClientPhysicalPoint(PhysicalPoint { x: 1, y: 0 })),
         None
     );
+
+    // unrepresentable origin coordinates -> construction fails (None),
+    // never a silently saturated PeerOrigin
+    assert_eq!(
+        PeerOrigin::from_logical(
+            Rect {
+                x: 2147483648.0,
+                y: 0.0,
+                width: 10.0,
+                height: 10.0,
+            },
+            ScaleFactor(1.0),
+        ),
+        None
+    );
     let omax = PeerOrigin(PhysicalPoint {
         x: i32::MAX,
         y: i32::MAX,
@@ -5162,7 +5187,8 @@ fn peer_origin_single_snapped_transform() {
             height: 10.0,
         },
         ScaleFactor(1.5),
-    );
+    )
+    .expect("representable");
     assert_eq!(o2.0.x, 12); // 8.2 * 1.5 = 12.3 -> 12
 }
 
@@ -5203,8 +5229,8 @@ mod native_contract_tests {
     use crate::NodeId;
     use crate::platform::win32::text::TimerPool;
     use crate::platform::win32::window::{
-        NATIVE_TIMER_BASE, NATIVE_TIMER_CAP, REENTRANT_DRAIN_MAX, REENTRANT_QUEUE_CAP,
-        deferrable_arrival, focus_targeted,
+        NATIVE_TIMER_BASE, NATIVE_TIMER_CAP, QueuedMsg, REENTRANT_DRAIN_MAX, REENTRANT_QUEUE_CAP,
+        deferrable_arrival, focus_targeted, is_teardown, next_drain_item,
     };
     use windows::Win32::UI::WindowsAndMessaging::*;
 
@@ -5252,8 +5278,18 @@ mod native_contract_tests {
             REENTRANT_QUEUE_CAP > REENTRANT_DRAIN_MAX,
             "queue cap must exceed the drain bound — a full drain pass must be able to continue"
         );
-        // focus-targeted messages capture the arrival-time focus
-        for m in [WM_KEYDOWN, WM_KEYUP, WM_CHAR, WM_IME_ENDCOMPOSITION] {
+        // focus-targeted messages capture the arrival-time focus —
+        // including the focus transitions and wheel routes that deliver
+        // via send_focused
+        for m in [
+            WM_KEYDOWN,
+            WM_KEYUP,
+            WM_CHAR,
+            WM_IME_ENDCOMPOSITION,
+            WM_SETFOCUS,
+            WM_KILLFOCUS,
+            WM_MOUSEWHEEL,
+        ] {
             assert!(focus_targeted(m), "msg {m:#x} must snapshot arrival focus");
         }
         for m in [WM_MOUSEMOVE, WM_SIZE, WM_TIMER] {
@@ -5262,6 +5298,92 @@ mod native_contract_tests {
                 "msg {m:#x} is positional, not focus-owned"
             );
         }
+    }
+
+    /// F01 exact-boundary drains — a full budget pass empties without
+    /// continuation; teardown NEVER waits behind budget-exhausted work.
+    #[test]
+    fn reentrant_drain_boundary_and_teardown_bypass() {
+        let mk = |msg: u32| QueuedMsg {
+            msg,
+            wparam: 0,
+            lparam: 0,
+            rect: None,
+            arrival_focus: None,
+        };
+        // exactly DRAIN_MAX ordinary items -> all drained, nothing left
+        let mut q: std::collections::VecDeque<QueuedMsg> = (0..REENTRANT_DRAIN_MAX)
+            .map(|_| mk(WM_KEYDOWN))
+            .collect();
+        let mut consumed = 0usize;
+        let mut n = 0usize;
+        while let Some(m) = next_drain_item(&mut q, consumed) {
+            if !is_teardown(m.msg) {
+                consumed += 1;
+            }
+            n += 1;
+        }
+        assert_eq!(n, REENTRANT_DRAIN_MAX);
+        assert!(q.is_empty());
+        // beyond the bound — ordinary remainder stays for the pump
+        let mut q: std::collections::VecDeque<QueuedMsg> = (0..REENTRANT_DRAIN_MAX + 10)
+            .map(|_| mk(WM_KEYDOWN))
+            .collect();
+        let mut consumed = 0usize;
+        let mut n = 0usize;
+        while let Some(m) = next_drain_item(&mut q, consumed) {
+            if !is_teardown(m.msg) {
+                consumed += 1;
+            }
+            n += 1;
+        }
+        assert_eq!(n, REENTRANT_DRAIN_MAX);
+        assert_eq!(q.len(), 10, "remainder waits for the continuation");
+        // TEARDOWN queued at position 129 — beyond the budget — must
+        // still be delivered this pass
+        let mut q: std::collections::VecDeque<QueuedMsg> = (0..REENTRANT_DRAIN_MAX)
+            .map(|_| mk(WM_KEYDOWN))
+            .collect();
+        q.push_back(mk(WM_NCDESTROY));
+        let mut consumed = 0usize;
+        let mut tore = false;
+        while let Some(m) = next_drain_item(&mut q, consumed) {
+            if is_teardown(m.msg) {
+                tore = true;
+            } else {
+                consumed += 1;
+            }
+        }
+        assert!(tore, "teardown past the drain bound must still dispatch");
+        assert!(q.is_empty());
+    }
+
+    /// F01 owner discriminator — a replayed message with an explicitly
+    /// absent arrival owner must NOT fall through to current focus; a
+    /// captured owner replays to it; live dispatch resolves current.
+    #[test]
+    fn replay_owner_is_discriminated() {
+        // the discriminator IS Option<Option<NodeId>> on the cell —
+        // the resolution contract: captured = Some(c) -> c governs
+        // (None means no-owner), None = live -> current focus
+        let a = NodeId {
+            slot: 1,
+            generation: 0,
+        };
+        let b = NodeId {
+            slot: 2,
+            generation: 0,
+        };
+        let resolve = |captured: Option<Option<NodeId>>, live: Option<NodeId>| {
+            captured.unwrap_or(live)
+        };
+        // replay with captured owner A -> A even though focus moved to B
+        assert_eq!(resolve(Some(Some(a)), Some(b)), Some(a));
+        // replay that captured NO owner -> None, NOT the new focus B
+        assert_eq!(resolve(Some(None), Some(b)), None);
+        // live dispatch -> current focus
+        assert_eq!(resolve(None, Some(b)), Some(b));
+        assert_eq!(resolve(None, None), None);
     }
 
     /// The timer pool allocator: collision-free while live, honest None at

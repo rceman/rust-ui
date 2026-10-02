@@ -46,9 +46,32 @@ pub(crate) struct QueuedMsg {
     pub lparam: isize,
     pub rect: Option<RECT>,
     /// For focus-targeted input: the focused NodeId captured AT ARRIVAL.
-    /// Replay resolves this snapshot — never `be.focus` at delivery time,
-    /// focus may have moved during the deferral.
-    pub arrival_focus: Option<crate::NodeId>,
+    /// DISCRIMINATED — `None` = not a focus-targeted class (replay must
+    /// not consult it); `Some(None)` = focus-targeted and NOTHING was
+    /// focused at arrival (explicit absent owner — must NOT fall through
+    /// to a newly focused node); `Some(Some(id))` = `id` owned the input.
+    pub arrival_focus: Option<Option<crate::NodeId>>,
+}
+
+/// teardown must never wait behind ordinary work — its dispatch runs the
+/// full backend shutdown
+pub(crate) fn is_teardown(msg: u32) -> bool {
+    msg == WM_NCDESTROY
+}
+
+/// Pop the next drain item. Ordinary messages count against the per-pass
+/// budget; TEARDOWN bypasses it entirely — a mandatory shutdown queued
+/// behind 128 ordinary items still runs THIS drain. Budget-exhausted
+/// ordinary items stay queued for the continuation.
+pub(crate) fn next_drain_item(
+    q: &mut std::collections::VecDeque<QueuedMsg>,
+    consumed: usize,
+) -> Option<QueuedMsg> {
+    match q.front() {
+        Some(m) if is_teardown(m.msg) => q.pop_front(),
+        _ if consumed < REENTRANT_DRAIN_MAX => q.pop_front(),
+        _ => None,
+    }
 }
 
 /// Bound on the owned reentrant queue — allocation is bounded, not merely
@@ -77,6 +100,10 @@ pub(crate) fn focus_targeted(msg: u32) -> bool {
             | WM_IME_COMPOSITION
             | WM_IME_NOTIFY
             | WM_UIA_FOCUS
+            | WM_SETFOCUS
+            | WM_KILLFOCUS
+            | WM_MOUSEWHEEL
+            | WM_MOUSEHWHEEL
     )
 }
 
@@ -262,11 +289,10 @@ pub(crate) mod wndproc {
                 m if deferrable_arrival(m) => {
                     // scalar/copyable payload + arrival-time focus snapshot
                     // — owned, bounded, one queue
-                    let arrival_focus = if focus_targeted(m) {
-                        (*ptr).focus
-                    } else {
-                        None
-                    };
+                    // DISCRIMINATED capture: focus-targeted messages record
+                    // `Some(current)` (possibly Some(None)); others record
+                    // None — never consult the snapshot
+                    let arrival_focus = focus_targeted(m).then_some((*ptr).focus);
                     let mut q = (*ptr).reentrant_queue.borrow_mut();
                     if q.len() < REENTRANT_QUEUE_CAP {
                         q.push_back(QueuedMsg {

@@ -533,7 +533,9 @@ impl ITextHost_Impl for HostBox {
             ) else {
                 return BOOL(0); // failed conversion is failure, not identity
             };
-            let origin = super::space::PeerOrigin::from_logical(bounds, scale);
+            let Some(origin) = super::space::PeerOrigin::from_logical(bounds, scale) else {
+                return BOOL(0); // unrepresentable origin is failure
+            };
             let Some(local) = origin.to_local(c) else {
                 return BOOL(0); // unrepresentable coordinate is failure
             };
@@ -548,7 +550,9 @@ impl ITextHost_Impl for HostBox {
             (s.host.scale, s.host.bounds, s.host.hwnd)
         };
         unsafe {
-            let origin = super::space::PeerOrigin::from_logical(bounds, scale);
+            let Some(origin) = super::space::PeerOrigin::from_logical(bounds, scale) else {
+                return BOOL(0); // unrepresentable origin is failure
+            };
             let Some(client) = origin.to_client(super::space::PeerLocalPoint((*lppt).into()))
             else {
                 return BOOL(0); // unrepresentable coordinate is failure

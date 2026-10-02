@@ -348,9 +348,13 @@ where
     /// handler — classified: bit0 relayout (a metric-bearing branch
     /// transitioned), bit1 repaint; consumed by turn_body
     state_dirty: std::cell::Cell<u8>,
-    /// the NodeId focused when a deferred input message ARRIVED — replay
-    /// resolves this snapshot instead of `focus` (which may have moved)
-    arrival_focus: std::cell::Cell<Option<NodeId>>,
+    /// replay-owner discriminator: `None` = live dispatch (resolve current
+    /// focus); `Some(c)` = replaying — `c` is the captured arrival owner,
+    /// `None` inside means EXPLICITLY no owner (never fall through)
+    arrival_focus: std::cell::Cell<Option<Option<NodeId>>>,
+    /// the peer that received WM_IME_STARTCOMPOSITION — composition owns
+    /// it through END, even if focus moved meanwhile
+    ime_owner: std::cell::Cell<Option<NodeId>>,
     /// a reentrant push exceeded REENTRANT_QUEUE_CAP — surfaced as
     /// QueueOverflow by the next drain (typed failure, never silent loss)
     queue_overflowed: std::cell::Cell<bool>,
@@ -438,6 +442,27 @@ where
     U: Fn(&mut S, M, &mut UpdateCtx<'_, M>),
     V: Fn(&S, &mut crate::Ui<'_, '_, M>),
 {
+    /// THE checked wake — every deferred-work continuation routes here.
+    /// `pump_queued` is set ONLY when the post actually lands; a failed
+    /// post rolls the flag back and surfaces a typed error — the caller's
+    /// fatal path propagates it. Guaranteed-progress semantics are real.
+    pub(crate) fn wake_pump(&self) -> UiResult {
+        if self.hwnd.0.is_null()
+            || self.closed.load(Ordering::SeqCst)
+            || self.pump_queued.get()
+        {
+            return Ok(()); // nothing to wake, or already armed
+        }
+        self.pump_queued.set(true);
+        let posted =
+            unsafe { PostMessageW(Some(self.hwnd), WM_PUMP, WPARAM(0), LPARAM(0)).is_ok() };
+        if !posted {
+            self.pump_queued.set(false);
+            return Err(UiError::Platform("PostMessageW(WM_PUMP) failed".into()));
+        }
+        Ok(())
+    }
+
     /// One semantic turn: drain the peer sink into the runtime, pump
     /// (bounded), drain the scheduler, apply dirty layout/paint, present if
     /// needed. WndProc + WM_PUMP both funnel here.
@@ -450,14 +475,8 @@ where
     /// is deferred, never dropped.
     pub(crate) fn turn(&mut self) -> UiResult {
         if self.in_turn.get() {
-            if !self.pump_queued.replace(true)
-                && !self.hwnd.0.is_null()
-                && !self.closed.load(Ordering::SeqCst)
-            {
-                unsafe {
-                    let _ = PostMessageW(Some(self.hwnd), WM_PUMP, WPARAM(0), LPARAM(0));
-                }
-            }
+            // a failed wake surfaces — never "scheduled" silently
+            self.wake_pump()?;
             return Ok(());
         }
         self.in_turn.set(true);
@@ -706,15 +725,10 @@ where
             lparam,
         });
         // guaranteed progress: outside a turn nothing else will reach
-        // service_peer_events — arm one pump (coalesced)
-        if !self.in_turn.get()
-            && !self.pump_queued.replace(true)
-            && !self.hwnd.0.is_null()
-            && !self.closed.load(Ordering::SeqCst)
-        {
-            unsafe {
-                let _ = PostMessageW(Some(self.hwnd), WM_PUMP, WPARAM(0), LPARAM(0));
-            }
+        // service_peer_events — arm one pump (coalesced); a failed post
+        // is a typed failure, not silent starvation
+        if !self.in_turn.get() {
+            self.wake_pump()?;
         }
         Ok(None)
     }
@@ -722,11 +736,12 @@ where
     /// Raw window message to the focused peer (IME, focus, wheel routing).
     /// Delivery failures (queue overflow, contract violation) propagate —
     /// callers must not silently drop them.
-    /// Focus resolution: a replayed deferred input delivers to the node
-    /// focused AT ITS ARRIVAL (`arrival_focus`); live dispatch resolves the
+    /// Focus resolution: `Some(c)` arrival capture = replay — `c` governs
+    /// (and `None` inside it means NO owner at arrival — do not fall
+    /// through to whatever is focused now); `None` = live dispatch →
     /// current focus. Generation fencing still applies at `peer_for`.
     fn focused_target(&self) -> Option<NodeId> {
-        self.arrival_focus.get().or(self.focus)
+        self.arrival_focus.get().unwrap_or(self.focus)
     }
     pub(crate) fn send_focused(&mut self, msg: u32, wparam: usize, lparam: isize) -> UiResult {
         if let Some(id) = self.focused_target() {
@@ -774,15 +789,9 @@ where
             }
         }
         // bounded drain left work — arm an explicit continuation instead
-        // of depending on an unrelated later message
-        if !self.deferred_native.is_empty()
-            && !self.pump_queued.replace(true)
-            && !self.hwnd.0.is_null()
-            && !self.closed.load(Ordering::SeqCst)
-        {
-            unsafe {
-                let _ = PostMessageW(Some(self.hwnd), WM_PUMP, WPARAM(0), LPARAM(0));
-            }
+        // of depending on an unrelated later message; failure is typed
+        if !self.deferred_native.is_empty() {
+            self.wake_pump()?;
         }
         let slots: Vec<u32> = self
             .peer_ctx
@@ -987,7 +996,9 @@ where
             use windows::Win32::UI::WindowsAndMessaging::*;
             // snapped origin once — caret px + origin lands where the
             // glyph is; identical to pointer/host-callback math
-            let org = space::PeerOrigin::from_logical(r, s);
+            let Some(org) = space::PeerOrigin::from_logical(r, s) else {
+                return; // unrepresentable peer origin — drop the placement
+            };
             let Some(at) = org.to_client(space::PeerLocalPoint(pos.into())) else {
                 return; // unrepresentable — drop the placement
             };
@@ -1318,7 +1329,9 @@ where
                     &self.editor_chrome_of(id),
                 );
                 let sc = self.peer_ctx.scale.get();
-                let origin = space::PeerOrigin::from_logical(r, sc);
+                let Some(origin) = space::PeerOrigin::from_logical(r, sc) else {
+                    return Ok(()); // unrepresentable peer origin — drop
+                };
                 let Some(lp_px) = origin.to_local(pos_px).map(|l| l.0) else {
                     return Ok(()); // unrepresentable coordinate — drop
                 };
@@ -1772,7 +1785,11 @@ where
                 &self.editor_chrome_of(id),
             );
             let sc = self.peer_ctx.scale.get();
-            let origin = space::PeerOrigin::from_logical(r, sc);
+            let Some(origin) = space::PeerOrigin::from_logical(r, sc) else {
+                return Err(crate::UiError::Platform(
+                    "peer origin unrepresentable in physical px".into(),
+                ));
+            };
             let Some(lp) = origin
                 .to_local(pos_px)
                 .and_then(|l| space::try_lparam_px(l.0))
@@ -2101,10 +2118,18 @@ where
     pub(crate) fn drain_reentrant(&mut self) -> UiResult {
         let hwnd = self.hwnd;
         let mut first_err: Option<UiError> = None;
-        for _ in 0..crate::platform::win32::window::REENTRANT_DRAIN_MAX {
-            let Some(m) = self.reentrant_queue.borrow_mut().pop_front() else {
-                break;
-            };
+        let mut consumed = 0usize;
+        loop {
+            // TEARDOWN BYPASSES THE BUDGET — mandatory cleanup can never
+            // be stranded behind a full queue of ordinary work
+            let m = crate::platform::win32::window::next_drain_item(
+                &mut self.reentrant_queue.borrow_mut(),
+                consumed,
+            );
+            let Some(m) = m else { break };
+            if !crate::platform::win32::window::is_teardown(m.msg) {
+                consumed += 1;
+            }
             self.in_dispatch.set(true);
             self.arrival_focus.set(m.arrival_focus);
             let r = crate::platform::win32::window::wndproc::dispatch_owned(hwnd, m, self);
@@ -2116,21 +2141,9 @@ where
                 first_err = Some(e);
             }
         }
-        // remaining work -> checked continuation
-        if !self.reentrant_queue.borrow().is_empty()
-            && !self.pump_queued.replace(true)
-            && !self.hwnd.0.is_null()
-            && !self.closed.load(Ordering::SeqCst)
-        {
-            let posted =
-                unsafe { PostMessageW(Some(self.hwnd), WM_PUMP, WPARAM(0), LPARAM(0)).is_ok() };
-            if !posted {
-                // do not record scheduled progress that was never delivered
-                self.pump_queued.set(false);
-                return Err(UiError::Platform(
-                    "PostMessageW(WM_PUMP) continuation failed".into(),
-                ));
-            }
+        // remaining work -> checked continuation (shared wake authority)
+        if !self.reentrant_queue.borrow().is_empty() {
+            self.wake_pump()?;
         }
         if self.queue_overflowed.replace(false) {
             return Err(UiError::QueueOverflow);
@@ -2156,7 +2169,11 @@ where
     /// IME composition boundaries — composition gates conflict handling and
     /// pending-proposal resolution in the runtime.
     pub(crate) fn ime_start(&mut self) {
-        if let Some(id) = self.focus {
+        // the REPLAY/captured owner starts composition — not whatever is
+        // focused now; ownership is pinned until END arrives for it
+        let id = self.focused_target();
+        self.ime_owner.set(id);
+        if let Some(id) = id {
             self.rt.composition_start(id);
             if let Some(peer) = self.peer_for(id) {
                 peer.borrow().set_composing(true);
@@ -2168,14 +2185,21 @@ where
     /// discarded as residual preedit. Proposals resolve last, against the
     /// TRUE committed revision.
     pub(crate) fn ime_end(&mut self) -> UiResult {
-        if let Some(id) = self.focus {
+        // the composition belongs to the peer STARTCOMPOSITION reached —
+        // never to a node that gained focus mid-composition
+        let owner = self.ime_owner.take().or_else(|| self.focused_target());
+        if let Some(id) = owner {
             if let Some(peer) = self.peer_for(id) {
                 peer.borrow().set_composing(false);
             }
             self.rt.composition_clear(id);
         }
         self.service_peer_events()?;
-        if let Some(id) = self.focus {
+        if let Some(id) = owner {
+            // the final committed edit must be ACKNOWLEDGED (pumped into
+            // committed runtime state) before pending proposals resolve —
+            // otherwise a stale-base proposal can overwrite the commit
+            self.rt.pump()?;
             self.rt.composition_end(id)?;
             if let Some(peer) = self.peer_for(id) {
                 peer.borrow().finish_pending_relatch()?;
@@ -2397,6 +2421,7 @@ where
         in_turn: std::cell::Cell::new(false),
         reentrant_queue: std::cell::RefCell::new(std::collections::VecDeque::new()),
         arrival_focus: std::cell::Cell::new(None),
+        ime_owner: std::cell::Cell::new(None),
         queue_overflowed: std::cell::Cell::new(false),
         pending_lead_surrogate: std::cell::Cell::new(None),
         in_dispatch: std::cell::Cell::new(false),

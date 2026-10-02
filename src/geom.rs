@@ -158,11 +158,15 @@ impl ScaleFactor {
     }
 
     /// Checked logical -> physical px — `None` when the scaled value is
-    /// not representable in `i32` (NaN, infinity, |value| >= i32 range).
-    /// A saturating cast is not a valid answer for representability.
+    /// not representable in `i32` (NaN, infinity, out of range).
+    /// EXACT boundary: `i32::MAX as f32` is 2147483648.0, not 2147483647 —
+    /// comparing against it accepts 2^31, which `as i32` saturates to
+    /// i32::MAX. The representable f32 ceiling is 2^31-128 (the next f32
+    /// step below 2^31); `v < 2147483648.0` admits exactly the values the
+    /// cast round-trips. A saturating cast is not a valid answer.
     pub fn try_to_physical(self, logical: f32) -> Option<i32> {
         let v = (logical * self.0).round();
-        (v.is_finite() && v >= i32::MIN as f32 && v <= i32::MAX as f32).then_some(v as i32)
+        (v.is_finite() && v >= -2147483648.0 && v < 2147483648.0).then_some(v as i32)
     }
 
     /// logical -> fractional physical px (antialiased chrome raster math
@@ -240,13 +244,13 @@ pub struct PeerOrigin(pub PhysicalPoint);
 
 impl PeerOrigin {
     /// Snap `peer_logical_bounds` ONCE at `scale` — the shared origin.
-    /// `None` when the bounds are unrepresentable as physical px.
-    pub fn from_logical(bounds: Rect, s: ScaleFactor) -> PeerOrigin {
-        let p = bounds.physical(s);
-        PeerOrigin(PhysicalPoint {
-            x: p.left,
-            y: p.top,
-        })
+    /// `None` when the bounds are unrepresentable as physical px — the
+    /// checked path is honored, not bypassed through `Rect::physical`.
+    pub fn from_logical(bounds: Rect, s: ScaleFactor) -> Option<PeerOrigin> {
+        Some(PeerOrigin(PhysicalPoint {
+            x: s.try_to_physical(bounds.x)?,
+            y: s.try_to_physical(bounds.y)?,
+        }))
     }
 
     /// window/client px -> peer-local px — CHECKED: unrepresentable
