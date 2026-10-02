@@ -1,9 +1,9 @@
 # Windows Native Composer Contract Spike v0.1 — evidence
 
-**Candidate:** `11c308ebce19bae5499bfbd8b1b1a0bcddbad0ca` on `agent/windows-native-composer-contract-spike-v0.1-swe2` — post-`PLATFORM_FOUNDATION_FINAL_REVIEW` (`dd6ebdc`) bounded rework.
+**Candidate:** production `b99d55893c8b6a3b0b585645bb34f31dc6cc747f`, harness+evidence `4e1aa6bb504c2ebc5aca74f04e7c73a37cfbae65` on `agent/windows-native-composer-contract-spike-v0.1-swe2` — post-`PLATFORM_FOUNDATION_APPROVAL_REVIEW` (`a09c284`) bounded rework.
 **Environment:** Windows 11, monitor at 125% scale (PerMonitorV2), native `cargo build --examples` debug build.
 **Identity receipt:** `identity.txt` — source SHA + composer.exe SHA256 + native_probe.exe SHA256 + run UTC, written per collection pass.
-**Capture method:** `PrintWindow` of the live composer window after a 350 ms first-frame settle (window-level raster pipeline under evidence — does NOT exercise a separate presentation path); UIA through `UIAutomationClient`; ALL native semantics through `examples/native_probe.rs` (JSON-emitting Rust harness, non-zero exit on violated invariants). PowerShell (`native.ps1`, `collect.ps1`) is orchestration only — build/run/PID lifecycle/scenario sequencing/artifacts; no coordinate math, UIA interpretation, input packing, or DPI rules remain in `.ps1`. Unicode payloads cross the probe boundary as hex-encoded UTF-8 (`type-post-hex`) because PS5.1 encodes native argv as ANSI; probe stdout is UTF-8 and the harness pins `[Console]::OutputEncoding=UTF8` during capture.
+**Capture methods:** (a) `PrintWindow` of the live window after a 350 ms first-frame settle — window-level raster route; **NOT authoritative for native text fidelity** — PrintWindow re-renders into a DC and can clip windowless-RichEdit glyphs; it supports window/state receipts only. (b) `Shot-Screen` — BitBlt of the window's on-screen rect from the real desktop (`details-screen.png`); physical-display evidence, used where layout fidelity matters. The three details labels' RECT assertions come from UIA bounds (real layout), not pixels. UIA through `UIAutomationClient`; ALL native semantics through `examples/native_probe.rs` (JSON-emitting Rust harness, non-zero exit on violated invariants). PowerShell (`native.ps1`, `collect.ps1`) is orchestration only — build/run/PID lifecycle/scenario sequencing/artifacts; no coordinate math, UIA interpretation, input packing, or DPI rules remain in `.ps1`. Unicode payloads cross the probe boundary as hex-encoded UTF-8 (`type-post-hex`) because PS5.1 encodes native argv as ANSI; probe stdout is UTF-8 and the harness pins `[Console]::OutputEncoding=UTF8` during capture.
 
 ## Artifacts
 
@@ -11,22 +11,23 @@
 - `smoke.json` — PMv2-verified geometry receipt (awareness asserted = `pmv2`, dpi, window/client px)
 - `uia-tree.txt` — live UIA tree with physical screen-px bounds (draft, body, three rows, all buttons)
 - `typing.png`/`unicode.png`/`selection.png`/`undo.png`/`readonly.png` (+`.txt`) — typed value, unicode round-trip (UTF-8-exact), Ctrl+A replace, Ctrl+Z undo chain, staged read-only rejection
-- `ime.json`/`ime.png`/`ime.txt` — real MS-IME (TSF) hiragana: `before` snapshot + nonempty `gained` committed suffix carrying the new kana + `submits` counter unchanged + the APP's committed `TextValue` (draft-echo label) asserted equal to the native provider value — a missing counter or divergent app state fails the scenario
+- `ime.json`/`ime.png`/`ime.txt` — real MS-IME (TSF) hiragana: `before` snapshot + nonempty `gained` committed suffix carrying the new kana + `submits` counter unchanged + the APP's committed `TextValue` (draft-echo label) asserted equal to the native provider value — a missing counter or divergent app state fails the scenario. The composer THREAD's input context is engaged deterministically: `WM_INPUTLANGCHANGEREQUEST` posts the discovered Japanese HKL so that thread activates the layout, then `IMC_SETCONVERSIONMODE` (NATIVE|FULLSHAPE|ROMAN) is verified by read-back — a blind `VK_DBE_HIRAGANA` toggle is never trusted (persistent profile mode made it nondeterministic)
+- `details-layout.json`/`details-screen.png`/`details-pw.png`/`details.txt` — the three diagnostic labels (`turn`, `draft-echo`, `draft-edits`) asserted as distinct, strictly-ordered, non-overlapping UIA rects; `draft-prefill\q` JSON round-trip asserted; physical-screen + PrintWindow captures
 - `disabled.txt`/`disabled-mid.png` — send disabled + stop enabled mid-flight via live `IUIAutomationElement::CurrentIsEnabled`
 - `multiline.png`/`multiline.txt` — 6 Shift+Enter newlines; body grew to its 4-line bound with scroll
 - `reorder-before/after/final.txt` + `reorder.png` — reorder/remove/recreate with live tree diffs
 - `send-mid.png`/`send-done.png`/`send-stop.txt` — send → mid-flight disabled → stop → resend → done
 - `dpi-96/120/144/192.png`+`.txt` — synthetic `WM_DPICHANGED` per scale; the probe computes expected px via the shared scale authority and asserts the post-change window rect in Rust
 - `scale.txt`/`scale-100.png`/`scale-1000.png` — 100/1000-row mount + UIA child counts (121/1021) + settle timing
-- `perf.txt` + `perf-counters.txt` — 30 s idle: `idle_cpu_pct_30s=0`, 32.3 MiB WS, 17 threads; counters written at CLEAN shutdown (`uptime_ms=30544`, `requested_redraws=78`, `caret_redraws=78`, `native_timer_fires=0`) — proves event-driven idle AND graceful teardown emission
+- `perf.txt` + `perf-counters.txt` — 30 s idle: `idle_cpu_pct_30s=0`, ~32 MiB WS, 17 threads; counters written at CLEAN shutdown (`uptime_ms=30545`, `requested_redraws=83`, `caret_redraws=78`, `native_timer_fires=0`) — proves event-driven idle AND graceful teardown emission
 - `identity.txt` — run receipt
 
 ## Verification status (this candidate)
 
-- `cargo test --locked --lib` (Windows) — **89/89**
+- `cargo test --locked --lib` (Windows) — **97/97**
 - `cargo test --locked --lib` (WSL2 Ubuntu, real Linux run) — **77/77** portable suite
 - `cargo build --all-targets` — clean; `cargo fmt --check` — clean
-- `native_probe` subcommands exercised live: `geometry`, `uia`, `uia-rect`, `uia-enabled`, `uia-count`, `invoke`, `click-named`, `type`/`type-post`, `type-post-hex`, `key-post`, `value`, `dpichange`, `ime` — `invoke` asserts enabled state and retries once on mid-refresh staleness
+- `native_probe` subcommands exercised live: `geometry`, `uia`, `uia-rect`, `uia-enabled`, `uia-count`, `invoke`, `click-named`, `type`/`type-post`, `type-post-hex`, `key-post`, `value`, `dpichange`, `ime` — `invoke` asserts enabled state and retries once on mid-refresh staleness; `uia-rect-prefix` resolves dynamic-label rects
 
 ## What is proven (measured)
 
@@ -52,4 +53,6 @@
 - **IME composition across scale relatch** — the relatch is composition-safe (deferred while a composition is active, drained at composition end); a COMBINED real-IME + real-DPI-transition run is not claimed.
 - `ElementProviderFromPoint` — unit-tested; real `FromPoint` against the foreground window not exercised.
 - Caret visibility in `PrintWindow` captures is unreliable (XOR caret); caret geometry validated via click→insert.
+- **PrintWindow is not text-fidelity evidence** — it re-renders the window into an offscreen DC and can clip windowless-RichEdit glyphs; text/layout fidelity claims use UIA rects and the physical-display `Shot-Screen` capture. `details-pw.png` vs `details-screen.png` are kept side by side deliberately.
+- **IME mode is profile-persistent** — the scenario now engages the target thread's Japanese layout + hiragana deterministically (read-back verified); a run where no default IME window exists falls back to one toggle and is still gated by the kana assertion.
 - `requested_redraws`/`caret_redraws` counters are demand-driven repaint counts, not a resource-leak audit; no leak-freedom claim is made.

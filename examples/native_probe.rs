@@ -669,10 +669,7 @@ mod probe {
                     .copied()
                     .find(|h| (h.0 as u32 & 0xffff) == 0x0411);
                 if found.is_none() {
-                    let h = LoadKeyboardLayoutW(
-                        windows::core::w!("00000411"),
-                        KLF_NOTELLSHELL,
-                    )?;
+                    let h = LoadKeyboardLayoutW(windows::core::w!("00000411"), KLF_NOTELLSHELL)?;
                     found = (h.0 as u32 & 0xffff == 0x411).then_some(h);
                 }
                 found.ok_or_else(|| {
@@ -727,8 +724,7 @@ mod probe {
                 Ok(())
             };
             if !ime_wnd.is_invalid() {
-                let want =
-                    (IME_CMODE_NATIVE | IME_CMODE_FULLSHAPE | IME_CMODE_ROMAN).0 as isize;
+                let want = (IME_CMODE_NATIVE | IME_CMODE_FULLSHAPE | IME_CMODE_ROMAN).0 as isize;
                 let _ = SendMessageW(
                     ime_wnd,
                     WM_IME_CONTROL,

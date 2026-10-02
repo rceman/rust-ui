@@ -3218,6 +3218,7 @@ fn probe_hwnd() -> windows::Win32::Foundation::HWND {
     }
 }
 
+#[cfg(windows)]
 unsafe extern "system" fn probe_wndproc(
     hwnd: windows::Win32::Foundation::HWND,
     msg: u32,
