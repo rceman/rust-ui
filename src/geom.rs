@@ -149,8 +149,20 @@ impl ScaleFactor {
 
     /// logical -> physical px — THE rounding policy:
     /// round-half-away-from-zero at the conversion boundary.
+    ///
+    /// PRECONDITION: the scaled value must fit `i32` (representable).
+    /// For values that can exceed it — hostile sizes, extreme user input —
+    /// use `try_to_physical`.
     pub fn to_physical(self, logical: f32) -> i32 {
         (logical * self.0).round() as i32
+    }
+
+    /// Checked logical -> physical px — `None` when the scaled value is
+    /// not representable in `i32` (NaN, infinity, |value| >= i32 range).
+    /// A saturating cast is not a valid answer for representability.
+    pub fn try_to_physical(self, logical: f32) -> Option<i32> {
+        let v = (logical * self.0).round();
+        (v.is_finite() && v >= i32::MIN as f32 && v <= i32::MAX as f32).then_some(v as i32)
     }
 
     /// logical -> fractional physical px (antialiased chrome raster math
@@ -228,6 +240,7 @@ pub struct PeerOrigin(pub PhysicalPoint);
 
 impl PeerOrigin {
     /// Snap `peer_logical_bounds` ONCE at `scale` — the shared origin.
+    /// `None` when the bounds are unrepresentable as physical px.
     pub fn from_logical(bounds: Rect, s: ScaleFactor) -> PeerOrigin {
         let p = bounds.physical(s);
         PeerOrigin(PhysicalPoint {
@@ -236,20 +249,21 @@ impl PeerOrigin {
         })
     }
 
-    /// window/client px -> peer-local px.
-    pub fn to_local(self, p: ClientPhysicalPoint) -> PeerLocalPoint {
-        PeerLocalPoint(PhysicalPoint {
-            x: p.0.x - self.0.x,
-            y: p.0.y - self.0.y,
-        })
+    /// window/client px -> peer-local px — CHECKED: unrepresentable
+    /// physical coordinates return `None`, never a wrapped point.
+    pub fn to_local(self, p: ClientPhysicalPoint) -> Option<PeerLocalPoint> {
+        Some(PeerLocalPoint(PhysicalPoint {
+            x: p.0.x.checked_sub(self.0.x)?,
+            y: p.0.y.checked_sub(self.0.y)?,
+        }))
     }
 
-    /// peer-local px -> window/client px.
-    pub fn to_client(self, p: PeerLocalPoint) -> ClientPhysicalPoint {
-        ClientPhysicalPoint(PhysicalPoint {
-            x: p.0.x + self.0.x,
-            y: p.0.y + self.0.y,
-        })
+    /// peer-local px -> window/client px — CHECKED.
+    pub fn to_client(self, p: PeerLocalPoint) -> Option<ClientPhysicalPoint> {
+        Some(ClientPhysicalPoint(PhysicalPoint {
+            x: p.0.x.checked_add(self.0.x)?,
+            y: p.0.y.checked_add(self.0.y)?,
+        }))
     }
 }
 

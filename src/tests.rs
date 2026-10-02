@@ -4695,15 +4695,38 @@ fn peer_origin_single_snapped_transform() {
     // (the alternate "subtract-then-rescale" path answered 1 — removed)
     assert_eq!(
         o.to_local(ClientPhysicalPoint(PhysicalPoint { x: 1, y: 1 })),
-        PeerLocalPoint(PhysicalPoint { x: 0, y: 0 })
+        Some(PeerLocalPoint(PhysicalPoint { x: 0, y: 0 }))
     );
     // round-trip is exact in integer px
     let c = ClientPhysicalPoint(PhysicalPoint { x: 42, y: 7 });
-    assert_eq!(o.to_client(o.to_local(c)), c);
+    assert_eq!(o.to_local(c).and_then(|l| o.to_client(l)), Some(c));
     // negative peer-local (pointer above/left of the surface) is legal
     let neg = o.to_local(ClientPhysicalPoint(PhysicalPoint { x: -3, y: 0 }));
-    assert_eq!(neg.0, PhysicalPoint { x: -4, y: -1 });
-    assert_eq!(o.to_client(neg).0, PhysicalPoint { x: -3, y: 0 });
+    assert_eq!(neg.map(|l| l.0), Some(PhysicalPoint { x: -4, y: -1 }));
+    assert_eq!(
+        neg.and_then(|l| o.to_client(l)).map(|c| c.0),
+        Some(PhysicalPoint { x: -3, y: 0 })
+    );
+    // representability is CHECKED — extremes are None, never wrapped
+    let omin = PeerOrigin(PhysicalPoint {
+        x: i32::MIN,
+        y: i32::MIN,
+    });
+    assert_eq!(
+        omin.to_local(ClientPhysicalPoint(PhysicalPoint { x: 1, y: 0 })),
+        None
+    );
+    let omax = PeerOrigin(PhysicalPoint {
+        x: i32::MAX,
+        y: i32::MAX,
+    });
+    assert_eq!(
+        omax.to_client(PeerLocalPoint(PhysicalPoint { x: 1, y: 0 })),
+        None
+    );
+    assert_eq!(ScaleFactor(1.5).try_to_physical(1e20), None);
+    assert_eq!(ScaleFactor(1.5).try_to_physical(f32::NAN), None);
+    assert_eq!(ScaleFactor(1.5).try_to_physical(64.0), Some(96));
     // another fractional case at a different scale — origin 8.2dp @1.5
     let o2 = PeerOrigin::from_logical(
         Rect {
@@ -4826,4 +4849,40 @@ mod native_contract_tests {
             "capacity exhaustion must be reported, not wrap onto a live id"
         );
     }
+}
+/// F01: focus-targeted deferred input captures its arrival-time owner —
+/// pointer/spatial messages do NOT (they resolve by position at delivery).
+#[test]
+#[cfg(windows)]
+fn deferred_focus_capture_only_for_focus_targeted() {
+    use crate::platform::win32::window;
+    use windows::Win32::UI::WindowsAndMessaging::*;
+    for m in [
+        WM_CHAR,
+        WM_SYSCHAR,
+        WM_KEYDOWN,
+        WM_KEYUP,
+        WM_SYSKEYDOWN,
+        WM_SYSKEYUP,
+        WM_IME_STARTCOMPOSITION,
+        WM_IME_ENDCOMPOSITION,
+        WM_IME_COMPOSITION,
+        WM_IME_NOTIFY,
+    ] {
+        assert!(
+            window::focus_targeted(m),
+            "{m:#x} must capture arrival focus"
+        );
+    }
+    for m in [
+        WM_LBUTTONDOWN,
+        WM_LBUTTONUP,
+        WM_MOUSEMOVE,
+        WM_MOUSEWHEEL,
+        WM_PAINT,
+    ] {
+        assert!(!window::focus_targeted(m), "{m:#x} resolves spatially");
+    }
+    // capacity is explicit — the queue bound is a real constant
+    assert_eq!(window::REENTRANT_QUEUE_CAP, crate::event::EVENT_QUEUE_CAP);
 }

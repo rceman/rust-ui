@@ -164,7 +164,7 @@ pub mod dev {
         ClientPhysicalPoint, PeerLocalPoint, PhysicalPoint, ScreenPhysicalPoint,
     };
     pub use crate::platform::win32::space::{
-        client_to_screen, dpi_of, scale_from_dpi, screen_to_client,
+        client_to_screen, dpi_of, scale_from_dpi, screen_to_client, try_lparam_px,
     };
 }
 

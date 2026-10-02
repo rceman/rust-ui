@@ -475,7 +475,9 @@ impl ITextHost_Impl for HostBox {
                 return BOOL(0); // failed conversion is failure, not identity
             };
             let origin = super::space::PeerOrigin::from_logical(bounds, scale);
-            let local = origin.to_local(c);
+            let Some(local) = origin.to_local(c) else {
+                return BOOL(0); // unrepresentable coordinate is failure
+            };
             (*lppt).x = local.0.x;
             (*lppt).y = local.0.y;
             BOOL(1)
@@ -488,7 +490,10 @@ impl ITextHost_Impl for HostBox {
         };
         unsafe {
             let origin = super::space::PeerOrigin::from_logical(bounds, scale);
-            let client = origin.to_client(super::space::PeerLocalPoint((*lppt).into()));
+            let Some(client) = origin.to_client(super::space::PeerLocalPoint((*lppt).into()))
+            else {
+                return BOOL(0); // unrepresentable coordinate is failure
+            };
             let Some(s) = super::space::client_to_screen(hwnd, client) else {
                 return BOOL(0);
             };

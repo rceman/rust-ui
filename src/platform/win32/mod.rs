@@ -329,6 +329,12 @@ where
     /// handler — classified: bit0 relayout (a metric-bearing branch
     /// transitioned), bit1 repaint; consumed by turn_body
     state_dirty: std::cell::Cell<u8>,
+    /// the NodeId focused when a deferred input message ARRIVED — replay
+    /// resolves this snapshot instead of `focus` (which may have moved)
+    arrival_focus: std::cell::Cell<Option<NodeId>>,
+    /// a reentrant push exceeded REENTRANT_QUEUE_CAP — surfaced as
+    /// QueueOverflow by the next drain (typed failure, never silent loss)
+    queue_overflowed: std::cell::Cell<bool>,
     /// accumulated ink damage since the last committed paint — union of
     /// every paint-dirty node's OLD committed ink and NEW ink (a moved or
     /// removed shadow must damage where it used to be). Cleared by paint().
@@ -694,8 +700,14 @@ where
     /// Raw window message to the focused peer (IME, focus, wheel routing).
     /// Delivery failures (queue overflow, contract violation) propagate —
     /// callers must not silently drop them.
+    /// Focus resolution: a replayed deferred input delivers to the node
+    /// focused AT ITS ARRIVAL (`arrival_focus`); live dispatch resolves the
+    /// current focus. Generation fencing still applies at `peer_for`.
+    fn focused_target(&self) -> Option<NodeId> {
+        self.arrival_focus.get().or(self.focus)
+    }
     pub(crate) fn send_focused(&mut self, msg: u32, wparam: usize, lparam: isize) -> UiResult {
-        if let Some(id) = self.focus {
+        if let Some(id) = self.focused_target() {
             self.deliver_native(id, msg, wparam, lparam)?;
         }
         Ok(())
@@ -942,7 +954,9 @@ where
             // snapped origin once — caret px + origin lands where the
             // glyph is; identical to pointer/host-callback math
             let org = space::PeerOrigin::from_logical(r, s);
-            let at = org.to_client(space::PeerLocalPoint(pos.into()));
+            let Some(at) = org.to_client(space::PeerLocalPoint(pos.into())) else {
+                return; // unrepresentable — drop the placement
+            };
             let _ = CreateCaret(self.hwnd, None, size.cx, size.cy);
             let _ = SetCaretPos(at.0.x, at.0.y);
             if shown {
@@ -1249,7 +1263,9 @@ where
                 );
                 let sc = self.peer_ctx.scale.get();
                 let origin = space::PeerOrigin::from_logical(r, sc);
-                let lp_px = origin.to_local(pos_px).0;
+                let Some(lp_px) = origin.to_local(pos_px).map(|l| l.0) else {
+                    return Ok(()); // unrepresentable coordinate — drop
+                };
                 let msg = match (phase, button) {
                     (crate::node::PointerPhase::Down, Some(PointerButton::Primary)) => {
                         self.set_focus(Some(id))?;
@@ -1374,8 +1390,9 @@ where
             self.focus_step(unsafe { GetKeyState(VK_SHIFT.0 as i32) } < 0)?;
             return self.turn();
         }
-        // focused editor gets the raw key (native editing, IME)
-        if let Some(focus) = self.focus
+        // focused editor gets the raw key (native editing, IME) —
+        // a deferred replay delivers to the arrival-time owner
+        if let Some(focus) = self.focused_target()
             && self.peer_for(focus).is_some()
         {
             // SUBMIT CONTRACT — the canonical boundary is: plain Enter
@@ -1626,7 +1643,10 @@ where
             );
             let sc = self.peer_ctx.scale.get();
             let origin = space::PeerOrigin::from_logical(r, sc);
-            let Some(lp) = space::try_lparam_px(origin.to_local(pos_px).0) else {
+            let Some(lp) = origin
+                .to_local(pos_px)
+                .and_then(|l| space::try_lparam_px(l.0))
+            else {
                 return Err(crate::UiError::Platform(
                     "peer-local coordinate outside LPARAM range".into(),
                 ));
@@ -1867,9 +1887,10 @@ where
         let d = self.pt_px(lp).0.logical(s);
         Point { x: d.x, y: d.y }
     }
-    /// peer holding focus (if any)
+    /// peer holding focus (if any) — deferred replays resolve the
+    /// arrival-time owner so a focus move mid-queue can't redirect input
     pub(crate) fn focus_peer(&self) -> Option<Rc<RefCell<WindowlessPeer>>> {
-        self.focus.and_then(|id| self.peer_for(id))
+        self.focused_target().and_then(|id| self.peer_for(id))
     }
     /// WM_CHAR/WM_SYSCHAR — the focused peer sees the raw message with its
     /// real lparam (repeat count, scan code, alt flag are part of the
@@ -1893,18 +1914,59 @@ where
     /// holds `&mut Backend` (after a dispatch unwound or in run()).
     /// Bounded: a pathological native callback storm cannot spin forever;
     /// leftover work surfaces as QueueOverflow instead of starvation.
+    /// Drain the owned reentrant queue — bounded per call. Contract:
+    ///
+    /// - a delivery error is recorded AND draining continues — mandatory
+    ///   teardown (a queued WM_NCDESTROY cleanup leg) can never be skipped
+    ///   by an earlier failed input message;
+    /// - when the bounded budget runs out AND work remains, an explicit
+    ///   WM_PUMP continuation is posted — `pump_queued` is set only after
+    ///   the post SUCCEEDS (a failed post leaves it false so the state is
+    ///   honest and a later caller can retry);
+    /// - exactly-128 processed items is not itself an error — overflow is
+    ///   reported only when the queue still holds work after the cap;
+    /// - a push-side overflow flag is surfaced here as QueueOverflow.
     pub(crate) fn drain_reentrant(&mut self) -> UiResult {
         let hwnd = self.hwnd;
+        let mut first_err: Option<UiError> = None;
         for _ in 0..crate::event::EVENT_QUEUE_CAP {
             let Some(m) = self.reentrant_queue.borrow_mut().pop_front() else {
-                return Ok(());
+                break;
             };
             self.in_dispatch.set(true);
+            self.arrival_focus.set(m.arrival_focus);
             let r = crate::platform::win32::window::wndproc::dispatch_owned(hwnd, m, self);
+            self.arrival_focus.set(None);
             self.in_dispatch.set(false);
-            r?;
+            if let Err(e) = r
+                && first_err.is_none()
+            {
+                first_err = Some(e);
+            }
         }
-        Err(UiError::QueueOverflow)
+        // remaining work -> checked continuation
+        if !self.reentrant_queue.borrow().is_empty()
+            && !self.pump_queued.replace(true)
+            && !self.hwnd.0.is_null()
+            && !self.closed.load(Ordering::SeqCst)
+        {
+            let posted =
+                unsafe { PostMessageW(Some(self.hwnd), WM_PUMP, WPARAM(0), LPARAM(0)).is_ok() };
+            if !posted {
+                // do not record scheduled progress that was never delivered
+                self.pump_queued.set(false);
+                return Err(UiError::Platform(
+                    "PostMessageW(WM_PUMP) continuation failed".into(),
+                ));
+            }
+        }
+        if self.queue_overflowed.replace(false) {
+            return Err(UiError::QueueOverflow);
+        }
+        if let Some(e) = first_err {
+            return Err(e);
+        }
+        Ok(())
     }
 
     /// fatal (typed) error from inside a WndProc — surface on next turn
@@ -2134,6 +2196,8 @@ where
         fatal: None,
         in_turn: std::cell::Cell::new(false),
         reentrant_queue: std::cell::RefCell::new(std::collections::VecDeque::new()),
+        arrival_focus: std::cell::Cell::new(None),
+        queue_overflowed: std::cell::Cell::new(false),
         in_dispatch: std::cell::Cell::new(false),
         pump_queued: std::cell::Cell::new(false),
         deferred_native: std::collections::VecDeque::new(),
@@ -2201,11 +2265,19 @@ where
         V: Fn(&S, &mut crate::Ui<'_, '_, M>),
     {
         if !backend.hwnd.0.is_null() {
+            // DestroyWindow synchronously dispatches WM_NCDESTROY — the
+            // SAME native-entry ownership guard wraps the call, so a
+            // reentrant trampoline sees in_dispatch and takes the deferred
+            // path; the queued teardown is then drained explicitly.
+            backend.in_dispatch.set(true);
             unsafe {
-                // WM_NCDESTROY inside this call runs shutdown + detaches
-                // the route pointer
                 let _ = DestroyWindow(backend.hwnd);
             }
+            backend.in_dispatch.set(false);
+            let _ = backend.drain_reentrant();
+            // belt: teardown must complete even if the drain errored
+            backend.shutdown();
+            backend.hwnd = HWND::default();
         }
         Err(e)
     }

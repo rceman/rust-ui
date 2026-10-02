@@ -217,7 +217,12 @@ mod probe {
     /// packed HERE (i16 pair) — never in PowerShell.
     pub fn click_post(hwnd: HWND, cx: i32, cy: i32) -> Result<()> {
         unsafe {
-            let lp = LPARAM((((cy & 0xffff) << 16) | (cx & 0xffff)) as isize);
+            // THE checked packing authority — out-of-i16-range coordinates
+            // fail the scenario instead of silently truncating
+            let lp = LPARAM(
+                rust_ui::dev::try_lparam_px(rust_ui::dev::PhysicalPoint { x: cx, y: cy })
+                    .ok_or_else(|| Error::new(E_FAIL.into(), "coordinates out of LPARAM range"))?,
+            );
             let _ = PostMessageW(Some(hwnd), WM_LBUTTONDOWN, WPARAM(0x0001), lp);
             std::thread::sleep(std::time::Duration::from_millis(60));
             let _ = PostMessageW(Some(hwnd), WM_LBUTTONUP, WPARAM(0), lp);

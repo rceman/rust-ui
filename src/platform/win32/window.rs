@@ -45,6 +45,34 @@ pub(crate) struct QueuedMsg {
     pub wparam: usize,
     pub lparam: isize,
     pub rect: Option<RECT>,
+    /// For focus-targeted input: the focused NodeId captured AT ARRIVAL.
+    /// Replay resolves this snapshot — never `be.focus` at delivery time,
+    /// focus may have moved during the deferral.
+    pub arrival_focus: Option<crate::NodeId>,
+}
+
+/// Bound on the owned reentrant queue — allocation is bounded, not merely
+/// the drain. Overflow is a typed failure (surfaced via `queue_overflowed`),
+/// never silent input loss.
+pub(crate) const REENTRANT_QUEUE_CAP: usize = crate::event::EVENT_QUEUE_CAP;
+
+/// Messages whose semantics target the focused node — arrival-time focus
+/// must be captured into the queue item.
+pub(crate) fn focus_targeted(msg: u32) -> bool {
+    matches!(
+        msg,
+        WM_CHAR
+            | WM_SYSCHAR
+            | WM_KEYDOWN
+            | WM_KEYUP
+            | WM_SYSKEYDOWN
+            | WM_SYSKEYUP
+            | WM_IME_STARTCOMPOSITION
+            | WM_IME_ENDCOMPOSITION
+            | WM_IME_COMPOSITION
+            | WM_IME_NOTIFY
+            | WM_UIA_FOCUS
+    )
 }
 
 /// The reentrant-arrival classes whose wparam/lparam are pure scalars —
@@ -188,7 +216,9 @@ pub(crate) mod wndproc {
                 WM_NCDESTROY => {
                     // teardown cannot defer a detached pointer — do the
                     // atomic parts now, queue the full cleanup so the
-                    // post-dispatch drain still runs be.shutdown()
+                    // post-dispatch drain still runs be.shutdown().
+                    // TEARDOWN BYPASSES THE CAP: a full queue must never
+                    // drop mandatory cleanup.
                     (*ptr).closed.store(true, Ordering::SeqCst);
                     (*ptr).rt.mailbox.close();
                     SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
@@ -197,6 +227,7 @@ pub(crate) mod wndproc {
                         wparam: wparam.0,
                         lparam: lparam.0,
                         rect: None,
+                        arrival_focus: None,
                     });
                     DefWindowProcW(hwnd, msg, wparam, lparam)
                 }
@@ -209,22 +240,42 @@ pub(crate) mod wndproc {
                     // OWNED payload — the borrowed `const RECT*` is copied;
                     // reposting it would dereference a dead stack frame
                     let rc = unsafe { *(lparam.0 as *const RECT) };
-                    (*ptr).reentrant_queue.borrow_mut().push_back(QueuedMsg {
-                        msg,
-                        wparam: wparam.0,
-                        lparam: 0,
-                        rect: Some(rc),
-                    });
+                    let mut q = (*ptr).reentrant_queue.borrow_mut();
+                    if q.len() < REENTRANT_QUEUE_CAP {
+                        q.push_back(QueuedMsg {
+                            msg,
+                            wparam: wparam.0,
+                            lparam: 0,
+                            rect: Some(rc),
+                            arrival_focus: None,
+                        });
+                    } else {
+                        (*ptr).queue_overflowed.set(true);
+                    }
                     LRESULT(0)
                 }
                 m if deferrable_arrival(m) => {
-                    // scalar/copyable payload — owned triple, one queue
-                    (*ptr).reentrant_queue.borrow_mut().push_back(QueuedMsg {
-                        msg,
-                        wparam: wparam.0,
-                        lparam: lparam.0,
-                        rect: None,
-                    });
+                    // scalar/copyable payload + arrival-time focus snapshot
+                    // — owned, bounded, one queue
+                    let arrival_focus = if focus_targeted(m) {
+                        (*ptr).focus
+                    } else {
+                        None
+                    };
+                    let mut q = (*ptr).reentrant_queue.borrow_mut();
+                    if q.len() < REENTRANT_QUEUE_CAP {
+                        q.push_back(QueuedMsg {
+                            msg,
+                            wparam: wparam.0,
+                            lparam: lparam.0,
+                            rect: None,
+                            arrival_focus,
+                        });
+                    } else {
+                        // bounded capacity — record the overflow; the drain
+                        // surfaces it as a typed failure
+                        (*ptr).queue_overflowed.set(true);
+                    }
                     LRESULT(0)
                 }
                 _ => DefWindowProcW(hwnd, msg, wparam, lparam),
