@@ -97,7 +97,7 @@ Responsibilities actually present in the Windows backend today:
 | Window | runtime window lifecycle + event delivery (rust-ui `Backend` trait) | `platform::win32::window` WndProc | runtime pump tests | live composer capture |
 | Text services | `crate::node::TextPeer` (natural size, draw, committed-edit sink) | `platform::win32::text` (windowless RichEdit host, explicit `Activation` state machine + preserving scale relatch) | node/peer lifecycle + relatch-state tests | `native_probe_richedit_paints_text`, real IME (MEASURED via `native_probe ime`) |
 | Input | `PointerEvent`/`KeyEvent`/`Modifiers` normalized events (modifiers read from real GetKeyState; `Key::Other` is platform-scoped raw VK) | `platform::win32::window` WM_* → semantic | pump/dispatch + submit-contract tests | real-key + real-IME acceptance |
-| Accessibility | rust-ui semantic tree (role/name/bounds/state) | `platform::win32::uia` IUIAutomation provider | UIA-adjacent unit tests | `native_probe uia-tree`, UIA probe |
+| Accessibility | rust-ui semantic tree (role/name/bounds/state) | `platform::win32::uia` IUIAutomation provider | UIA-adjacent unit tests | `native_probe uia`, UIA probe |
 | Clipboard | **deferred** — RichEdit owns Ctrl+X/C/V internally; no rust-ui consumer exists | — | — | — |
 | Rendering | `BoxStyle`/shadow/fill/border/text semantics | `platform::win32::render` Direct2D | style/state tests | composer captures |
 | Timers | scheduler deadlines | ONE shared `TimerPool` armed synchronously by `TxSetTimer` (FALSE on failure), routed through `platform::win32::window` `SetTimer`; collision-free ids + generation fencing | timer alloc/pool tests | idle/timeout evidence |

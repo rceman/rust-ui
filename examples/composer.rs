@@ -117,8 +117,10 @@ enum Msg {
     RecreateB,
 }
 
+// ~2s busy — comfortably outlasts the capture settle + invoke round trip
+// so the mid-flight evidence (send disabled, stop enabled) is observable
 const CHUNKS: usize = 16;
-const CHUNK_MS: u64 = 60;
+const CHUNK_MS: u64 = 120;
 const RESPONSE_CAP: usize = 64 * 1024;
 const CHUNK_MAX: usize = 4096;
 

@@ -362,21 +362,53 @@ mod probe {
     }
 
     /// UIA Invoke on a named element — the action path real clients take.
+    /// UIA trees rebuild on state flips, so a single find can land a stale
+    /// fenced element mid-refresh — one settle+retry is the honest retry
+    /// boundary (a second failure is reported with the REAL element state).
     pub fn invoke(hwnd: HWND, name: &str) -> Result<String> {
         unsafe {
             let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
             let uia: IUIAutomation = CoCreateInstance(&CUIAutomation, None, CLSCTX_ALL)?;
-            let root = uia.ElementFromHandle(hwnd)?;
-            let el = uia_find(&uia, &root, name)
-                .ok_or_else(|| Error::new(E_FAIL.into(), "uia element not found"))?;
-            let pat = el.GetCurrentPattern(UIA_InvokePatternId)?;
-            let inv: IUIAutomationInvokePattern = pat.cast()?;
-            inv.Invoke()?;
-            std::thread::sleep(std::time::Duration::from_millis(200));
+            let mut last_err = None;
+            for attempt in 0..2 {
+                let root = uia.ElementFromHandle(hwnd)?;
+                let Some(el) = uia_find(&uia, &root, name) else {
+                    last_err = Some(Error::new(E_FAIL.into(), "uia element not found"));
+                    std::thread::sleep(std::time::Duration::from_millis(300));
+                    continue;
+                };
+                // disabled may be a stale element mid-refresh — settle and
+                // re-find before declaring the contract state
+                if !el.CurrentIsEnabled().map(|b| b.as_bool()).unwrap_or(false) {
+                    if attempt == 0 {
+                        std::thread::sleep(std::time::Duration::from_millis(300));
+                        continue;
+                    }
+                    return Err(Error::new(
+                        E_FAIL.into(),
+                        format!("uia element '{name}' is disabled"),
+                    ));
+                }
+                match el
+                    .GetCurrentPattern(UIA_InvokePatternId)
+                    .and_then(|p| p.cast::<IUIAutomationInvokePattern>())
+                    .and_then(|inv| inv.Invoke())
+                {
+                    Ok(()) => {
+                        std::thread::sleep(std::time::Duration::from_millis(200));
+                        CoUninitialize();
+                        return Ok(format!(
+                            "{{\"kind\":\"invoke\",\"evidence\":\"acceptance\",\"name\":\"{name}\"}}"
+                        ));
+                    }
+                    Err(e) => {
+                        last_err = Some(e);
+                        std::thread::sleep(std::time::Duration::from_millis(300));
+                    }
+                }
+            }
             CoUninitialize();
-            Ok(format!(
-                "{{\"kind\":\"invoke\",\"evidence\":\"acceptance\",\"name\":\"{name}\"}}"
-            ))
+            Err(last_err.unwrap_or_else(|| Error::new(E_FAIL.into(), "invoke failed")))
         }
     }
 

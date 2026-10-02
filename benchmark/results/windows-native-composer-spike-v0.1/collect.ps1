@@ -123,7 +123,15 @@ function S-Reorder {
 function S-Send {
   $p = Launch-Composer
   P-Invoke $p.MainWindowHandle "send" | Out-Null
-  Start-Sleep -Milliseconds 400
+  # PRECONDITION for mid-flight evidence: busy must be OBSERVED — poll the
+  # observable stop-enabled signal (bounded), never assume timing
+  $busy = $false
+  for ($i = 0; $i -lt 20; $i++) {
+    Start-Sleep -Milliseconds 100
+    $e = P-Enabled $p.MainWindowHandle "stop"
+    if ($e -eq "true" -or $e -eq $true) { $busy = $true; break }
+  }
+  if (-not $busy) { throw "send never entered the busy state - mid-flight evidence impossible" }
   Shot-PrintWindow $p.MainWindowHandle "send-mid.png"
   P-Invoke $p.MainWindowHandle "stop" | Out-Null
   Start-Sleep -Milliseconds 400
