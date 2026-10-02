@@ -616,7 +616,7 @@ unsafe fn fence_range_array(
             }
         }
     }
-    let owned_in = SaGuard(sa);
+    let _owned_in = SaGuard(sa);
     let lo = SafeArrayGetLBound(sa, 1)?;
     let hi = SafeArrayGetUBound(sa, 1)?;
     let n = (hi - lo + 1).max(0) as u32;
@@ -674,7 +674,7 @@ unsafe fn fence_provider_array(
             }
         }
     }
-    let owned_in = SaGuard(sa);
+    let _owned_in = SaGuard(sa);
     let lo = SafeArrayGetLBound(sa, 1)?;
     let hi = SafeArrayGetUBound(sa, 1)?;
     let n = (hi - lo + 1).max(0) as u32;

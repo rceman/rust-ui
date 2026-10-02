@@ -1189,6 +1189,86 @@ fn native_commit_during_pending_conflicts() {
     assert!(!rig.rt.state.conflicts.is_empty());
 }
 
+/// F05: the FINAL queued native commit must be acknowledged BEFORE a
+/// composing-queued proposal resolves — otherwise a proposal whose base
+/// predates the commit could still be applied over it (the IME end-order
+/// bug). This test drives the exact ime_end ordering: drain the edit
+/// (queued) -> pump (acknowledged) -> composition_end (resolves).
+#[test]
+fn final_composition_commit_acknowledged_before_proposal() {
+    struct S {
+        v: TextValue,
+        conflicts: Vec<TextConflict>,
+    }
+    let mut rig = Rig::new(
+        S {
+            v: TextValue::new("a"),
+            conflicts: Vec::new(),
+        },
+        |s: &mut S, m: Msg, _cx: &mut UpdateCtx<Msg>| match m {
+            Msg::Edited(e) => {
+                let _ = s.v.accept(e);
+            }
+            Msg::Conflicted(c) => s.conflicts.push(c),
+            _ => {}
+        },
+        |s: &S, ui: &mut Ui<Msg>| {
+            ui.text_input(&s.v)
+                .on_edit(Msg::Edited)
+                .on_conflict(Msg::Conflicted);
+        },
+    );
+    rig.view().unwrap();
+    let node = editor_of(&rig);
+    let binding = rig
+        .rt
+        .arena
+        .get(node)
+        .and_then(|n| match &n.data {
+            NodeData::Editor { sync, .. } => sync.binding,
+            _ => None,
+        })
+        .unwrap();
+    // PRECONDITION: composition active; proposal queued on pre-commit base
+    rig.rt.composition_start(node);
+    let base = rig
+        .rt
+        .arena
+        .get(node)
+        .and_then(|n| match &n.data {
+            NodeData::Editor { sync, .. } => Some(sync.peer_revision),
+            _ => None,
+        })
+        .unwrap();
+    rig.rt.state.v.replace("proposal");
+    rig.view().unwrap();
+    assert!(
+        rig.rt.state.v.pending().is_some(),
+        "proposal must be queued while composing"
+    );
+    // ACTION: the final native commit lands — ENQUEUED first (the bug's
+    // ordering), then pumped before composition_end resolves
+    rig.native_edit(
+        node,
+        "final-commit",
+        base.raw_val(),
+        base.raw_val() + 1,
+        EditOrigin::NativePeer,
+        binding,
+    );
+    rig.rt.composition_clear(node);
+    rig.pump().unwrap(); // acknowledge the commit into committed state
+    rig.rt.composition_end(node).unwrap();
+    rig.pump().unwrap();
+    // POSTCONDITION: the stale-base proposal CONFLICTS — it must not
+    // apply over the acknowledged commit; committed text is the native one
+    assert!(
+        !rig.rt.state.conflicts.is_empty(),
+        "proposal on a pre-commit base must conflict after the final commit"
+    );
+    assert_eq!(&*rig.rt.state.v.text(), "final-commit");
+}
+
 #[test]
 fn keep_native_clears_matching_request_only() {
     struct S {
@@ -3834,6 +3914,62 @@ fn native_probe_richedit_paints_text() {
         root.close();
         assert!(unsafe { es.GetPropertyValue(UIA_NamePropertyId) }.is_err());
         drop(acc);
+    }
+
+    // ---- F04: ONE effective geometry while a composition-deferred
+    // relatch is pending — pointer/caret/host/draw/measure all consume
+    // the OLD geometry until the composition completes.
+    {
+        let sink = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let mut peer = crate::platform::win32::WindowlessPeer::create(
+            13,
+            &lib,
+            hwnd,
+            ScaleFactor(1.0),
+            &cfg(),
+            sink,
+            std::sync::Arc::new(std::sync::Mutex::new(
+                crate::platform::win32::text::TimerPool::new(),
+            )),
+        )
+        .expect("peer create");
+        crate::node::TextPeer::initialize(
+            &mut peer,
+            "abc",
+            crate::text::TextRevision::mint(),
+            crate::text::BindingToken::mint(),
+        )
+        .expect("initialize");
+        let old_b = island_dip;
+        peer.apply_bounds(old_b, ScaleFactor(1.0)).unwrap();
+        // PRECONDITION: composing
+        peer.set_composing(true);
+        // ACTION: a scale relatch arrives mid-composition
+        let new_b = crate::geom::Rect {
+            x: 40.0,
+            y: 20.0,
+            width: 200.0,
+            height: 30.0,
+        };
+        peer.apply_bounds(new_b, ScaleFactor(1.5)).unwrap();
+        // POSTCONDITION: the effective geometry is STILL the old space —
+        // host callbacks, pointer mapping and draw all agree
+        let (eb, es) = peer.effective_geometry();
+        assert_eq!(es, ScaleFactor(1.0), "scale must remain old while pending");
+        assert_eq!(eb.x, old_b.x);
+        assert_eq!(eb.y, old_b.y);
+        // and a measure pass under pending geometry must NOT corrupt it:
+        // natural_size at the NEW width leaves effective bounds untouched
+        let _ = peer.natural_size(999.0).unwrap();
+        let (eb2, _) = peer.effective_geometry();
+        assert_eq!(eb2.width, old_b.width, "pending relatch: width write was parked");
+        // composition ends -> the pending relatch applies atomically
+        peer.set_composing(false);
+        peer.finish_pending_relatch().unwrap();
+        let (eb3, es3) = peer.effective_geometry();
+        assert_eq!(es3, ScaleFactor(1.5));
+        assert_eq!(eb3.x, new_b.x);
+        crate::node::TextPeer::release(&mut peer);
     }
 
     // ---- F04: relatch preserves the native editing state --------------

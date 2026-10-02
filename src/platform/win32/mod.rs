@@ -969,6 +969,17 @@ where
         Ok(())
     }
 
+    /// Peer-targeted coordinate authority — ONE effective geometry.
+    /// While a composition-pending relatch is parked, `effective_geometry`
+    /// still returns the old bounds/scale — pointer/caret math agrees
+    /// with the surface msftedit actually renders, not the pending layout.
+    fn peer_origin(&self, id: NodeId) -> Option<space::PeerOrigin> {
+        let peer = self.peer_for(id)?;
+        let p = peer.borrow();
+        let (r, sc) = p.effective_geometry();
+        space::PeerOrigin::from_logical(r, sc)
+    }
+
     /// Keyboard/pointer focus moved — caret drawn only for the focus owner.
     fn apply_caret(&self, peer: &Rc<RefCell<WindowlessPeer>>) {
         let p = peer.borrow();
@@ -980,25 +991,15 @@ where
         if !created {
             return;
         }
-        // the caret reports peer-local px — the content rect converted to
-        // the same px space, so the caret lands where the glyph is
-        let chrome = self.editor_chrome_of(node);
-        let Some(r) = self
-            .rects
-            .get(&node)
-            .copied()
-            .map(|r| layout::editor_content_rect(r, &chrome))
-        else {
-            return;
+        // the caret reports peer-local px — land it through THE effective
+        // peer geometry (the snapped origin both pointer and host callbacks
+        // share); during a pending relatch this is still the OLD space —
+        // matching where msftedit actually draws the caret
+        let Some(org) = self.peer_origin(node) else {
+            return; // unrepresentable peer origin — drop the placement
         };
-        let s = self.peer_ctx.scale.get();
         unsafe {
             use windows::Win32::UI::WindowsAndMessaging::*;
-            // snapped origin once — caret px + origin lands where the
-            // glyph is; identical to pointer/host-callback math
-            let Some(org) = space::PeerOrigin::from_logical(r, s) else {
-                return; // unrepresentable peer origin — drop the placement
-            };
             let Some(at) = org.to_client(space::PeerLocalPoint(pos.into())) else {
                 return; // unrepresentable — drop the placement
             };
@@ -1324,12 +1325,7 @@ where
                 // snapped physical origin, integer subtraction only
                 // (fractional-origin re-rounding disagreement resolved by
                 // geom::PeerOrigin — Gate 6/20)
-                let r = layout::editor_content_rect(
-                    self.rects.get(&id).copied().unwrap_or_default(),
-                    &self.editor_chrome_of(id),
-                );
-                let sc = self.peer_ctx.scale.get();
-                let Some(origin) = space::PeerOrigin::from_logical(r, sc) else {
+                let Some(origin) = self.peer_origin(id) else {
                     return Ok(()); // unrepresentable peer origin — drop
                 };
                 let Some(lp_px) = origin.to_local(pos_px).map(|l| l.0) else {
@@ -1780,12 +1776,7 @@ where
         if let Some(id) = hit
             && self.peer_for(id).is_some()
         {
-            let r = layout::editor_content_rect(
-                self.rects.get(&id).copied().unwrap_or_default(),
-                &self.editor_chrome_of(id),
-            );
-            let sc = self.peer_ctx.scale.get();
-            let Some(origin) = space::PeerOrigin::from_logical(r, sc) else {
+            let Some(origin) = self.peer_origin(id) else {
                 return Err(crate::UiError::Platform(
                     "peer origin unrepresentable in physical px".into(),
                 ));

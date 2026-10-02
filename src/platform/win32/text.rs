@@ -1096,8 +1096,23 @@ impl WindowlessPeer {
     /// divides by `dcDpi/96` internally, so `LogicalRect::rectl` performs THE
     /// conversion at this seam. The format space stays the peer's LOCAL
     /// client rect (px); one transform at the seam, nothing to cache.
-    pub(crate) fn draw(&self, rt: &ID2D1RenderTarget, bounds: LogicalRect) -> UiResult<()> {
+    /// THE effective peer geometry — one authority for every consumer.
+    /// While a composition-pending relatch is parked, `host.bounds` and
+    /// `host.scale` still hold the OLD values — that IS the effective
+    /// geometry msftedit renders in; pointer/caret/draw/measure must read
+    /// it, never the pending new values.
+    pub(crate) fn effective_geometry(&self) -> (LogicalRect, ScaleFactor) {
+        let s = self.shared();
+        (s.host.bounds, s.host.scale)
+    }
+
+    pub(crate) fn draw(&self, rt: &ID2D1RenderTarget, _bounds: LogicalRect) -> UiResult<()> {
         self.ensure_in_place()?;
+        // ONE effective geometry: the layout-supplied bounds may already
+        // carry a pending relatch's NEW rect — draw where the native
+        // surface actually lives (host.bounds is unchanged until the
+        // deferred relatch completes)
+        let (bounds, sc) = self.effective_geometry();
         if !(bounds.width > 0.0
             && bounds.height > 0.0
             && bounds.x.is_finite()
@@ -1105,7 +1120,6 @@ impl WindowlessPeer {
         {
             return Ok(());
         }
-        let sc = self.shared().host.scale;
         let mut rc = bounds.rectl(sc);
         unsafe {
             self.tx()
@@ -1120,11 +1134,16 @@ impl WindowlessPeer {
     pub(crate) fn natural_size(&self, width_dip: f32) -> UiResult<(f32, f32)> {
         {
             let mut s = self.shared_mut();
-            s.host.bounds.width = width_dip;
-            if s.host.bounds.height <= 0.0 {
-                // scratch height — the service reports natural extent via
-                // REQRESIZE regardless of clip height
-                s.host.bounds.height = 4000.0;
+            // while a relatch is pending the effective geometry is still
+            // the old one — measure AT it; writing the new width would
+            // corrupt the host callbacks' coordinate space mid-composition
+            if self.pending_relatch.borrow().is_none() {
+                s.host.bounds.width = width_dip;
+                if s.host.bounds.height <= 0.0 {
+                    // scratch height — the service reports natural extent
+                    // via REQRESIZE regardless of clip height
+                    s.host.bounds.height = 4000.0;
+                }
             }
             // freshness: a stale extent must never masquerade as a fresh
             // measurement — reset before requesting so a dropped
