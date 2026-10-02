@@ -167,12 +167,8 @@ pub(crate) struct HostShared {
     pub armed_timers: std::collections::BTreeMap<u32, usize>,
     /// this host's node — assigned at attach; timer routing needs it
     pub node: Option<crate::NodeId>,
-    /// THE armed-timer authority — win32 id -> (owner, richedit id);
-    /// shared by every peer on the window
-    pub timer_pool:
-        std::sync::Arc<std::sync::Mutex<std::collections::HashMap<usize, (crate::NodeId, u32)>>>,
-    /// monotonically increasing allocator sequence (skip-live policy)
-    pub timer_seq: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    /// THE armed-timer authority — shared `TimerPool` (live + tombstones)
+    pub timer_pool: std::sync::Arc<std::sync::Mutex<TimerPool>>,
     /// bounded host-event log — same 128 bound as the runtime event queue;
     /// overflow is a QueueOverflow failure, not a silent drop
     pub events: Vec<HostEvent>,
@@ -198,23 +194,74 @@ fn bools(v: bool) -> BOOL {
     BOOL::from(v)
 }
 
-/// Allocate a collision-free win32 timer id — scans forward from the
-/// sequence and skips still-live ids; `None` when the namespace is full
-/// (capacity is honestly reported to msftedit, never silently dropped).
-pub(crate) fn alloc_native_timer(
-    pool: &std::sync::Arc<std::sync::Mutex<std::collections::HashMap<usize, (crate::NodeId, u32)>>>,
-    seq: &std::sync::Arc<std::sync::atomic::AtomicUsize>,
-) -> Option<usize> {
-    use super::window::{NATIVE_TIMER_BASE, NATIVE_TIMER_CAP};
-    let p = pool.lock().unwrap();
-    for _ in 0..NATIVE_TIMER_CAP {
-        let n = seq.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let tid = NATIVE_TIMER_BASE + (n % NATIVE_TIMER_CAP);
-        if !p.contains_key(&tid) {
-            return Some(tid);
+/// THE native-timer authority — win32 id -> live owner, or a tombstone.
+/// `Tombstone` exists because KillTimer leaves any already-queued
+/// WM_TIMER deliverable (MS contract): an id is NEVER reallocated while
+/// tombstoned, so a stale tick resolves to a dead entry and can never be
+/// redirected at a different timer's owner.
+#[derive(Clone, Copy)]
+pub(crate) enum TimerState {
+    Live(crate::NodeId, u32),
+    Tombstone,
+}
+
+pub(crate) struct TimerPool {
+    map: std::collections::HashMap<usize, TimerState>,
+    /// monotonic allocation cursor — ids are allocated, never reused
+    next: usize,
+}
+
+impl TimerPool {
+    pub(crate) fn new() -> Self {
+        TimerPool {
+            map: std::collections::HashMap::new(),
+            next: 0,
         }
     }
-    None
+
+    /// Allocate a collision-free win32 timer id; `None` when the
+    /// namespace is full (honestly reported to msftedit).
+    pub(crate) fn alloc(&mut self) -> Option<usize> {
+        use super::window::{NATIVE_TIMER_BASE, NATIVE_TIMER_CAP};
+        for _ in 0..NATIVE_TIMER_CAP {
+            let tid = NATIVE_TIMER_BASE + (self.next % NATIVE_TIMER_CAP);
+            self.next = self.next.wrapping_add(1);
+            if !self.map.contains_key(&tid) {
+                return Some(tid);
+            }
+        }
+        None
+    }
+
+    pub(crate) fn arm(&mut self, tid: usize, node: crate::NodeId, idtimer: u32) {
+        self.map.insert(tid, TimerState::Live(node, idtimer));
+    }
+
+    /// Kill: the id becomes a tombstone — a queued stale WM_TIMER still
+    /// resolves here and resolves to NO owner.
+    pub(crate) fn kill(&mut self, tid: usize) {
+        self.map.insert(tid, TimerState::Tombstone);
+    }
+
+    /// The live owner of `tid`, if any — tombstones/stale ids are None.
+    pub(crate) fn owner(&self, tid: usize) -> Option<(crate::NodeId, u32)> {
+        match self.map.get(&tid) {
+            Some(TimerState::Live(node, idtimer)) => Some((*node, *idtimer)),
+            _ => None,
+        }
+    }
+
+    /// Currently live win32 ids (tombstones excluded).
+    pub(crate) fn live_ids(&self) -> Vec<usize> {
+        self.map
+            .iter()
+            .filter_map(|(t, s)| matches!(s, TimerState::Live(..)).then_some(*t))
+            .collect()
+    }
+
+    pub(crate) fn clear(&mut self) {
+        self.map.clear();
+    }
 }
 
 /// Explicit TextServices activation state — in-place activation (draw/
@@ -390,13 +437,16 @@ impl ITextHost_Impl for HostBox {
     /// allocated from the shared pool (collision-free while live); both
     /// capacity exhaustion and a SetTimer failure return FALSE.
     fn TxSetTimer(&self, idtimer: u32, utimeout: u32) -> BOOL {
-        let (hwnd, node, pool, seq) = {
+        // re-arming the same logical (node,idtimer) RESETS the existing
+        // win32 id — SetTimer on a live id replaces it; allocating a
+        // second id would orphan a periodic timer that keeps firing
+        let (hwnd, node, pool, existing) = {
             let s = self.s();
             (
                 s.host.hwnd,
                 s.host.node,
                 s.host.timer_pool.clone(),
-                s.host.timer_seq.clone(),
+                s.host.armed_timers.get(&idtimer).copied(),
             )
         };
         let Some(node) = node else {
@@ -405,17 +455,24 @@ impl ITextHost_Impl for HostBox {
         if hwnd.is_invalid() {
             return BOOL(0);
         }
-        let Some(tid) = alloc_native_timer(&pool, &seq) else {
-            return BOOL(0); // capacity exhausted — honest failure
+        let tid = match existing {
+            Some(tid) => tid,
+            None => match pool.lock().unwrap().alloc() {
+                Some(tid) => tid,
+                None => return BOOL(0), // capacity exhausted — honest failure
+            },
         };
         let armed = unsafe {
             windows::Win32::UI::WindowsAndMessaging::SetTimer(Some(hwnd), tid, utimeout, None)
         };
         if armed == 0 {
-            pool.lock().unwrap().remove(&tid);
+            if existing.is_none() {
+                // never-armed id: tombstone it so a stray tick can't bind
+                pool.lock().unwrap().kill(tid);
+            }
             return BOOL(0);
         }
-        pool.lock().unwrap().insert(tid, (node, idtimer));
+        pool.lock().unwrap().arm(tid, node, idtimer);
         self.m().host.armed_timers.insert(idtimer, tid);
         BOOL(1)
     }
@@ -427,7 +484,9 @@ impl ITextHost_Impl for HostBox {
             };
             (s.host.hwnd, tid, s.host.timer_pool.clone())
         };
-        pool.lock().unwrap().remove(&tid);
+        // tombstone, not erase — a WM_TIMER queued before KillTimer must
+        // still resolve to a dead owner
+        pool.lock().unwrap().kill(tid);
         unsafe {
             let _ = windows::Win32::UI::WindowsAndMessaging::KillTimer(Some(hwnd), tid);
         }
@@ -796,10 +855,7 @@ impl WindowlessPeer {
         scale: ScaleFactor,
         cfg: &PeerConfig,
         sink: std::sync::Arc<std::sync::Mutex<Vec<super::NativeSinkItem>>>,
-        timer_pool: std::sync::Arc<
-            std::sync::Mutex<std::collections::HashMap<usize, (crate::NodeId, u32)>>,
-        >,
-        timer_seq: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+        timer_pool: std::sync::Arc<std::sync::Mutex<TimerPool>>,
     ) -> UiResult<WindowlessPeer> {
         let mut face = [0u16; 32];
         for (i, c) in cfg.face.encode_utf16().take(31).enumerate() {
@@ -847,7 +903,7 @@ impl WindowlessPeer {
                 armed_timers: std::collections::BTreeMap::new(),
                 node: None,
                 timer_pool: timer_pool.clone(),
-                timer_seq: timer_seq.clone(),
+
                 events: Vec::new(),
                 read_only: cfg.read_only,
                 overflow: false,
@@ -1405,6 +1461,7 @@ impl crate::node::TextPeer for WindowlessPeer {
         // return the surface's bytes to the aggregate budget before the
         // native objects go — accounting mirrors allocation
         drop(self.tx.take());
+        self.kill_armed_timers();
         unsafe {
             HostBox::Release(self.host);
         }
@@ -1417,26 +1474,36 @@ impl crate::node::TextPeer for WindowlessPeer {
     }
 }
 
+/// Kill every native timer this host armed — used by release() AND
+/// Drop; an orphan periodic timer must not outlive its peer.
+impl WindowlessPeer {
+    pub(crate) fn kill_armed_timers(&mut self) {
+        if self.host.is_null() {
+            return;
+        }
+        let (hwnd, tids, pool) = {
+            let mut s = self.shared_mut();
+            let t: Vec<usize> = s.host.armed_timers.values().copied().collect();
+            s.host.armed_timers.clear();
+            (s.host.hwnd, t, s.host.timer_pool.clone())
+        };
+        for tid in tids {
+            pool.lock().unwrap().kill(tid);
+            if !hwnd.is_invalid() {
+                unsafe {
+                    let _ = windows::Win32::UI::WindowsAndMessaging::KillTimer(Some(hwnd), tid);
+                }
+            }
+        }
+    }
+}
+
 impl Drop for WindowlessPeer {
     fn drop(&mut self) {
         if !self.host.is_null() {
             drop(self.tx.take());
-            // kill every native timer this host armed — a dead peer can
-            // never receive WM_TIMER, so its ids must not stay live
-            let (hwnd, tids, pool) = {
-                let mut s = self.shared_mut();
-                let t: Vec<usize> = s.host.armed_timers.values().copied().collect();
-                s.host.armed_timers.clear();
-                (s.host.hwnd, t, s.host.timer_pool.clone())
-            };
-            for tid in tids {
-                pool.lock().unwrap().remove(&tid);
-                if !hwnd.is_invalid() {
-                    unsafe {
-                        let _ = windows::Win32::UI::WindowsAndMessaging::KillTimer(Some(hwnd), tid);
-                    }
-                }
-            }
+            // a dead peer can never receive WM_TIMER — tombstone its ids
+            self.kill_armed_timers();
             unsafe {
                 HostBox::Release(self.host);
             }

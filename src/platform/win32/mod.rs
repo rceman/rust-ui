@@ -96,11 +96,10 @@ pub(crate) struct PeerCtx {
     pub focus: std::cell::Cell<Option<NodeId>>,
     pub sink: Arc<Mutex<Vec<NativeSinkItem>>>,
     pub registry: Arc<Mutex<HashMap<u32, RcWeak<RefCell<WindowlessPeer>>>>>,
-    /// THE armed-native-timer authority — win32 tid -> (owner node,
-    /// richedit timer id). The host writes on TxSetTimer/TxKillTimer; the
-    /// backend reads it to route WM_TIMER. No second armed-state store.
-    pub timer_pool: Arc<Mutex<HashMap<usize, (NodeId, u32)>>>,
-    pub timer_seq: Arc<std::sync::atomic::AtomicUsize>,
+    /// THE armed-native-timer authority — live owners + tombstones
+    /// (stale WM_TIMER fencing). The host writes on TxSetTimer/
+    /// TxKillTimer; the backend routes WM_TIMER through `owner()`.
+    pub timer_pool: Arc<Mutex<crate::platform::win32::text::TimerPool>>,
     next_id: AtomicU64,
     /// live theme colors for peer creation (updated on theme switch)
     pub colors: std::cell::RefCell<(Appearance, Theme)>,
@@ -142,7 +141,6 @@ impl PeerCtx {
                 &cfg,
                 ctx.sink.clone(),
                 ctx.timer_pool.clone(),
-                ctx.timer_seq.clone(),
             )?;
             let handle = Rc::new(RefCell::new(peer));
             Ok(Box::new(PeerHandle {
@@ -981,8 +979,8 @@ where
     /// Periodic: the native timer stays armed until msftedit kills it —
     /// a tick does NOT consume the registration.
     pub(crate) fn native_timer_fire(&mut self, tid: usize) -> UiResult {
-        let Some((node, nid)) = self.peer_ctx.timer_pool.lock().unwrap().get(&tid).copied() else {
-            return Ok(()); // stale/unowned timer id — reject
+        let Some((node, nid)) = self.peer_ctx.timer_pool.lock().unwrap().owner(tid) else {
+            return Ok(()); // stale/tombstoned timer id — reject
         };
         self.counters
             .native_timer_fires
@@ -1002,11 +1000,13 @@ where
                 let due = n
                     .saturating_duration_since(std::time::Instant::now())
                     .as_millis() as u32;
-                unsafe {
+                let armed = unsafe {
                     let _ = KillTimer(Some(self.hwnd), DEADLINE_ID);
-                    SetTimer(Some(self.hwnd), DEADLINE_ID, due.max(1), None);
-                }
-                self.deadline_timer = Some(n);
+                    SetTimer(Some(self.hwnd), DEADLINE_ID, due.max(1), None) != 0
+                };
+                // armed state mirrors native truth — a failed SetTimer
+                // leaves deadline_timer None so the next turn retries
+                self.deadline_timer = armed.then_some(n);
             }
             (Some(_), None) => {
                 unsafe {
@@ -1018,10 +1018,9 @@ where
                 let due = n
                     .saturating_duration_since(std::time::Instant::now())
                     .as_millis() as u32;
-                unsafe {
-                    SetTimer(Some(self.hwnd), DEADLINE_ID, due.max(1), None);
-                }
-                self.deadline_timer = Some(n);
+                let armed =
+                    unsafe { SetTimer(Some(self.hwnd), DEADLINE_ID, due.max(1), None) != 0 };
+                self.deadline_timer = armed.then_some(n);
             }
             (None, None) => {}
         }
@@ -2005,7 +2004,7 @@ where
         self.deferred_native.clear();
         {
             let mut pool = self.peer_ctx.timer_pool.lock().unwrap();
-            for tid in pool.keys().copied().collect::<Vec<_>>() {
+            for tid in pool.live_ids() {
                 unsafe {
                     let _ = KillTimer(Some(self.hwnd), tid);
                 }
@@ -2141,8 +2140,7 @@ where
         focus: std::cell::Cell::new(None),
         sink: sink.clone(),
         registry: Arc::new(Mutex::new(HashMap::new())),
-        timer_pool: Arc::new(Mutex::new(HashMap::new())),
-        timer_seq: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+        timer_pool: Arc::new(Mutex::new(crate::platform::win32::text::TimerPool::new())),
         next_id: AtomicU64::new(1),
         colors: std::cell::RefCell::new((appearance, Theme::dark())),
     });

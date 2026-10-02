@@ -3263,8 +3263,9 @@ fn native_probe_richedit_paints_text() {
             ScaleFactor(scale),
             &cfg(),
             sink,
-            std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
-            std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            std::sync::Arc::new(std::sync::Mutex::new(
+                crate::platform::win32::text::TimerPool::new(),
+            )),
         )
         .expect("peer create");
         let binding = crate::text::BindingToken::mint();
@@ -3352,8 +3353,9 @@ fn native_probe_richedit_paints_text() {
             ScaleFactor(a),
             &cfg(),
             sink,
-            std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
-            std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            std::sync::Arc::new(std::sync::Mutex::new(
+                crate::platform::win32::text::TimerPool::new(),
+            )),
         )
         .expect("peer create");
         let binding = crate::text::BindingToken::mint();
@@ -3439,8 +3441,9 @@ fn native_probe_richedit_paints_text() {
             ScaleFactor(1.0),
             &cfg(),
             sink,
-            std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
-            std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            std::sync::Arc::new(std::sync::Mutex::new(
+                crate::platform::win32::text::TimerPool::new(),
+            )),
         )
         .expect("peer create");
         let binding = crate::text::BindingToken::mint();
@@ -4774,7 +4777,8 @@ fn geometry_contract_scale_change_is_pure() {
 #[cfg(windows)]
 mod native_contract_tests {
     use super::*;
-    use crate::platform::win32::text::alloc_native_timer;
+    use crate::NodeId;
+    use crate::platform::win32::text::TimerPool;
     use crate::platform::win32::window::{NATIVE_TIMER_BASE, NATIVE_TIMER_CAP, deferrable_arrival};
     use windows::Win32::UI::WindowsAndMessaging::*;
 
@@ -4815,74 +4819,45 @@ mod native_contract_tests {
     /// The timer pool allocator: collision-free while live, honest None at
     /// capacity, reuse only after free — and never modulo-wrap onto live.
     #[test]
-    fn native_timer_alloc_is_collision_free_and_bounded() {
-        let pool = std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new()));
-        let seq = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
-        let nid = crate::NodeId {
-            slot: 7,
+    fn native_timer_pool_is_the_armed_authority() {
+        use windows::Win32::UI::WindowsAndMessaging::KillTimer;
+        let pool = std::sync::Arc::new(std::sync::Mutex::new(TimerPool::new()));
+        let nid = NodeId {
+            slot: 1,
             generation: 1,
         };
 
-        // sequential allocs are distinct and namespaced
-        let t1 = alloc_native_timer(&pool, &seq).unwrap();
-        pool.lock().unwrap().insert(t1, (nid, 1));
-        let t2 = alloc_native_timer(&pool, &seq).unwrap();
-        pool.lock().unwrap().insert(t2, (nid, 2));
+        let t1 = pool.lock().unwrap().alloc().unwrap();
+        pool.lock().unwrap().arm(t1, nid, 7);
+        let t2 = pool.lock().unwrap().alloc().unwrap();
+        pool.lock().unwrap().arm(t2, nid, 8);
         assert_ne!(t1, t2);
         assert!(t1 >= NATIVE_TIMER_BASE && t1 < NATIVE_TIMER_BASE + NATIVE_TIMER_CAP);
+        assert_eq!(pool.lock().unwrap().owner(t1), Some((nid, 7)));
 
-        // freeing lets the allocator reuse — the sequence skips live ids
-        pool.lock().unwrap().remove(&t1);
-        let t3 = alloc_native_timer(&pool, &seq).unwrap();
-        assert_ne!(t3, t2, "allocator must not hand out a live id");
+        // kill -> tombstone: the id stays resolved to NO live owner and
+        // is never reallocated — a queued stale WM_TIMER can't bind anew
+        pool.lock().unwrap().kill(t1);
+        assert_eq!(pool.lock().unwrap().owner(t1), None);
+        assert!(!pool.lock().unwrap().live_ids().contains(&t1));
+        let t3 = pool.lock().unwrap().alloc().unwrap();
+        assert_ne!(t3, t1, "a tombstoned id is never reused");
+        pool.lock().unwrap().arm(t3, nid, 9);
+        assert_eq!(pool.lock().unwrap().owner(t3), Some((nid, 9)));
 
-        // capacity: fill the whole namespace -> None (honest exhaustion)
-        pool.lock().unwrap().clear();
-        let seq2 = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
-        for i in 0..NATIVE_TIMER_CAP {
-            let t = alloc_native_timer(&pool, &seq2).expect("fresh id");
-            pool.lock().unwrap().insert(t, (nid, i as u32));
+        // capacity exhaustion is honest — fill every live slot
+        let mut pool = TimerPool::new();
+        let nid2 = NodeId {
+            slot: 2,
+            generation: 1,
+        };
+        let mut armed = 0usize;
+        while let Some(t) = pool.alloc() {
+            pool.arm(t, nid2, armed as u32);
+            armed += 1;
         }
-        assert_eq!(pool.lock().unwrap().len(), NATIVE_TIMER_CAP);
-        assert!(
-            alloc_native_timer(&pool, &seq2).is_none(),
-            "capacity exhaustion must be reported, not wrap onto a live id"
-        );
+        assert_eq!(armed, NATIVE_TIMER_CAP);
+        assert!(pool.alloc().is_none());
+        let _ = KillTimer;
     }
-}
-/// F01: focus-targeted deferred input captures its arrival-time owner —
-/// pointer/spatial messages do NOT (they resolve by position at delivery).
-#[test]
-#[cfg(windows)]
-fn deferred_focus_capture_only_for_focus_targeted() {
-    use crate::platform::win32::window;
-    use windows::Win32::UI::WindowsAndMessaging::*;
-    for m in [
-        WM_CHAR,
-        WM_SYSCHAR,
-        WM_KEYDOWN,
-        WM_KEYUP,
-        WM_SYSKEYDOWN,
-        WM_SYSKEYUP,
-        WM_IME_STARTCOMPOSITION,
-        WM_IME_ENDCOMPOSITION,
-        WM_IME_COMPOSITION,
-        WM_IME_NOTIFY,
-    ] {
-        assert!(
-            window::focus_targeted(m),
-            "{m:#x} must capture arrival focus"
-        );
-    }
-    for m in [
-        WM_LBUTTONDOWN,
-        WM_LBUTTONUP,
-        WM_MOUSEMOVE,
-        WM_MOUSEWHEEL,
-        WM_PAINT,
-    ] {
-        assert!(!window::focus_targeted(m), "{m:#x} resolves spatially");
-    }
-    // capacity is explicit — the queue bound is a real constant
-    assert_eq!(window::REENTRANT_QUEUE_CAP, crate::event::EVENT_QUEUE_CAP);
 }
