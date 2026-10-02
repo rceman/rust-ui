@@ -180,6 +180,7 @@ function S-Details {
   # F11 — complete JSON escaping: a backslash in committed text must
   # round-trip through BOTH 'type' and 'value' emissions as valid JSON
   P-ClickNamed $p.MainWindowHandle "draft" | Out-Null
+  P-KeyMod $p.MainWindowHandle 0x41 "ctrl" | Out-Null   # Ctrl+A — exact content
   P-Text $p.MainWindowHandle "draft-prefill\q" | Out-Null
   $v = P-Value $p.MainWindowHandle "draft"
   if ($v -ne "draft-prefill\q") { throw "value round-trip failed: $v" }

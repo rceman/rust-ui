@@ -1,2 +1,2 @@
 draft_mid=draft-prefilltyped text
-draft_after_undos=draft-prefilltyped textzzzzzzzzzzzzzzzzzzzzzzzzzzzz
+draft_after_undos=draft-prefill

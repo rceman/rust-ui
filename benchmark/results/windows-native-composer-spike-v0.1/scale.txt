@@ -6,3 +6,5 @@ rows=100 uia_children=121 settle_query_ms=87
 rows=1000 uia_children=1021 settle_query_ms=597
 rows=100 uia_children=121 settle_query_ms=91
 rows=1000 uia_children=1021 settle_query_ms=692
+rows=100 uia_children=121 settle_query_ms=83
+rows=1000 uia_children=1021 settle_query_ms=595

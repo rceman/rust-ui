@@ -1,0 +1,32 @@
+﻿[
+    {
+        "kind":  "uia-rect-prefix",
+        "name":  "turn 0 | busy false | notice -",
+        "rect_px":  [
+                        449,
+                        635,
+                        658,
+                        658
+                    ]
+    },
+    {
+        "kind":  "uia-rect-prefix",
+        "name":  "draft-echo draft-prefill",
+        "rect_px":  [
+                        449,
+                        663,
+                        623,
+                        687
+                    ]
+    },
+    {
+        "kind":  "uia-rect-prefix",
+        "name":  "draft-edits 0 last \"\"",
+        "rect_px":  [
+                        449,
+                        692,
+                        594,
+                        715
+                    ]
+    }
+]

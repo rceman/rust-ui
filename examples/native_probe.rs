@@ -655,24 +655,62 @@ mod probe {
                 CoCreateInstance(&CLSID_TF_InputProcessorProfiles, None, CLSCTX_ALL)?;
             mgr.ChangeCurrentLanguage(0x411)?; // LANG_JAPANESE
             mgr.ActivateLanguageProfile(&clsid, 0x411, &profile)?;
-            // open the target window's IMC in hiragana native mode
-            let himc = ImmGetContext(hwnd);
-            let opened = ImmSetOpenStatus(himc, true);
-            let conv = ImmSetConversionStatus(
-                himc,
-                IME_CMODE_NATIVE | IME_CMODE_FULLSHAPE | IME_CMODE_ROMAN,
-                IME_SENTENCE_MODE(0),
-            );
-            // NOTE: cross-process ImmGetContext returns NULL (IMC is
-            // per-thread); under TSF the real preedit lives in the target's
-            // TSF stack anyway — keystrokes below exercise THAT path.
+            // The COMPOSER thread's input context is what matters — TSF
+            // activation is per-thread, so ask the target window to take
+            // the Japanese layout itself. WM_INPUTLANGCHANGEREQUEST
+            // (handled by DefWindowProc on the receiving thread) activates
+            // the posted HKL for THAT thread; the HKL is discovered from
+            // the loaded-layout list by langid, never hardcoded.
+            let target_hkl = {
+                let mut list = [HKL::default(); 16];
+                let n = GetKeyboardLayoutList(Some(&mut list));
+                let mut found = list[..n as usize]
+                    .iter()
+                    .copied()
+                    .find(|h| (h.0 as u32 & 0xffff) == 0x0411);
+                if found.is_none() {
+                    let h = LoadKeyboardLayoutW(
+                        windows::core::w!("00000411"),
+                        KLF_NOTELLSHELL,
+                    )?;
+                    found = (h.0 as u32 & 0xffff == 0x411).then_some(h);
+                }
+                found.ok_or_else(|| {
+                    Error::new(E_FAIL.into(), "no Japanese keyboard layout available")
+                })?
+            };
             foreground(hwnd);
             std::thread::sleep(std::time::Duration::from_millis(300));
-            // force the IME open in hiragana mode — VK_DBE_HIRAGANA is the
-            // native MS-IME input-mode switch for the focused thread
-            let mut k = INPUT::default();
-            k.r#type = INPUT_KEYBOARD;
-            k.Anonymous.ki.wVk = VIRTUAL_KEY(0xF2); // VK_DBE_HIRAGANA
+            const WM_INPUTLANGCHANGEREQUEST: u32 = 0x0050;
+            const INPUTLANGCHANGE_FORWARD: usize = 0x0002;
+            let _ = PostMessageW(
+                Some(hwnd),
+                WM_INPUTLANGCHANGEREQUEST,
+                WPARAM(INPUTLANGCHANGE_FORWARD),
+                LPARAM(target_hkl.0 as isize),
+            );
+            std::thread::sleep(std::time::Duration::from_millis(400));
+            // MS-IME PERSISTS its conversion mode in the profile —
+            // VK_DBE_HIRAGANA is a TOGGLE: a leftover hiragana session
+            // flips back to alphanumeric and the run types literal ASCII
+            // (observed regression). The deterministic route is the
+            // thread's default IME window: IMC_SETCONVERSIONMODE sets the
+            // exact mode (NATIVE|FULLSHAPE|ROMAN = hiragana), verified by
+            // read-back with bounded retries for the activation race.
+            const WM_IME_CONTROL: u32 = 0x0283;
+            const IMC_GETCONVERSIONMODE: usize = 0x0003;
+            const IMC_SETCONVERSIONMODE: usize = 0x0004;
+            const IMC_SETOPENSTATUS: usize = 0x0006;
+            let ime_wnd = windows::Win32::UI::Input::Ime::ImmGetDefaultIMEWnd(hwnd);
+            let conv_mode = |w: windows::Win32::Foundation::HWND| -> i32 {
+                SendMessageW(
+                    w,
+                    WM_IME_CONTROL,
+                    Some(WPARAM(IMC_GETCONVERSIONMODE)),
+                    Some(LPARAM(0)),
+                )
+                .0 as i32
+            };
             // every required input is asserted — SendInput returns the
             // number of events inserted; 0 means the call was blocked
             let send1 = |inp: &INPUT| -> Result<()> {
@@ -688,10 +726,49 @@ mod probe {
                 }
                 Ok(())
             };
-            send1(&k)?;
-            k.Anonymous.ki.dwFlags = KEYEVENTF_KEYUP;
-            send1(&k)?;
-            std::thread::sleep(std::time::Duration::from_millis(300));
+            if !ime_wnd.is_invalid() {
+                let want =
+                    (IME_CMODE_NATIVE | IME_CMODE_FULLSHAPE | IME_CMODE_ROMAN).0 as isize;
+                let _ = SendMessageW(
+                    ime_wnd,
+                    WM_IME_CONTROL,
+                    Some(WPARAM(IMC_SETOPENSTATUS)),
+                    Some(LPARAM(1)),
+                );
+                let mut engaged = false;
+                for _ in 0..10 {
+                    let _ = SendMessageW(
+                        ime_wnd,
+                        WM_IME_CONTROL,
+                        Some(WPARAM(IMC_SETCONVERSIONMODE)),
+                        Some(LPARAM(want)),
+                    );
+                    if conv_mode(ime_wnd) & (IME_CMODE_NATIVE.0 as i32) != 0 {
+                        engaged = true;
+                        break;
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(200));
+                }
+                if !engaged {
+                    return Err(Error::new(
+                        E_FAIL.into(),
+                        format!(
+                            "hiragana mode did not engage: conversion mode {:#x}",
+                            conv_mode(ime_wnd)
+                        ),
+                    ));
+                }
+            } else {
+                // no readable facade — one blind toggle is the only
+                // available switch; the final kana assertion still gates
+                let mut k = INPUT::default();
+                k.r#type = INPUT_KEYBOARD;
+                k.Anonymous.ki.wVk = VIRTUAL_KEY(0xF2); // VK_DBE_HIRAGANA
+                send1(&k)?;
+                k.Anonymous.ki.dwFlags = KEYEVENTF_KEYUP;
+                send1(&k)?;
+                std::thread::sleep(std::time::Duration::from_millis(300));
+            }
             // real keystrokes — the OS IME turns ASCII into hiragana preedit
             for ch in keys.chars() {
                 let mut inp = INPUT::default();
