@@ -662,7 +662,7 @@ fn main() {
 ",
         "  subs: geometry uia uia-rect uia-enabled uia-count value invoke
 ",
-        "        click click-post click-named type type-post key-post
+        "        click click-post click-named type type-post type-post-hex key-post
 ",
         "        dpichange ime"
     );
@@ -710,6 +710,30 @@ fn main() {
                 args[3]
             )
         }),
+        // unicode payload as HEX-encoded UTF-8 — argv is unsafe for
+        // non-ASCII text under Windows PowerShell 5.1 (native argv is
+        // ANSI-encoded AND a BOM-less .ps1 is parsed as ANSI); hex is
+        // ASCII-safe end to end
+        "type-post-hex" => {
+            let hexs = args[3].trim();
+            let mut bytes = Vec::with_capacity(hexs.len() / 2);
+            let mut ok = true;
+            for pair in hexs.as_bytes().chunks(2) {
+                match std::str::from_utf8(pair).ok().and_then(|h| u8::from_str_radix(h, 16).ok()) {
+                    Some(b) => bytes.push(b),
+                    None => { ok = false; break; }
+                }
+            }
+            match String::from_utf8(bytes) {
+                Ok(text) if ok => type_post(hwnd, &text).map(|_| {
+                    "{\"kind\":\"type-post\",\"evidence\":\"regression\",\"via\":\"hex\"}".to_string()
+                }),
+                _ => Err(windows::core::Error::new(
+                    windows::Win32::Foundation::E_FAIL.into(),
+                    "type-post-hex: malformed hex or non-UTF-8 payload",
+                )),
+            }
+        }
         "key-post" => {
             let vk: u32 = args[3]
                 .trim_start_matches("0x")

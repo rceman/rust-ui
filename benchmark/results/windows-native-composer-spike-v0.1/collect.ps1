@@ -25,16 +25,18 @@ function S-Typing {
   P-ClickNamed $p.MainWindowHandle "draft" | Out-Null
   P-Text $p.MainWindowHandle "hello world" | Out-Null
   Shot-PrintWindow $p.MainWindowHandle "typing.png"
-  "draft_value=$(P-Value $p.MainWindowHandle 'draft')" | Set-Content "$($script:OutDir)\typing.txt"
+  "draft_value=$(P-Value $p.MainWindowHandle 'draft')" | Set-Content "$($script:OutDir)\typing.txt" -Encoding UTF8
   Stop-Composer $p
 }
 
 function S-Unicode {
   $p = Launch-Composer
   P-ClickNamed $p.MainWindowHandle "draft" | Out-Null
-  P-Text $p.MainWindowHandle "héllo 世界🦀" | Out-Null
+  # unicode payload as HEX UTF-8 — the .ps1 source stays ASCII (a BOM-less
+  # UTF-8 script is parsed as ANSI by PS5.1, mangling literal payloads)
+  P-TextHex $p.MainWindowHandle "68c3a96c6c6f20e4b896e7958cf09fa680" | Out-Null
   Shot-PrintWindow $p.MainWindowHandle "unicode.png"
-  "draft_value=$(P-Value $p.MainWindowHandle 'draft')" | Set-Content "$($script:OutDir)\unicode.txt"
+  "draft_value=$(P-Value $p.MainWindowHandle 'draft')" | Set-Content "$($script:OutDir)\unicode.txt" -Encoding UTF8
   Stop-Composer $p
 }
 
@@ -45,7 +47,7 @@ function S-Selection {
   P-KeyMod $p.MainWindowHandle 0x41 "ctrl"   # Ctrl+A
   P-Text $p.MainWindowHandle "SECOND" | Out-Null   # replaces the selection
   Shot-PrintWindow $p.MainWindowHandle "selection.png"
-  "draft_value=$(P-Value $p.MainWindowHandle 'draft')" | Set-Content "$($script:OutDir)\selection.txt"
+  "draft_value=$(P-Value $p.MainWindowHandle 'draft')" | Set-Content "$($script:OutDir)\selection.txt" -Encoding UTF8
   Stop-Composer $p
 }
 
@@ -74,7 +76,7 @@ function S-ReadOnly {
   P-ClickNamed $p.MainWindowHandle "draft" | Out-Null
   P-Text $p.MainWindowHandle "REJECTED" | Out-Null  # must NOT land
   Shot-PrintWindow $p.MainWindowHandle "readonly.png"
-  "draft_value=$(P-Value $p.MainWindowHandle 'draft')" | Set-Content "$($script:OutDir)\readonly.txt"
+  "draft_value=$(P-Value $p.MainWindowHandle 'draft')" | Set-Content "$($script:OutDir)\readonly.txt" -Encoding UTF8
   Stop-Composer $p
 }
 
@@ -137,9 +139,9 @@ function S-Ime {
   $p = Launch-Composer
   P-ClickNamed $p.MainWindowHandle "draft" | Out-Null
   $r = P-Ime $p.MainWindowHandle "draft" "arigato"
-  $r | ConvertTo-Json | Set-Content "$($script:OutDir)\ime.json"
+  $r | ConvertTo-Json | Set-Content "$($script:OutDir)\ime.json" -Encoding UTF8
   Shot-PrintWindow $p.MainWindowHandle "ime.png"
-  "draft_value=$(P-Value $p.MainWindowHandle 'draft')" | Set-Content "$($script:OutDir)\ime.txt"
+  "draft_value=$(P-Value $p.MainWindowHandle 'draft')" | Set-Content "$($script:OutDir)\ime.txt" -Encoding UTF8
   Stop-Composer $p
 }
 
@@ -157,7 +159,7 @@ function S-Dpi {
     # via the shared scale authority and asserts the post-change window
     # rect — this script only records the result
     $r = P-Dpi $p.MainWindowHandle $dpi
-    $r | Set-Content "$($script:OutDir)\dpi-$dpi.txt"
+    ($r | ConvertTo-Json -Compress) | Set-Content "$($script:OutDir)\dpi-$dpi.txt" -Encoding UTF8 
     Shot-PrintWindow $p.MainWindowHandle "dpi-$dpi.png"
     Stop-Composer $p
   }

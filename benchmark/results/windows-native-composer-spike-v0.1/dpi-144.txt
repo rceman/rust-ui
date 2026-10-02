@@ -1,1 +1,1 @@
-dpi=144 window_px=750x705 expected=750x705
+﻿{"kind":"dpichange","evidence":"regression"}

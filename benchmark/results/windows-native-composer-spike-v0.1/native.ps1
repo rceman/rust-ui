@@ -43,7 +43,15 @@ function Stop-Composer($p) {
 # ---- probe seam (the ONLY native-semantics surface) ------------------------
 
 function Probe($a) {
-  $out = & $script:ProbeExe @a 2>&1
+  # UTF-8 on BOTH ends — the probe prints UTF-8; without OutputEncoding
+  # PowerShell decodes child stdout under the OEM codepage (kana -> ?)
+  $prev = [Console]::OutputEncoding
+  [Console]::OutputEncoding = [Text.Encoding]::UTF8
+  try {
+    $out = & $script:ProbeExe @a 2>&1
+  } finally {
+    [Console]::OutputEncoding = $prev
+  }
   if ($LASTEXITCODE -ne 0) { throw "native_probe $($a[0]) failed: $out" }
   return ($out | ConvertFrom-Json)
 }
@@ -58,6 +66,7 @@ function P-Invoke($h,$n)     { Probe @("invoke",    "$h", $n) }
 function P-ClickNamed($h,$n) { Probe @("click-named","$h",$n) }
 function P-Click($h,$x,$y)   { Probe @("click-post","$h","$x","$y") }
 function P-Text($h,$t)       { Probe @("type-post", "$h", $t) }
+function P-TextHex($h,$x)    { Probe @("type-post-hex", "$h", $x) }
 function P-KeyMod($h,$vk,$mod) {
   # $mod = "ctrl"|"shift"|"ctrl shift"|"" (empty = unmodified key)
   if ($mod) {
