@@ -54,7 +54,12 @@ pub(crate) struct QueuedMsg {
 /// Bound on the owned reentrant queue — allocation is bounded, not merely
 /// the drain. Overflow is a typed failure (surfaced via `queue_overflowed`),
 /// never silent input loss.
-pub(crate) const REENTRANT_QUEUE_CAP: usize = crate::event::EVENT_QUEUE_CAP;
+pub(crate) const REENTRANT_QUEUE_CAP: usize = crate::event::EVENT_QUEUE_CAP * 2;
+/// The per-drain work budget — DISTINCT from queue capacity: a full
+/// queue holds REENTRANT_QUEUE_CAP items, a drain consumes at most
+/// DRAIN_MAX then posts a checked continuation. Exact-boundary drains
+/// are NOT overflow.
+pub(crate) const REENTRANT_DRAIN_MAX: usize = crate::event::EVENT_QUEUE_CAP;
 
 /// Messages whose semantics target the focused node — arrival-time focus
 /// must be captured into the queue item.

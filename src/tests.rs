@@ -5133,7 +5133,10 @@ mod native_contract_tests {
     use super::*;
     use crate::NodeId;
     use crate::platform::win32::text::TimerPool;
-    use crate::platform::win32::window::{NATIVE_TIMER_BASE, NATIVE_TIMER_CAP, deferrable_arrival};
+    use crate::platform::win32::window::{
+        NATIVE_TIMER_BASE, NATIVE_TIMER_CAP, REENTRANT_DRAIN_MAX, REENTRANT_QUEUE_CAP,
+        deferrable_arrival, focus_targeted,
+    };
     use windows::Win32::UI::WindowsAndMessaging::*;
 
     /// Only scalar/copyable payloads may be deferred — a borrowed-pointer
@@ -5166,6 +5169,28 @@ mod native_contract_tests {
             assert!(
                 !deferrable_arrival(m),
                 "msg {m:#x} must NOT be scalar-deferred"
+            );
+        }
+    }
+
+    /// F01 contract — the queue's capacity and the drain budget are
+    /// DIFFERENT authorities: capacity bounds total backlog, drain bounds
+    /// per-pass work and continues via WM_PUMP. An exact-boundary drain
+    /// must not report overflow.
+    #[test]
+    fn reentrant_queue_capacity_and_drain_are_distinct() {
+        assert!(
+            REENTRANT_QUEUE_CAP > REENTRANT_DRAIN_MAX,
+            "queue cap must exceed the drain bound — a full drain pass must be able to continue"
+        );
+        // focus-targeted messages capture the arrival-time focus
+        for m in [WM_KEYDOWN, WM_KEYUP, WM_CHAR, WM_IME_ENDCOMPOSITION] {
+            assert!(focus_targeted(m), "msg {m:#x} must snapshot arrival focus");
+        }
+        for m in [WM_MOUSEMOVE, WM_SIZE, WM_TIMER] {
+            assert!(
+                !focus_targeted(m),
+                "msg {m:#x} is positional, not focus-owned"
             );
         }
     }

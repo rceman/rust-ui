@@ -2101,7 +2101,7 @@ where
     pub(crate) fn drain_reentrant(&mut self) -> UiResult {
         let hwnd = self.hwnd;
         let mut first_err: Option<UiError> = None;
-        for _ in 0..crate::event::EVENT_QUEUE_CAP {
+        for _ in 0..crate::platform::win32::window::REENTRANT_DRAIN_MAX {
             let Some(m) = self.reentrant_queue.borrow_mut().pop_front() else {
                 break;
             };
