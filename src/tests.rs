@@ -3428,6 +3428,141 @@ fn native_probe_richedit_paints_text() {
         assert_eq!(stray, 0, "scale change left ghost ink at stale coordinates");
     }
 
+    // ---- F07/N03: escaped NATIVE objects die with their node ----------
+    // retain a real msftedit pattern + range + enclosing provider through
+    // removal/recreate/close — the fence must hold on every escape path.
+    {
+        use crate::platform::win32::uia::{ChildBuild, UiaRoot};
+        use windows::Win32::UI::Accessibility::*;
+        let sink = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let mut peer = crate::platform::win32::WindowlessPeer::create(
+            21,
+            &lib,
+            hwnd,
+            ScaleFactor(1.0),
+            &cfg(),
+            sink,
+            std::sync::Arc::new(std::sync::Mutex::new(
+                crate::platform::win32::text::TimerPool::new(),
+            )),
+        )
+        .expect("peer create");
+        let binding = crate::text::BindingToken::mint();
+        crate::node::TextPeer::initialize(
+            &mut peer,
+            "abc",
+            crate::text::TextRevision::mint(),
+            binding,
+        )
+        .expect("initialize");
+        peer.apply_bounds(island_dip, ScaleFactor(1.0)).unwrap();
+        let node = crate::NodeId {
+            slot: 31,
+            generation: 7,
+        };
+        crate::node::TextPeer::attach(&mut peer, node);
+
+        // the real msftedit provider for this peer
+        let iid = peer.windowless_acc_iid().expect("acc iid");
+        let root = UiaRoot::new(HWND::default(), "t").expect("root");
+        let acc: IRicheditWindowlessAccessibility =
+            unsafe { windows::core::Interface::from_raw(peer.query_iid(&iid).expect("qi")) };
+        let site = root.site(node).expect("site");
+        let prov = unsafe { acc.CreateProvider(&site) }.expect("provider");
+        let frag: IRawElementProviderFragment = prov.cast().expect("frag");
+        root.rebuild(vec![ChildBuild {
+            id: node,
+            name: "ed".into(),
+            ct: UIA_EditControlTypeId,
+            localized: "Edit",
+            rect: UiaRect {
+                left: 0.0,
+                top: 0.0,
+                width: 10.0,
+                height: 10.0,
+            },
+            actionable: false,
+            enabled: true,
+            peer_node: true,
+            native: Some(frag),
+        }])
+        .expect("rebuild");
+
+        // retain every escape path: the text pattern, a range from it,
+        // the enclosing element, and a children array entry
+        let rf: IRawElementProviderFragment = root.provider().cast().unwrap();
+        let ed = unsafe { rf.Navigate(NavigateDirection_FirstChild).unwrap() };
+        let es: IRawElementProviderSimple = ed.cast().unwrap();
+        let text_pat: ITextProvider = unsafe {
+            es.GetPatternProvider(UIA_TextPatternId)
+                .unwrap()
+                .cast()
+                .unwrap()
+        };
+        let range = unsafe { text_pat.DocumentRange().unwrap() };
+        let enclosing = unsafe { range.GetEnclosingElement().unwrap() };
+        let kids = unsafe { range.GetChildren().unwrap() }; // may be null/empty
+        // live sanity: the range reads text while the node is live
+        let txt = unsafe { range.GetText(-1).unwrap() };
+        assert!(txt.len() >= 3, "range must read committed text while live");
+
+        // REMOVE the node — every retained native object must die
+        root.rebuild(vec![]).unwrap();
+        assert!(
+            unsafe { es.GetPropertyValue(UIA_NamePropertyId) }.is_err(),
+            "escaped fragment must die on removal"
+        );
+        assert!(
+            unsafe { range.GetText(-1) }.is_err(),
+            "retained range must die on removal"
+        );
+        assert!(
+            unsafe { text_pat.DocumentRange() }.is_err(),
+            "retained pattern must die on removal"
+        );
+        assert!(
+            unsafe { enclosing.GetPropertyValue(UIA_NamePropertyId) }.is_err()
+                || unsafe { enclosing.GetPatternProvider(UIA_TextPatternId) }.is_err(),
+            "escaped enclosing provider must not answer past the fence"
+        );
+        if !kids.is_null() {
+            unsafe {
+                windows::Win32::System::Ole::SafeArrayDestroy(kids);
+            }
+        }
+        // RECREATE same slot, NEW generation — retained refs stay dead
+        let node2 = crate::NodeId {
+            slot: 31,
+            generation: 8,
+        };
+        root.rebuild(vec![ChildBuild {
+            id: node2,
+            name: "ed2".into(),
+            ct: UIA_EditControlTypeId,
+            localized: "Edit",
+            rect: UiaRect {
+                left: 0.0,
+                top: 0.0,
+                width: 10.0,
+                height: 10.0,
+            },
+            actionable: false,
+            enabled: true,
+            peer_node: true,
+            native: None,
+        }])
+        .unwrap();
+        assert!(
+            unsafe { range.GetText(-1) }.is_err(),
+            "stale gen still fenced"
+        );
+
+        // CLOSE — nothing answers
+        root.close();
+        assert!(unsafe { es.GetPropertyValue(UIA_NamePropertyId) }.is_err());
+        drop(acc);
+    }
+
     // ---- F04: relatch preserves the native editing state --------------
     // text, directional selection, undo and UI-activation must all survive
     // a scale relatch — retaining the COM object is the contract, and the

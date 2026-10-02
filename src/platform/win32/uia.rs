@@ -12,7 +12,7 @@
 
 use std::collections::HashMap;
 use std::ffi::c_void;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use windows::Win32::Foundation::*;
 use windows::Win32::System::Com::*;
@@ -549,6 +549,9 @@ impl IRawElementProviderFragment_Impl for EditorFragment_Impl {
         Ok(())
     }
     fn FragmentRoot(&self) -> Result<IRawElementProviderFragmentRoot> {
+        if !self.this.live() {
+            return Err(EditorFragment::unavailable());
+        }
         unsafe { self.this.inner.FragmentRoot() }
     }
 }
@@ -584,8 +587,10 @@ fn fence_range(
 }
 
 /// SAFEARRAY of ITextRangeProvider -> same shape, each element fenced.
-/// Preserves array identity semantics (count/order); the elements gain
-/// the liveness contract.
+/// OWNERSHIP: `sa` is ours on entry — the native provider transferred it;
+/// we take the elements' AddRef'd values, then destroy the array
+/// (both on success and on every failure path via `guard`). The
+/// replacement array is likewise destroyed if the build aborts.
 unsafe fn fence_range_array(
     sa: *mut SAFEARRAY,
     snap: &Arc<Snapshot>,
@@ -594,6 +599,24 @@ unsafe fn fence_range_array(
     if sa.is_null() {
         return Ok(std::ptr::null_mut());
     }
+    // `sa` is destroyed exactly once — guard covers every `?` below
+    struct SaGuard(*mut SAFEARRAY);
+    impl SaGuard {
+        /// transfer ownership to the caller — forget the guard, keep array
+        fn disarm(self) -> *mut SAFEARRAY {
+            let p = self.0;
+            std::mem::forget(self);
+            p
+        }
+    }
+    impl Drop for SaGuard {
+        fn drop(&mut self) {
+            unsafe {
+                let _ = SafeArrayDestroy(self.0);
+            }
+        }
+    }
+    let owned_in = SaGuard(sa);
     let lo = SafeArrayGetLBound(sa, 1)?;
     let hi = SafeArrayGetUBound(sa, 1)?;
     let n = (hi - lo + 1).max(0) as u32;
@@ -601,6 +624,8 @@ unsafe fn fence_range_array(
     if out.is_null() {
         return Err(E_OUTOFMEMORY.into());
     }
+    // `out` is destroyed on ANY error until explicitly disarmed
+    let owned_out = SaGuard(out);
     for i in 0..n {
         let idx = lo + i as i32;
         let mut raw: *mut c_void = std::ptr::null_mut();
@@ -616,7 +641,58 @@ unsafe fn fence_range_array(
             SafeArrayPutElement(out, &idx, &ptr as *const _ as *const c_void)?;
         }
     }
-    Ok(out)
+    Ok(owned_out.disarm())
+}
+
+/// SAFEARRAY of IRawElementProviderSimple -> same shape, each element
+/// fenced through `fence_provider` — same ownership contract as
+/// fence_range_array.
+unsafe fn fence_provider_array(
+    sa: *mut SAFEARRAY,
+    snap: &Arc<Snapshot>,
+    node: NodeId,
+) -> Result<*mut SAFEARRAY> {
+    if sa.is_null() {
+        return Ok(std::ptr::null_mut());
+    }
+    struct SaGuard(*mut SAFEARRAY);
+    impl SaGuard {
+        fn disarm(self) -> *mut SAFEARRAY {
+            let p = self.0;
+            std::mem::forget(self);
+            p
+        }
+    }
+    impl Drop for SaGuard {
+        fn drop(&mut self) {
+            unsafe {
+                let _ = SafeArrayDestroy(self.0);
+            }
+        }
+    }
+    let owned_in = SaGuard(sa);
+    let lo = SafeArrayGetLBound(sa, 1)?;
+    let hi = SafeArrayGetUBound(sa, 1)?;
+    let n = (hi - lo + 1).max(0) as u32;
+    let out = SafeArrayCreateVector(VT_UNKNOWN, 0, n);
+    if out.is_null() {
+        return Err(E_OUTOFMEMORY.into());
+    }
+    let owned_out = SaGuard(out);
+    for i in 0..n {
+        let idx = lo + i as i32;
+        let mut raw: *mut c_void = std::ptr::null_mut();
+        SafeArrayGetElement(sa, &idx, &mut raw as *mut _ as *mut c_void)?;
+        if raw.is_null() {
+            continue;
+        }
+        let inner = IRawElementProviderSimple::from_raw(raw);
+        let fenced = fence_provider(inner, snap, node);
+        let ptr = windows_core::Interface::as_raw(&fenced);
+        SafeArrayPutElement(out, &idx, &ptr as *const _ as *const c_void)?;
+        std::mem::forget(fenced); // the array owns the ref now
+    }
+    Ok(owned_out.disarm())
 }
 
 /// Text-pattern fence — all range-returning calls wrap their results;
@@ -707,14 +783,44 @@ impl IValueProvider_Impl for FencedValue_Impl {
     }
 }
 
+/// Private marker — a fenced range can carry its inner out when another
+/// rust-ui call needs the RAW msftedit range (Compare/MoveEndpointByRange
+/// take a second range; msftedit must receive its own object).
+#[windows::core::interface("6E4B2C91-4A3F-4E2B-9D5C-7F8A1B2C3D4E")]
+unsafe trait IFencedRangeInner: windows::core::IUnknown {
+    unsafe fn inner_raw(&self) -> *mut core::ffi::c_void;
+}
+
+/// Unwrap a fenced range to its inner msftedit range — a foreign
+/// (non-fenced) range passes through unchanged.
+unsafe fn unwrap_range(r: &ITextRangeProvider) -> Result<ITextRangeProvider> {
+    match r.cast::<IFencedRangeInner>() {
+        Ok(m) => {
+            let raw = unsafe { m.inner_raw() };
+            if raw.is_null() {
+                return Err(E_POINTER.into());
+            }
+            Ok(ITextRangeProvider::from_raw(raw))
+        }
+        Err(_) => Ok(r.clone()),
+    }
+}
+
 /// Range fence — every method checks liveness before touching msftedit;
 /// range-returning calls re-wrap so cloned/sub-ranges stay fenced too.
-#[implement(ITextRangeProvider)]
+#[implement(ITextRangeProvider, IFencedRangeInner)]
 struct FencedRange {
     inner: ITextRangeProvider,
     snap: Arc<Snapshot>,
     node: NodeId,
 }
+impl IFencedRangeInner_Impl for FencedRange_Impl {
+    unsafe fn inner_raw(&self) -> *mut core::ffi::c_void {
+        // ownership transfers — the caller wraps it with from_raw
+        windows_core::Interface::into_raw(self.this.inner.clone())
+    }
+}
+
 impl ITextRangeProvider_Impl for FencedRange_Impl {
     fn Clone(&self) -> Result<ITextRangeProvider> {
         if !fence_live(&self.this.snap, self.this.node) {
@@ -730,7 +836,8 @@ impl ITextRangeProvider_Impl for FencedRange_Impl {
         if !fence_live(&self.this.snap, self.this.node) {
             return Err(unavailable());
         }
-        unsafe { self.this.inner.Compare(range.ok()?) }
+        let raw = unsafe { unwrap_range(range.ok()?) }?;
+        unsafe { self.this.inner.Compare(&raw) }
     }
     fn CompareEndpoints(
         &self,
@@ -741,10 +848,11 @@ impl ITextRangeProvider_Impl for FencedRange_Impl {
         if !fence_live(&self.this.snap, self.this.node) {
             return Err(unavailable());
         }
+        let raw = unsafe { unwrap_range(targetrange.ok()?) }?;
         unsafe {
             self.this
                 .inner
-                .CompareEndpoints(endpoint, targetrange.ok()?, targetendpoint)
+                .CompareEndpoints(endpoint, &raw, targetendpoint)
         }
     }
     fn ExpandToEnclosingUnit(&self, unit: TextUnit) -> Result<()> {
@@ -807,7 +915,10 @@ impl ITextRangeProvider_Impl for FencedRange_Impl {
         if !fence_live(&self.this.snap, self.this.node) {
             return Err(unavailable());
         }
-        unsafe { self.this.inner.GetEnclosingElement() }
+        // the enclosing provider is msftedit's OWN — re-fence it so a
+        // retained client reference can't reach patterns past the gate
+        let raw = unsafe { self.this.inner.GetEnclosingElement() }?;
+        Ok(fence_provider(raw, &self.this.snap, self.this.node))
     }
     fn GetText(&self, maxlength: i32) -> Result<BSTR> {
         if !fence_live(&self.this.snap, self.this.node) {
@@ -841,10 +952,11 @@ impl ITextRangeProvider_Impl for FencedRange_Impl {
         if !fence_live(&self.this.snap, self.this.node) {
             return Err(unavailable());
         }
+        let raw = unsafe { unwrap_range(targetrange.ok()?) }?;
         unsafe {
             self.this
                 .inner
-                .MoveEndpointByRange(endpoint, targetrange.ok()?, targetendpoint)
+                .MoveEndpointByRange(endpoint, &raw, targetendpoint)
         }
     }
     fn Select(&self) -> Result<()> {
@@ -875,8 +987,177 @@ impl ITextRangeProvider_Impl for FencedRange_Impl {
         if !fence_live(&self.this.snap, self.this.node) {
             return Err(unavailable());
         }
-        unsafe { self.this.inner.GetChildren() }
+        // each child provider is msftedit's — the returned array holds
+        // fenced copies; the native array is destroyed, never leaked
+        let sa = unsafe { self.this.inner.GetChildren() }?;
+        unsafe { fence_provider_array(sa, &self.this.snap, self.this.node) }
     }
+}
+
+/// Wrap an escaped native provider in the same generation fence —
+/// every interface msftedit might answer on it is either fenced here
+/// or unanswerable (QI on the wrapper only knows these interfaces).
+fn fence_provider(
+    inner: IRawElementProviderSimple,
+    snap: &Arc<Snapshot>,
+    node: NodeId,
+) -> IRawElementProviderSimple {
+    let co = windows_core::ComObject::new(FencedProvider {
+        inner,
+        frag: OnceLock::new(),
+        snap: snap.clone(),
+        node,
+    });
+    co.to_interface()
+}
+
+/// Provider fence — wraps a native `IRawElementProviderSimple` that
+/// escaped our fragment (enclosing element, children arrays). Its own
+/// fragment surface is lazily QI'd and equally fenced.
+#[implement(IRawElementProviderSimple, IRawElementProviderFragment)]
+struct FencedProvider {
+    inner: IRawElementProviderSimple,
+    /// inner QI'd for IRawElementProviderFragment — cached once
+    frag: OnceLock<Option<IRawElementProviderFragment>>,
+    snap: Arc<Snapshot>,
+    node: NodeId,
+}
+
+impl FencedProvider {
+    fn frag(&self) -> Option<IRawElementProviderFragment> {
+        self.frag
+            .get_or_init(|| self.inner.cast::<IRawElementProviderFragment>().ok())
+            .clone()
+    }
+}
+
+impl IRawElementProviderSimple_Impl for FencedProvider_Impl {
+    fn ProviderOptions(&self) -> Result<ProviderOptions> {
+        if !fence_live(&self.this.snap, self.this.node) {
+            return Err(unavailable());
+        }
+        Ok(ProviderOptions_ServerSideProvider | ProviderOptions_UseComThreading)
+    }
+    fn GetPatternProvider(&self, patternid: UIA_PATTERN_ID) -> Result<IUnknown> {
+        if !fence_live(&self.this.snap, self.this.node) {
+            return Err(unavailable());
+        }
+        let raw = unsafe { self.this.inner.GetPatternProvider(patternid) }?;
+        // re-fence known patterns; anything else is fence-or-nothing
+        if patternid == UIA_TextPatternId {
+            let inner: ITextProvider = raw.cast()?;
+            let co = windows_core::ComObject::new(FencedText {
+                inner,
+                snap: self.this.snap.clone(),
+                node: self.this.node,
+            });
+            return Ok(co.to_interface::<IUnknown>());
+        }
+        if patternid == UIA_ValuePatternId {
+            let inner: IValueProvider = raw.cast()?;
+            let co = windows_core::ComObject::new(FencedValue {
+                inner,
+                snap: self.this.snap.clone(),
+                node: self.this.node,
+            });
+            return Ok(co.to_interface::<IUnknown>());
+        }
+        Err(E_NOTIMPL.into())
+    }
+    fn GetPropertyValue(&self, propertyid: UIA_PROPERTY_ID) -> Result<VARIANT> {
+        if !fence_live(&self.this.snap, self.this.node) {
+            return Err(unavailable());
+        }
+        unsafe { self.this.inner.GetPropertyValue(propertyid) }
+    }
+    fn HostRawElementProvider(&self) -> Result<IRawElementProviderSimple> {
+        if !fence_live(&self.this.snap, self.this.node) {
+            return Err(unavailable());
+        }
+        let raw = unsafe { self.this.inner.HostRawElementProvider() }?;
+        Ok(fence_provider(raw, &self.this.snap, self.this.node))
+    }
+}
+
+impl IRawElementProviderFragment_Impl for FencedProvider_Impl {
+    fn Navigate(&self, direction: NavigateDirection) -> Result<IRawElementProviderFragment> {
+        if !fence_live(&self.this.snap, self.this.node) {
+            return Err(unavailable());
+        }
+        let Some(frag) = self.this.frag() else {
+            return Err(E_NOTIMPL.into());
+        };
+        let raw = unsafe { frag.Navigate(direction) }?;
+        Ok(fence_fragment(raw, &self.this.snap, self.this.node))
+    }
+    fn GetRuntimeId(&self) -> Result<*mut SAFEARRAY> {
+        if !fence_live(&self.this.snap, self.this.node) {
+            return Err(unavailable());
+        }
+        match self.this.frag() {
+            Some(f) => unsafe { f.GetRuntimeId() },
+            None => Err(E_NOTIMPL.into()),
+        }
+    }
+    fn BoundingRectangle(&self) -> Result<UiaRect> {
+        if !fence_live(&self.this.snap, self.this.node) {
+            return Err(unavailable());
+        }
+        match self.this.frag() {
+            Some(f) => unsafe { f.BoundingRectangle() },
+            None => Err(E_NOTIMPL.into()),
+        }
+    }
+    fn GetEmbeddedFragmentRoots(&self) -> Result<*mut SAFEARRAY> {
+        if !fence_live(&self.this.snap, self.this.node) {
+            return Err(unavailable());
+        }
+        match self.this.frag() {
+            Some(f) => {
+                let sa = unsafe { f.GetEmbeddedFragmentRoots() }?;
+                unsafe { fence_provider_array(sa, &self.this.snap, self.this.node) }
+            }
+            None => Err(E_NOTIMPL.into()),
+        }
+    }
+    fn SetFocus(&self) -> Result<()> {
+        if !fence_live(&self.this.snap, self.this.node) {
+            return Err(unavailable());
+        }
+        match self.this.frag() {
+            Some(f) => unsafe { f.SetFocus() },
+            None => Err(E_NOTIMPL.into()),
+        }
+    }
+    fn FragmentRoot(&self) -> Result<IRawElementProviderFragmentRoot> {
+        if !fence_live(&self.this.snap, self.this.node) {
+            return Err(unavailable());
+        }
+        match self.this.frag() {
+            Some(f) => unsafe { f.FragmentRoot() },
+            None => Err(E_NOTIMPL.into()),
+        }
+    }
+}
+
+/// Wrap a native fragment — returned to clients as the provider surface.
+fn fence_fragment(
+    frag: IRawElementProviderFragment,
+    snap: &Arc<Snapshot>,
+    node: NodeId,
+) -> IRawElementProviderFragment {
+    let simple: IRawElementProviderSimple = frag.cast().unwrap();
+    let co = windows_core::ComObject::new(FencedProvider {
+        inner: simple,
+        frag: {
+            let l = OnceLock::new();
+            let _ = l.set(Some(frag));
+            l
+        },
+        snap: snap.clone(),
+        node,
+    });
+    co.to_interface()
 }
 
 // ---------------------------------------------------------------------------
