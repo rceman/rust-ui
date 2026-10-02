@@ -636,9 +636,13 @@ unsafe fn fence_range_array(
         }
         let inner = ITextRangeProvider::from_raw(raw);
         if let Ok(fenced) = fence_range(inner, snap, node) {
-            // PutElement AddRefs — our owned ref is consumed by `fenced`
+            // VT_UNKNOWN insertion takes the INTERFACE POINTER VALUE —
+            // PutElement AddRefs it itself. `&ptr` would be an extra
+            // indirection (a stack address read as the COM pointer —
+            // access violation). `fenced`'s owned ref drops normally;
+            // the array holds its own reference.
             let ptr = windows_core::Interface::as_raw(&fenced);
-            SafeArrayPutElement(out, &idx, &ptr as *const _ as *const c_void)?;
+            SafeArrayPutElement(out, &idx, ptr as *const c_void)?;
         }
     }
     Ok(owned_out.disarm())
@@ -688,9 +692,10 @@ unsafe fn fence_provider_array(
         }
         let inner = IRawElementProviderSimple::from_raw(raw);
         let fenced = fence_provider(inner, snap, node);
+        // direct interface pointer — PutElement AddRefs; `fenced` drops
+        // normally, releasing only the wrapper's own ref
         let ptr = windows_core::Interface::as_raw(&fenced);
-        SafeArrayPutElement(out, &idx, &ptr as *const _ as *const c_void)?;
-        std::mem::forget(fenced); // the array owns the ref now
+        SafeArrayPutElement(out, &idx, ptr as *const c_void)?;
     }
     Ok(owned_out.disarm())
 }
@@ -788,6 +793,8 @@ impl IValueProvider_Impl for FencedValue_Impl {
 /// take a second range; msftedit must receive its own object).
 #[windows::core::interface("6E4B2C91-4A3F-4E2B-9D5C-7F8A1B2C3D4E")]
 unsafe trait IFencedRangeInner: windows::core::IUnknown {
+    /// yields the raw msftedit range ONLY if this fenced range is still
+    /// live — null means dead (a dead argument must never reach msftedit)
     unsafe fn inner_raw(&self) -> *mut core::ffi::c_void;
 }
 
@@ -796,9 +803,11 @@ unsafe trait IFencedRangeInner: windows::core::IUnknown {
 unsafe fn unwrap_range(r: &ITextRangeProvider) -> Result<ITextRangeProvider> {
     match r.cast::<IFencedRangeInner>() {
         Ok(m) => {
+            // a STALE fenced argument is rejected at its own fence —
+            // UIA_E_ELEMENTNOTAVAILABLE, not a generic pointer failure
             let raw = unsafe { m.inner_raw() };
             if raw.is_null() {
-                return Err(E_POINTER.into());
+                return Err(unavailable());
             }
             Ok(ITextRangeProvider::from_raw(raw))
         }
@@ -816,6 +825,9 @@ struct FencedRange {
 }
 impl IFencedRangeInner_Impl for FencedRange_Impl {
     unsafe fn inner_raw(&self) -> *mut core::ffi::c_void {
+        if !fence_live(&self.this.snap, self.this.node) {
+            return std::ptr::null_mut();
+        }
         // ownership transfers — the caller wraps it with from_raw
         windows_core::Interface::into_raw(self.this.inner.clone())
     }

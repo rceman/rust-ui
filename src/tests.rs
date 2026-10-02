@@ -3706,9 +3706,68 @@ fn native_probe_richedit_paints_text() {
         let range = unsafe { text_pat.DocumentRange().unwrap() };
         let enclosing = unsafe { range.GetEnclosingElement().unwrap() };
         let kids = unsafe { range.GetChildren().unwrap() }; // may be null/empty
+        // NONEMPTY range array — the selection always has >=1 range;
+        // extract one element and retain it past teardown
+        let sel_sa = unsafe { text_pat.GetSelection().unwrap() };
+        assert!(!sel_sa.is_null(), "GetSelection must return an array");
+        let (lo, hi) = unsafe {
+            (
+                windows::Win32::System::Ole::SafeArrayGetLBound(sel_sa, 1).unwrap(),
+                windows::Win32::System::Ole::SafeArrayGetUBound(sel_sa, 1).unwrap(),
+            )
+        };
+        assert!(hi >= lo, "selection array must be nonempty");
+        let mut praw: *mut core::ffi::c_void = std::ptr::null_mut();
+        unsafe {
+            windows::Win32::System::Ole::SafeArrayGetElement(
+                sel_sa,
+                &lo,
+                &mut praw as *mut _ as *mut core::ffi::c_void,
+            )
+            .unwrap()
+        };
+        assert!(!praw.is_null());
+        let sel_range: ITextRangeProvider = unsafe {
+            windows_core::Interface::from_raw(praw)
+        };
+        unsafe {
+            windows::Win32::System::Ole::SafeArrayDestroy(sel_sa);
+        }
+        // a retained CHILD provider — GetChildren may be empty for plain
+        // text; when nonempty extract+retain a real element
+        let mut retained_child: Option<IRawElementProviderSimple> = None;
+        if !kids.is_null() {
+            let (klo, khi) = unsafe {
+                (
+                    windows::Win32::System::Ole::SafeArrayGetLBound(kids, 1).unwrap(),
+                    windows::Win32::System::Ole::SafeArrayGetUBound(kids, 1).unwrap(),
+                )
+            };
+            if khi >= klo {
+                let mut kraw: *mut core::ffi::c_void = std::ptr::null_mut();
+                unsafe {
+                    windows::Win32::System::Ole::SafeArrayGetElement(
+                        kids,
+                        &klo,
+                        &mut kraw as *mut _ as *mut core::ffi::c_void,
+                    )
+                    .unwrap()
+                };
+                if !kraw.is_null() {
+                    retained_child = Some(unsafe {
+                        windows_core::Interface::from_raw(kraw)
+                    });
+                }
+            }
+        }
         // live sanity: the range reads text while the node is live
         let txt = unsafe { range.GetText(-1).unwrap() };
         assert!(txt.len() >= 3, "range must read committed text while live");
+        // a live retained range/array element answers while live
+        let _ = unsafe { sel_range.GetText(-1).unwrap() };
+        if let Some(c) = &retained_child {
+            let _ = unsafe { c.GetPropertyValue(UIA_NamePropertyId) }; // may err legitimately
+        }
 
         // REMOVE the node — every retained native object must die
         root.rebuild(vec![]).unwrap();
@@ -3726,9 +3785,19 @@ fn native_probe_richedit_paints_text() {
         );
         assert!(
             unsafe { enclosing.GetPropertyValue(UIA_NamePropertyId) }.is_err()
-                || unsafe { enclosing.GetPatternProvider(UIA_TextPatternId) }.is_err(),
-            "escaped enclosing provider must not answer past the fence"
+                && unsafe { enclosing.GetPatternProvider(UIA_TextPatternId) }.is_err(),
+            "escaped enclosing provider must fail on BOTH supported calls"
         );
+        assert!(
+            unsafe { sel_range.GetText(-1) }.is_err(),
+            "a range extracted from a retained selection array must die"
+        );
+        if let Some(c) = &retained_child {
+            assert!(
+                unsafe { c.GetPropertyValue(UIA_NamePropertyId) }.is_err(),
+                "a retained child provider must die on removal"
+            );
+        }
         if !kids.is_null() {
             unsafe {
                 windows::Win32::System::Ole::SafeArrayDestroy(kids);
