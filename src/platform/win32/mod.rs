@@ -403,7 +403,11 @@ where
     arrival_focus: std::cell::Cell<Option<Option<NodeId>>>,
     /// the peer that received WM_IME_STARTCOMPOSITION — composition owns
     /// it through END, even if focus moved meanwhile
-    pub(crate) ime_owner: std::cell::Cell<Option<NodeId>>,
+    /// None = no active composition; `Some(None)` = composition START was
+    /// captured with NO owner — stays ownerless through delivery, end
+    /// bookkeeping and relatch (never falls through to a later-focused
+    /// peer); `Some(Some(id))` = pinned composition owner
+    pub(crate) ime_owner: std::cell::Cell<Option<Option<NodeId>>>,
     /// a reentrant push exceeded REENTRANT_QUEUE_CAP — surfaced as
     /// QueueOverflow by the next drain (typed failure, never silent loss)
     queue_overflowed: std::cell::Cell<bool>,
@@ -879,11 +883,16 @@ where
     }
 
     /// IME delivery owner — the pinned composition peer while a
-    /// composition is live; the focus-captured target otherwise
+    /// composition is live; the focus-captured target otherwise. An
+    /// explicitly OWNERLESS start (`Some(None)`) resolves to None — it
+    /// must never latch onto whatever peer happens to gain focus later.
     /// (STARTCOMPOSITION establishes the pin, so it resolves through the
-    /// arrival snapshot before `ime_owner` is set).
+    /// arrival snapshot before `ime_owner` is set.)
     pub(crate) fn ime_target(&self) -> Option<NodeId> {
-        self.ime_owner.get().or_else(|| self.focused_target())
+        match self.ime_owner.get() {
+            Some(owner) => owner,
+            None => self.focused_target(),
+        }
     }
 
     /// Native IME traffic goes to the composition OWNER — a focus change
@@ -2302,37 +2311,77 @@ where
     /// holds `&mut Backend` (after a dispatch unwound or in run()).
     /// Bounded: a pathological native callback storm cannot spin forever;
     /// leftover work surfaces as QueueOverflow instead of starvation.
-    /// Drain the owned reentrant queue — bounded per call. Contract:
+    /// Drain the owned reentrant queue — bounded sub-passes whose policy
+    /// decisions run against the COMPLETE queue, including items produced
+    /// reentrantly by the dispatches themselves. Contract:
     ///
     /// - a delivery error is recorded AND draining continues — mandatory
     ///   teardown (a queued WM_NCDESTROY cleanup leg) can never be skipped
     ///   by an earlier failed input message;
-    /// - when the bounded budget runs out AND work remains, an explicit
-    ///   WM_PUMP continuation is posted — `pump_queued` is set only after
-    ///   the post SUCCEEDS (a failed post leaves it false so the state is
-    ///   honest and a later caller can retry);
+    /// - teardown queued before OR DURING the drain is delivered by this
+    ///   drain — after each pass, live-cell arrivals are merged and
+    ///   re-evaluated before any shutdown/continuation decision;
+    /// - after teardown, every remaining or late-arriving ordinary item
+    ///   is disposed without dispatch — a dead window takes no work;
+    /// - when the bounded ordinary budget runs out AND work remains, an
+    ///   explicit WM_PUMP continuation is posted — `pump_queued` is set
+    ///   only after the post SUCCEEDS (a failed post leaves it false so
+    ///   the state is honest and a later caller can retry);
     /// - exactly-128 processed items is not itself an error — overflow is
     ///   reported only when the queue still holds work after the cap;
     /// - a push-side overflow flag is surfaced here as QueueOverflow.
     pub(crate) fn drain_reentrant(&mut self) -> UiResult {
         let hwnd = self.hwnd;
-        // drain a LOCAL queue — items pushed by reentrant arrivals during
-        // dispatch land in the live cell and are appended BEHIND the
-        // undrained remainder when it is restored
-        let mut q = std::mem::take(&mut *self.reentrant_queue.borrow_mut());
-        let out = crate::platform::win32::window::drain_queue(&mut q, |m| {
-            self.in_dispatch.set(true);
-            self.arrival_focus.set(m.arrival_focus);
-            let r =
-                crate::platform::win32::window::wndproc::dispatch_owned(hwnd, m, self).map(|_| ());
-            self.arrival_focus.set(None);
-            self.in_dispatch.set(false);
-            r
-        });
-        {
-            let mut cell = self.reentrant_queue.borrow_mut();
-            q.extend(cell.drain(..));
-            *cell = q;
+        let mut consumed = 0usize;
+        let mut out = crate::platform::win32::window::DrainOutcome {
+            tore: false,
+            disposed: 0,
+            first_err: None,
+            remainder: false,
+        };
+        loop {
+            // pull the whole backlog into a local pass; dispatching may
+            // push MORE arrivals into the live cell — they merge back in
+            // before the next policy decision below
+            let mut q = std::mem::take(&mut *self.reentrant_queue.borrow_mut());
+            let pass =
+                crate::platform::win32::window::drain_queue(&mut q, &mut consumed, out.tore, |m| {
+                    self.in_dispatch.set(true);
+                    self.arrival_focus.set(m.arrival_focus);
+                    let r = crate::platform::win32::window::wndproc::dispatch_owned(hwnd, m, self)
+                        .map(|_| ());
+                    self.arrival_focus.set(None);
+                    self.in_dispatch.set(false);
+                    r
+                });
+            out.tore |= pass.tore;
+            out.disposed += pass.disposed;
+            out.first_err = out.first_err.or(pass.first_err);
+            {
+                let mut cell = self.reentrant_queue.borrow_mut();
+                q.extend(cell.drain(..));
+                *cell = q;
+            }
+            if self.reentrant_queue.borrow().is_empty() {
+                break;
+            }
+            if out.tore {
+                // dead window: arrivals produced during/after teardown are
+                // disposed, never dispatched — keep passing until empty
+                continue;
+            }
+            let teardown_queued = self
+                .reentrant_queue
+                .borrow()
+                .iter()
+                .any(|m| crate::platform::win32::window::is_teardown(m.msg));
+            if consumed >= crate::platform::win32::window::REENTRANT_DRAIN_MAX && !teardown_queued {
+                // ordinary remainder past the budget — continuation owed
+                out.remainder = true;
+                break;
+            }
+            // otherwise: budget remains, or a teardown arrival is pending —
+            // either way the next pass keeps working THIS drain
         }
         // remaining ordinary work -> checked continuation (shared wake
         // authority). Post-teardown there IS no remainder — the closed
@@ -2348,6 +2397,52 @@ where
             return Err(e);
         }
         Ok(())
+    }
+
+    /// One cross-thread mailbox wake attempt — the shared progress
+    /// authority behind `poke_ui`. Post-first (cheap, queue-coalesced);
+    /// when the post itself fails, fall back to a bounded SYNCHRONOUS
+    /// send — the target thread's own message wait delivers it — so a
+    /// single failed post still guarantees progress instead of needing
+    /// another enqueue or an unrelated UI turn. Only when BOTH routes
+    /// fail is the typed failure latched (read at the turn safe-point
+    /// and at run-loop exit).
+    fn mailbox_wake(hwnd_raw: usize, closed: &AtomicBool, mb: &Arc<crate::tasks::Mailbox>) {
+        if closed.load(Ordering::SeqCst) {
+            return;
+        }
+        let hwnd = HWND(hwnd_raw as *mut c_void);
+        let posted = unsafe { PostMessageW(Some(hwnd), WM_PUMP, WPARAM(0), LPARAM(0)).is_ok() };
+        if posted {
+            return;
+        }
+        let mut result = 0usize;
+        let delivered = unsafe {
+            SendMessageTimeoutW(
+                hwnd,
+                WM_PUMP,
+                WPARAM(0),
+                LPARAM(0),
+                SMTO_ABORTIFHUNG | SMTO_BLOCK,
+                250,
+                Some(&mut result),
+            )
+            .0 != 0
+        };
+        if !delivered {
+            mb.wake_post_failed();
+        }
+    }
+
+    /// test seam: exercise the wake authority against a caller-provided
+    /// hwnd (live -> posted; destroyed -> post+send fail -> latch)
+    #[cfg(test)]
+    pub(crate) fn mailbox_wake_for_test(
+        hwnd: HWND,
+        closed: &AtomicBool,
+        mb: &Arc<crate::tasks::Mailbox>,
+    ) {
+        Self::mailbox_wake(hwnd.0 as usize, closed, mb);
     }
 
     /// fatal (typed) error from inside a WndProc — surface on next turn
@@ -2366,10 +2461,12 @@ where
     /// pending-proposal resolution in the runtime.
     pub(crate) fn ime_start(&mut self) {
         // the REPLAY/captured owner starts composition — not whatever is
-        // focused now; ownership is pinned until END arrives for it
-        let id = self.focused_target();
-        self.ime_owner.set(id);
-        if let Some(id) = id {
+        // focused now; ownership is pinned until END arrives for it. An
+        // explicitly absent captured owner stays ownerless FOREVER (Some
+        // (None)) — delivery/end never fall back to a later-focused peer.
+        let owner = self.focused_target();
+        self.ime_owner.set(Some(owner));
+        if let Some(id) = owner {
             self.rt.composition_start(id);
             if let Some(peer) = self.peer_for(id) {
                 peer.borrow().set_composing(true);
@@ -2382,8 +2479,12 @@ where
     /// TRUE committed revision.
     pub(crate) fn ime_end(&mut self) -> UiResult {
         // the composition belongs to the peer STARTCOMPOSITION reached —
-        // never to a node that gained focus mid-composition
-        let owner = self.ime_owner.take().or_else(|| self.focused_target());
+        // never to a node that gained focus mid-composition; an ownerless
+        // start ends ownerless (no peer acquires the bookkeeping)
+        let owner = match self.ime_owner.take() {
+            Some(captured) => captured,
+            None => self.focused_target(),
+        };
         if let Some(id) = owner {
             if let Some(peer) = self.peer_for(id) {
                 peer.borrow().set_composing(false);
@@ -2713,28 +2814,16 @@ where
         .set(space::ScaleFactor(scale.0.max(0.5)));
 
     // mailbox -> posted pump (no polling). A failed post is NOT
-    // ignorable: the latch surfaces it at the next turn's safe point and
-    // the released edge lets the next enqueue retry — a stranded wake is
-    // a typed failure, never a silent sleep-forever.
+    // ignorable: mailbox_wake falls back to a bounded synchronous send —
+    // the target thread's own wait delivers it — so ONE failed post still
+    // guarantees progress instead of needing another enqueue. Only when
+    // both routes fail is the typed failure latched for the turn
+    // safe-point / run-exit check.
     let closed = backend.closed.clone();
     let mb = backend.rt.mailbox.clone();
     let hwnd_raw = hwnd.0 as isize as usize;
     backend.rt.mailbox.install_wake(Arc::new(move || {
-        if closed.load(Ordering::SeqCst) {
-            return;
-        }
-        let posted = unsafe {
-            PostMessageW(
-                Some(HWND(hwnd_raw as *mut c_void)),
-                WM_PUMP,
-                WPARAM(0),
-                LPARAM(0),
-            )
-            .is_ok()
-        };
-        if !posted {
-            mb.wake_post_failed();
-        }
+        Backend::<S, M, U, V>::mailbox_wake(hwnd_raw, &closed, &mb);
     }));
 
     /// Every failure path after window creation destroys the HWND first —
@@ -2786,6 +2875,12 @@ where
                 return bail(&mut backend, e);
             }
         }
+    }
+    // a failed cross-thread wake that never reached a turn still
+    // surfaces — the loop is ending, so report the broken progress
+    // guarantee rather than silently exiting over stranded work
+    if backend.rt.mailbox.take_wake_failure() {
+        return Err(UiError::Platform("mailbox wake post failed".into()));
     }
     // evidence hook (RUI_PERF=<path>): dump the frame counters on clean
     // shutdown — proves event-driven idle + native-drive accounting

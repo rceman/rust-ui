@@ -5721,7 +5721,8 @@ mod native_contract_tests {
         q.push_back(mk(WM_NCDESTROY));
         let mut ordinary = 0usize;
         let mut shutdowns = 0usize;
-        let out = drain_queue(&mut q, |m| {
+        let mut consumed = 0usize;
+        let out = drain_queue(&mut q, &mut consumed, false, |m| {
             if is_teardown(m.msg) {
                 shutdowns += 1;
             } else {
@@ -5758,7 +5759,8 @@ mod native_contract_tests {
             std::collections::VecDeque::from([mk(WM_KEYDOWN), mk(WM_NCDESTROY), mk(WM_CHAR)]);
         let mut shutdowns = 0usize;
         let mut post_teardown_dispatched = 0usize;
-        let out = drain_queue(&mut q, |m| {
+        let mut consumed = 0usize;
+        let out = drain_queue(&mut q, &mut consumed, false, |m| {
             if is_teardown(m.msg) {
                 shutdowns += 1;
                 return Ok(());
@@ -5827,6 +5829,162 @@ mod native_contract_tests {
         assert!(
             be.reentrant_queue.borrow().is_empty(),
             "the ordinary remainder is disposed with the dead window"
+        );
+    }
+
+    /// F01 — drain-TIME arrival: the reproduced blocker. One ordinary
+    /// queued item whose dispatch itself produces the reentrant
+    /// WM_NCDESTROY arrival (closed + mailbox close + owned queue push —
+    /// the same atomic leg the trampoline's `reentrant` performs) —
+    /// previously `out.remainder` was computed before the merge, the
+    /// wake was suppressed by closed, and cleanup stranded. Now the
+    /// merged queue is re-evaluated and mandatory teardown runs in THIS
+    /// drain.
+    #[test]
+    fn drain_teardown_arriving_mid_dispatch_still_shuts_down() {
+        // handles the update callback uses to inject the exact reentrant
+        // teardown arrival — the backend generic is unnameable inside the
+        // callback, so it reaches the live queue + closed + mailbox
+        // through concrete handles (identical to `reentrant`'s legs)
+        struct Inj {
+            q: usize, // *mut RefCell<VecDeque<QueuedMsg>>
+            closed: std::sync::Arc<std::sync::atomic::AtomicBool>,
+            mailbox: std::sync::Arc<crate::tasks::Mailbox>,
+        }
+        struct S {
+            v: TextValue,
+            inj: std::rc::Rc<std::cell::RefCell<Option<Inj>>>,
+            delivered: u32,
+        }
+        let inj = std::rc::Rc::new(std::cell::RefCell::new(None::<Inj>));
+        let inj2 = inj.clone();
+        let mut rig = Rig::new(
+            S {
+                v: TextValue::new("x"),
+                inj: inj2,
+                delivered: 0,
+            },
+            |s: &mut S, m: Msg, _: &mut UpdateCtx<Msg>| {
+                if let Msg::Scoped(7, _) = m {
+                    s.delivered += 1;
+                    if let Some(h) = s.inj.borrow_mut().take() {
+                        // verbatim reentrant WM_NCDESTROY arrival
+                        h.closed.store(true, std::sync::atomic::Ordering::SeqCst);
+                        h.mailbox.close();
+                        let q =
+                            h.q as *mut std::cell::RefCell<std::collections::VecDeque<QueuedMsg>>;
+                        unsafe {
+                            (*q).borrow_mut().push_back(QueuedMsg {
+                                msg: WM_NCDESTROY,
+                                wparam: 0,
+                                lparam: 0,
+                                rect: None,
+                                arrival_focus: None,
+                            });
+                        }
+                    }
+                }
+            },
+            |s: &S, ui: &mut Ui<Msg>| {
+                ui.text_input(&s.v).on_edit(Msg::Edited);
+                ui.button("b").on_press(|| Msg::Scoped(7, 0));
+            },
+        );
+        rig.view().unwrap();
+        let editor = rig.root_children()[0];
+        let btn = rig.root_children()[1];
+        let peer = rig.peer_id(editor).unwrap();
+        let Rig { rt, peers, .. } = rig;
+        let mut be = crate::platform::win32::Backend::for_test(
+            rt,
+            crate::platform::win32::PeerCtx::for_test().unwrap(),
+        )
+        .unwrap();
+        be.turn().unwrap(); // mount the peer
+        *inj.borrow_mut() = Some(Inj {
+            q: std::ptr::addr_of!(be.reentrant_queue) as usize,
+            closed: be.closed.clone(),
+            mailbox: be.rt.mailbox.clone(),
+        });
+        // PRECONDITION: one ordinary queued dispatch (a pump that delivers
+        // the queued Press -> update injects teardown WHILE draining)
+        be.rt
+            .events
+            .push(QueuedEvent {
+                node: btn,
+                payload: NodeEvent::Press,
+            })
+            .unwrap();
+        be.reentrant_queue.borrow_mut().push_back(QueuedMsg {
+            msg: crate::platform::win32::WM_PUMP,
+            wparam: 0,
+            lparam: 0,
+            rect: None,
+            arrival_focus: None,
+        });
+        // ACTION: ONE drain call — the teardown that arrived mid-dispatch
+        // must still run mandatory cleanup
+        be.drain_reentrant().unwrap();
+        // POSTCONDITIONS
+        let rec = peers.recs.lock().unwrap().get(&peer).unwrap().clone();
+        assert_eq!(
+            rec.released, 1,
+            "teardown arrived mid-dispatch and STILL released the peer"
+        );
+        assert!(be.closed.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(
+            be.reentrant_queue.borrow().is_empty(),
+            "no mandatory work remains stranded after the drain"
+        );
+    }
+
+    /// F01 — the mailbox wake must have a deterministic outcome when the
+    /// posted WM_PUMP fails: post fails -> bounded synchronous send is
+    /// attempted; both fail -> the typed failure is latched (never a
+    /// silent sleep-with-work). Proven against a live-then-destroyed
+    /// window: destroyed hwnd fails post AND send -> latch set; a live
+    /// hwnd's post succeeds -> no latch.
+    #[test]
+    fn mailbox_wake_failure_is_a_deterministic_outcome() {
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicBool, Ordering};
+        let closed = Arc::new(AtomicBool::new(false));
+        let mb = crate::tasks::Mailbox::new();
+        let hwnd = probe_hwnd();
+        // live hwnd -> post succeeds -> no failure latched
+        crate::platform::win32::Backend::<
+            (),
+            Msg,
+            fn(&mut (), Msg, &mut UpdateCtx<Msg>),
+            fn(&(), &mut Ui<Msg>),
+        >::mailbox_wake_for_test(hwnd, &closed, &mb);
+        assert!(!mb.take_wake_failure(), "a successful post latches nothing");
+        // destroy the hwnd -> post fails AND the bounded send fails ->
+        // the typed failure is latched for the turn safe-point
+        unsafe {
+            let _ = windows::Win32::UI::WindowsAndMessaging::DestroyWindow(hwnd);
+        }
+        crate::platform::win32::Backend::<
+            (),
+            Msg,
+            fn(&mut (), Msg, &mut UpdateCtx<Msg>),
+            fn(&(), &mut Ui<Msg>),
+        >::mailbox_wake_for_test(hwnd, &closed, &mb);
+        assert!(
+            mb.take_wake_failure(),
+            "post+send both failing on a dead hwnd must latch the failure"
+        );
+        // closed suppresses the wake entirely — no post, no latch
+        closed.store(true, Ordering::SeqCst);
+        crate::platform::win32::Backend::<
+            (),
+            Msg,
+            fn(&mut (), Msg, &mut UpdateCtx<Msg>),
+            fn(&(), &mut Ui<Msg>),
+        >::mailbox_wake_for_test(hwnd, &closed, &mb);
+        assert!(
+            !mb.take_wake_failure(),
+            "a closed window never latches a wake failure"
         );
     }
 
@@ -5971,7 +6129,7 @@ mod native_contract_tests {
             // stay pinned even if focus moves mid-composition
             be.focus = Some(node);
             be.ime_start();
-            assert_eq!(be.ime_owner.get(), Some(node));
+            assert_eq!(be.ime_owner.get(), Some(Some(node)));
             be.focus = Some(NodeId {
                 slot: 99,
                 generation: 0,
@@ -6282,8 +6440,57 @@ mod native_contract_tests {
         be.focus = Some(b);
         assert_eq!(be.ime_target(), Some(b));
         // composition pinned to A -> focus move MUST NOT redirect
-        be.ime_owner.set(Some(a));
+        be.ime_owner.set(Some(Some(a)));
         assert_eq!(be.ime_target(), Some(a));
+    }
+
+    /// F01 — an explicitly OWNERLESS composition start (the capture said
+    /// "no owner") stays ownerless through delivery and end bookkeeping:
+    /// it must never latch onto a peer that gains focus later.
+    #[test]
+    fn ownerless_ime_stays_ownerless() {
+        struct S;
+        let mut rig = Rig::new(
+            S,
+            |_: &mut S, _: Msg, _: &mut UpdateCtx<Msg>| {},
+            |_: &S, ui: &mut Ui<Msg>| {
+                ui.label("x");
+            },
+        );
+        rig.view().unwrap();
+        let Rig { rt, .. } = rig;
+        let mut be = crate::platform::win32::Backend::for_test(
+            rt,
+            crate::platform::win32::PeerCtx::for_test().unwrap(),
+        )
+        .unwrap();
+        let b = NodeId {
+            slot: 8,
+            generation: 1,
+        };
+        // START captured with explicitly NO owner -> ownerless pin
+        be.ime_owner.set(Some(None));
+        // a peer gains focus mid-composition — the ownerless composition
+        // must NOT be acquired by it
+        be.focus = Some(b);
+        assert_eq!(
+            be.ime_target(),
+            None,
+            "ownerless composition never resolves to a later focus"
+        );
+        // delivery goes nowhere — the focused peer receives nothing
+        be.send_ime(WM_IME_COMPOSITION, 0, 0).unwrap();
+        // end bookkeeping releases the ownerless pin; no peer acquires it
+        be.ime_end().unwrap();
+        assert_eq!(
+            be.ime_owner.get(),
+            None,
+            "end bookkeeping clears the ownerless pin to inactive"
+        );
+        // after it ends, IME traffic resolves through focus again (the
+        // turn inside ime_end cleared the unfocused dead slot — re-set it)
+        be.focus = Some(b);
+        assert_eq!(be.ime_target(), Some(b));
     }
 
     /// F01 owner discriminator — a replayed message with an explicitly

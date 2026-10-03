@@ -103,7 +103,11 @@ pub(crate) struct DrainOutcome {
 /// THE reentrant-queue drain policy — verbatim-testable authority shared
 /// by `Backend::drain_reentrant`. Contract:
 ///
-/// - ordinary items dispatch FIFO under `REENTRANT_DRAIN_MAX`;
+/// - ordinary items dispatch FIFO under `REENTRANT_DRAIN_MAX`; `consumed`
+///   carries the spent budget ACROSS caller merge-passes, so arrivals
+///   produced mid-dispatch drain under the same per-call cap;
+/// - `deceased` marks teardown already delivered in an earlier pass —
+///   every late arrival on a dead window is disposed without dispatch;
 /// - an item error is RECORDED and the pass continues — mandatory
 ///   teardown can never be skipped by an earlier failed input;
 /// - teardown is delivered THIS pass however deep it sits (sweep);
@@ -112,6 +116,8 @@ pub(crate) struct DrainOutcome {
 /// - a non-teardown remainder means the caller owes a continuation wake.
 pub(crate) fn drain_queue(
     q: &mut std::collections::VecDeque<QueuedMsg>,
+    consumed: &mut usize,
+    deceased: bool,
     mut dispatch: impl FnMut(QueuedMsg) -> crate::UiResult,
 ) -> DrainOutcome {
     let mut out = DrainOutcome {
@@ -120,36 +126,35 @@ pub(crate) fn drain_queue(
         first_err: None,
         remainder: false,
     };
-    let mut consumed = 0usize;
+    if deceased {
+        out.disposed += q.len();
+        q.clear();
+        return out;
+    }
     loop {
-        let Some(m) = next_drain_item(q, consumed) else {
+        let Some(m) = next_drain_item(q, *consumed) else {
             break;
         };
-        if out.tore {
-            // post-teardown remainder — dispose, do not dispatch
-            out.disposed += 1;
-            continue;
-        }
         if is_teardown(m.msg) {
             out.tore = true;
         } else {
-            consumed += 1;
+            *consumed += 1;
         }
         if let Err(e) = dispatch(m)
             && out.first_err.is_none()
         {
             out.first_err = Some(e);
         }
+        if out.tore {
+            // closed-window contract — the ordinary remainder is dropped
+            // deterministically; nothing may be dispatched or deferred for
+            // a dead hwnd (inclusive of items the loop never reached)
+            out.disposed += q.len();
+            q.clear();
+            break;
+        }
     }
     out.remainder = !q.is_empty();
-    if out.tore {
-        // closed-window contract — the ordinary remainder is dropped
-        // deterministically; nothing may be dispatched or deferred for a
-        // dead hwnd (inclusive of items the loop never reached)
-        out.disposed += q.len();
-        q.clear();
-        out.remainder = false;
-    }
     out
 }
 

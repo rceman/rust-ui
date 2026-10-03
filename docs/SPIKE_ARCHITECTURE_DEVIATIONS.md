@@ -60,12 +60,22 @@ a scale change) proved the latched view does NOT follow the DIP bounds.
 rule):** activation is an explicit three-state machine
 (`Inactive`/`InPlace`/`Ui` — in-place activation covers measure/draw;
 UI activation is focus-owned). A peer activates lazily at first
-non-empty bounds and, on a **scale change**, deactivates and
-re-activates at the new px mapping — the native editing state (committed
-text, directional selection, undo history, composition) survives because
-the `ITextServices` COM object is retained; the selection anchor/focus
-pair is additionally snapshotted and restored because deactivation is
-free to collapse it. `natural_size` activates with a tall scratch height
+non-empty bounds and, on a **scale change** outside composition,
+deactivates and re-activates at the new px mapping — the native editing
+state (committed text, directional selection, undo history) survives
+because the `ITextServices` COM object is retained; the selection
+anchor/focus pair is additionally snapshotted and restored because
+deactivation is free to collapse it. **During an active composition a
+bounds/scale change is instead DEFERRED** (`pending_relatch`): every
+consumer — measure, draw, pointer/caret mapping, host callbacks — keeps
+reading the one effective geometry actually painted by the native peer,
+and no deactivation runs mid-composition. When `WM_IME_ENDCOMPOSITION`
+arrives, the peer drains its notifications, queued native edits are
+acknowledged into the shared mirror, remaining divergence is reconciled
+and acknowledged, stale proposals are resolved against the true
+committed revision, and only THEN does `finish_pending_relatch` apply
+the deferred geometry (composition state survives because no relatch
+ran during it). `natural_size` activates with a tall scratch height
 because `EM_REQUESTRESIZE` requires an activated service and reports the
 natural extent through the host callback; a request that produces no
 fresh notification is an error, never stale success.
