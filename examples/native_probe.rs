@@ -678,36 +678,101 @@ mod probe {
             };
             foreground(hwnd);
             std::thread::sleep(std::time::Duration::from_millis(300));
+            // verified target-thread activation: post the HKL request,
+            // CHECK the post, then bounded wait + READ-BACK of the
+            // composer thread's actual keyboard layout until it reports
+            // Japanese — an unverifiable activation is a typed failure,
+            // never a silent assumption
             const WM_INPUTLANGCHANGEREQUEST: u32 = 0x0050;
             const INPUTLANGCHANGE_FORWARD: usize = 0x0002;
-            let _ = PostMessageW(
+            PostMessageW(
                 Some(hwnd),
                 WM_INPUTLANGCHANGEREQUEST,
                 WPARAM(INPUTLANGCHANGE_FORWARD),
                 LPARAM(target_hkl.0 as isize),
-            );
-            std::thread::sleep(std::time::Duration::from_millis(400));
-            // MS-IME PERSISTS its conversion mode in the profile —
-            // VK_DBE_HIRAGANA is a TOGGLE: a leftover hiragana session
-            // flips back to alphanumeric and the run types literal ASCII
-            // (observed regression). The deterministic route is the
-            // thread's default IME window: IMC_SETCONVERSIONMODE sets the
-            // exact mode (NATIVE|FULLSHAPE|ROMAN = hiragana), verified by
-            // read-back with bounded retries for the activation race.
+            )
+            .map_err(|_| Error::new(E_FAIL.into(), "WM_INPUTLANGCHANGEREQUEST post failed"))?;
+            let composer_tid = GetWindowThreadProcessId(hwnd, None);
+            let mut layout_on_target = false;
+            for _ in 0..25 {
+                let cur = GetKeyboardLayout(composer_tid);
+                if (cur.0 as u32 & 0xffff) == 0x0411 {
+                    layout_on_target = true;
+                    break;
+                }
+                // re-post inside the wait: the first request can race a
+                // still-starting target thread
+                let _ = PostMessageW(
+                    Some(hwnd),
+                    WM_INPUTLANGCHANGEREQUEST,
+                    WPARAM(INPUTLANGCHANGE_FORWARD),
+                    LPARAM(target_hkl.0 as isize),
+                );
+                std::thread::sleep(std::time::Duration::from_millis(200));
+            }
+            if !layout_on_target {
+                return Err(Error::new(
+                    E_FAIL.into(),
+                    "composer thread never activated the Japanese HKL",
+                ));
+            }
+            // MS-IME PERSISTS its conversion mode in the profile — a
+            // blind VK_DBE_HIRAGANA toggle can flip OFF a leftover
+            // hiragana session, so it is NOT an acceptable fallback: the
+            // deterministic route is the target thread's default IME
+            // window — OPEN state + exact mode set + read-back verify,
+            // typed failure when verification is unavailable.
             const WM_IME_CONTROL: u32 = 0x0283;
+            const IMC_GETOPENSTATUS: usize = 0x0005;
             const IMC_GETCONVERSIONMODE: usize = 0x0003;
             const IMC_SETCONVERSIONMODE: usize = 0x0004;
             const IMC_SETOPENSTATUS: usize = 0x0006;
             let ime_wnd = windows::Win32::UI::Input::Ime::ImmGetDefaultIMEWnd(hwnd);
-            let conv_mode = |w: windows::Win32::Foundation::HWND| -> i32 {
-                SendMessageW(
-                    w,
-                    WM_IME_CONTROL,
-                    Some(WPARAM(IMC_GETCONVERSIONMODE)),
-                    Some(LPARAM(0)),
-                )
-                .0 as i32
+            if ime_wnd.is_invalid() {
+                return Err(Error::new(
+                    E_FAIL.into(),
+                    "no default IME window on the composer thread — engagement unverifiable",
+                ));
+            }
+            let ime_ctl = |w: windows::Win32::Foundation::HWND, op: usize, arg: isize| -> i32 {
+                SendMessageW(w, WM_IME_CONTROL, Some(WPARAM(op)), Some(LPARAM(arg))).0 as i32
             };
+            // open state: set + read back
+            let mut open = false;
+            for _ in 0..10 {
+                let _ = ime_ctl(ime_wnd, IMC_SETOPENSTATUS, 1);
+                if ime_ctl(ime_wnd, IMC_GETOPENSTATUS, 0) == 1 {
+                    open = true;
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(150));
+            }
+            if !open {
+                return Err(Error::new(E_FAIL.into(), "IME open state never engaged"));
+            }
+            // exact conversion mode: NATIVE|FULLSHAPE|ROMAN is the
+            // hiragana contract — ALL required bits, not merely NATIVE
+            let want_bits = (IME_CMODE_NATIVE | IME_CMODE_FULLSHAPE | IME_CMODE_ROMAN).0 as i32;
+            let mut engaged = false;
+            for _ in 0..10 {
+                let _ = ime_ctl(ime_wnd, IMC_SETCONVERSIONMODE, want_bits as isize);
+                let mode = ime_ctl(ime_wnd, IMC_GETCONVERSIONMODE, 0);
+                if mode & want_bits == want_bits {
+                    engaged = true;
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(200));
+            }
+            if !engaged {
+                return Err(Error::new(
+                    E_FAIL.into(),
+                    format!(
+                        "hiragana mode did not engage: conversion mode {:#x} (want mask {:#x})",
+                        ime_ctl(ime_wnd, IMC_GETCONVERSIONMODE, 0),
+                        want_bits
+                    ),
+                ));
+            }
             // every required input is asserted — SendInput returns the
             // number of events inserted; 0 means the call was blocked
             let send1 = |inp: &INPUT| -> Result<()> {
@@ -723,48 +788,6 @@ mod probe {
                 }
                 Ok(())
             };
-            if !ime_wnd.is_invalid() {
-                let want = (IME_CMODE_NATIVE | IME_CMODE_FULLSHAPE | IME_CMODE_ROMAN).0 as isize;
-                let _ = SendMessageW(
-                    ime_wnd,
-                    WM_IME_CONTROL,
-                    Some(WPARAM(IMC_SETOPENSTATUS)),
-                    Some(LPARAM(1)),
-                );
-                let mut engaged = false;
-                for _ in 0..10 {
-                    let _ = SendMessageW(
-                        ime_wnd,
-                        WM_IME_CONTROL,
-                        Some(WPARAM(IMC_SETCONVERSIONMODE)),
-                        Some(LPARAM(want)),
-                    );
-                    if conv_mode(ime_wnd) & (IME_CMODE_NATIVE.0 as i32) != 0 {
-                        engaged = true;
-                        break;
-                    }
-                    std::thread::sleep(std::time::Duration::from_millis(200));
-                }
-                if !engaged {
-                    return Err(Error::new(
-                        E_FAIL.into(),
-                        format!(
-                            "hiragana mode did not engage: conversion mode {:#x}",
-                            conv_mode(ime_wnd)
-                        ),
-                    ));
-                }
-            } else {
-                // no readable facade — one blind toggle is the only
-                // available switch; the final kana assertion still gates
-                let mut k = INPUT::default();
-                k.r#type = INPUT_KEYBOARD;
-                k.Anonymous.ki.wVk = VIRTUAL_KEY(0xF2); // VK_DBE_HIRAGANA
-                send1(&k)?;
-                k.Anonymous.ki.dwFlags = KEYEVENTF_KEYUP;
-                send1(&k)?;
-                std::thread::sleep(std::time::Duration::from_millis(300));
-            }
             // real keystrokes — the OS IME turns ASCII into hiragana preedit
             for ch in keys.chars() {
                 let mut inp = INPUT::default();
@@ -995,6 +1018,24 @@ fn main() {
             key_post(hwnd, vk, ctrl, shift).map(|_| {
                 format!("{{\"kind\":\"key-post\",\"evidence\":\"regression\",\"vk\":{vk}}}")
             })
+        }
+        "foreground" => {
+            // raise + TOPMOST so a physical screen capture is guaranteed
+            // unobscured by foreign windows (evidence honesty — F12)
+            foreground(hwnd);
+            let _ = unsafe {
+                windows::Win32::UI::WindowsAndMessaging::SetWindowPos(
+                    hwnd,
+                    Some(windows::Win32::UI::WindowsAndMessaging::HWND_TOPMOST),
+                    0,
+                    0,
+                    0,
+                    0,
+                    windows::Win32::UI::WindowsAndMessaging::SWP_NOMOVE
+                        | windows::Win32::UI::WindowsAndMessaging::SWP_NOSIZE,
+                )
+            };
+            Ok(r#"{"kind":"foreground","ok":true}"#.to_string())
         }
         "uia-rect" => uia_rect(hwnd, &args[3]),
         "uia-rect-prefix" => uia_rect_prefix(hwnd, &args[3]),

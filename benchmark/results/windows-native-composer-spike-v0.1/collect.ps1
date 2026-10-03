@@ -185,6 +185,12 @@ function S-Details {
   $v = P-Value $p.MainWindowHandle "draft"
   if ($v -ne "draft-prefill\q") { throw "value round-trip failed: $v" }
   ($rects | ConvertTo-Json -Depth 5) | Set-Content "$($script:OutDir)\details-layout.json" -Encoding UTF8
+  # F12 — the physical capture must be UNOBSCURED: raise + topmost the
+  # composer so no foreign window can cover the labels, settle, then
+  # capture. details-pw.png remains the explicitly non-authoritative
+  # PrintWindow comparison artifact.
+  Probe @("foreground", "$($p.MainWindowHandle)") | Out-Null
+  Start-Sleep -Milliseconds 500
   Shot-Screen $p.MainWindowHandle "details-screen.png"
   Shot-PrintWindow $p.MainWindowHandle "details-pw.png"
   Stop-Composer $p
