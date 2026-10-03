@@ -3,30 +3,30 @@
         "kind":  "uia-rect-prefix",
         "name":  "turn 0 | busy false | notice -",
         "rect_px":  [
-                        417,
-                        603,
-                        626,
-                        626
+                        481,
+                        667,
+                        690,
+                        690
                     ]
     },
     {
         "kind":  "uia-rect-prefix",
         "name":  "draft-echo draft-prefill",
         "rect_px":  [
-                        417,
-                        631,
-                        591,
-                        655
+                        481,
+                        695,
+                        655,
+                        719
                     ]
     },
     {
         "kind":  "uia-rect-prefix",
         "name":  "draft-edits 0 last \"\"",
         "rect_px":  [
-                        417,
-                        660,
-                        562,
-                        683
+                        481,
+                        724,
+                        626,
+                        747
                     ]
     }
 ]

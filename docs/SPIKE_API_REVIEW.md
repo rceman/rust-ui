@@ -1,6 +1,9 @@
 # Spike API review — composer contract v0.1
 
-**Candidate:** `0405a80` on `agent/windows-native-composer-contract-spike-v0.1-swe2`
+**Current candidate:** `98c5614` on `agent/windows-native-composer-contract-spike-v0.1-swe2`
+**Reviewed candidate (historical):** `0405a80` — the API excerpts below
+reflect that review-time snapshot; the public API surface has not
+changed since.
 **Baseline:** Astra architecture `29c67025dc88221899a8ab1b381f08491d44b85b`
 
 How the approved architecture reads when compiled against a real native
