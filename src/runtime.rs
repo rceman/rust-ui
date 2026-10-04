@@ -258,9 +258,11 @@ where
         self.registry.reap_completed();
 
         // leftovers (or work a commit just queued — e.g. ack events) ride the
-        // posted continuation: next turn drains them, no polling needed
+        // same signal authority: next turn drains them, no polling needed.
+        // A false return means the wake authority died — the mailbox
+        // applied its terminal contract inside poke_ui itself.
         if !self.events.is_empty() || self.mailbox.queue_len() > 0 {
-            self.mailbox.poke_ui();
+            let _ = self.mailbox.poke_ui();
         }
 
         // first turn mounts the initial view — afterwards review only on

@@ -33,12 +33,19 @@ pub enum SendError {
     Cancelled,
     /// producer-waiter budget exhausted (bounded backpressure surface)
     TooManyWaiters,
+    /// wake establishment failed AT acceptance — the triggering send's
+    /// envelope was rolled back and the mailbox closed terminally; the
+    /// sender gets a typed failure, never Ok over discarded work
+    Wake,
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum ProxySendError {
     Full,
     Closed,
+    /// wake establishment failed AT acceptance — the triggering send's
+    /// envelope was rolled back and the mailbox closed terminally
+    Wake,
 }
 
 /// One window's message/task mailbox: bounded, never lossy.
@@ -166,8 +173,10 @@ impl Drop for Charge {
         if self.count.fetch_sub(1, Ordering::SeqCst) == 1 {
             // last outstanding work item released — let the UI reap. If the
             // mailbox is already gone (queue dropped), no wake is needed.
+            // A false return means the wake authority died — the mailbox
+            // applied its terminal contract inside poke_ui itself.
             if let Some(mb) = self.mailbox.upgrade() {
-                mb.poke_ui();
+                let _ = mb.poke_ui();
             }
         }
     }
@@ -202,6 +211,10 @@ enum PushOutcome {
     /// waiter budget exhausted
     WaitersFull(Envelope),
     Closed(Envelope),
+    /// the triggering send's own wake establishment failed — the
+    /// envelope was rolled back before acceptance committed and the
+    /// mailbox closed terminally
+    WakeFailed(Envelope),
 }
 
 /// Shared bounded mailbox. The UI thread drains it; workers push into it.
@@ -210,8 +223,11 @@ enum PushOutcome {
 /// wakes happen AFTER the lock is dropped.
 pub(crate) struct Mailbox {
     state: Mutex<MailboxState>,
-    /// wake seam — set once by the run loop; `pending` delivers edges
-    wake: Mutex<Option<Arc<dyn Fn() + Send + Sync>>>,
+    /// wake seam — set once by the run loop; `pending` delivers edges.
+    /// The callback returns the signal result: true = a durable wake was
+    /// placed (or correctly skipped for a closed window); false = the
+    /// wake authority is dead — callers apply the terminal contract.
+    wake: Mutex<Option<Arc<dyn Fn() -> bool + Send + Sync>>>,
     pending_wake: AtomicBool,
     /// a wake callback reported its post failed — latched for the run
     /// loop's `take_wake_failure` safe point
@@ -236,10 +252,11 @@ impl Mailbox {
     /// was poked) before the seam was installed, the callback fires ONCE
     /// immediately — bypassing `pending_wake` coalescing, which would
     /// otherwise swallow exactly the delivery it is meant to report.
-    pub(crate) fn install_wake(&self, wake: Arc<dyn Fn() + Send + Sync>) {
+    pub(crate) fn install_wake(&self, wake: Arc<dyn Fn() -> bool + Send + Sync>) {
+        {
+            *self.wake.lock().unwrap() = Some(wake);
+        } // sequential — never hold `wake` across `state` (lock order)
         let pending = {
-            let mut w = self.wake.lock().unwrap();
-            *w = Some(wake);
             let was_pending = self.pending_wake.swap(false, Ordering::SeqCst);
             let st = self.state.lock().unwrap();
             // an earlier lifecycle poke AND queued envelopes both count —
@@ -247,17 +264,10 @@ impl Mailbox {
             was_pending || !st.queue.is_empty()
         };
         if pending {
-            self.poke_ui();
+            // install-time pending pulse — a false return means the
+            // terminal contract already ran inside poke_ui
+            let _ = self.poke_ui();
         }
-    }
-
-    /// The wake callback's post FAILED — latch it for the run loop's
-    /// safe-point check AND release the pending edge so the NEXT enqueue
-    /// retries the callback. A dead wake is retried + reported, never
-    /// silently swallowed (which would strand every queued envelope).
-    pub(crate) fn wake_post_failed(&self) {
-        self.wake_failed.store(true, Ordering::SeqCst);
-        self.pending_wake.store(false, Ordering::SeqCst);
     }
 
     /// Run-loop safe point: did a cross-thread wake post fail since the
@@ -266,15 +276,46 @@ impl Mailbox {
         self.wake_failed.swap(false, Ordering::SeqCst)
     }
 
-    /// Edge-triggered wake — coalesced by `pending_wake`.
-    pub(crate) fn poke_ui(&self) {
+    /// The ONE signal authority — edge-coalesced invoke of the installed
+    /// wake callback. `true` = a durable wake is owned (signaled, owed by
+    /// a coalesced pending edge, or a not-yet-installed seam that
+    /// install_wake will pulse); `false` = the wake authority reported
+    /// terminal failure — the CALLER applies the terminal contract for
+    /// its context (rollback under lock, or terminal close outside it).
+    fn signal_ok(&self) -> bool {
         if self.pending_wake.swap(true, Ordering::SeqCst) {
-            return; // already pending — coalesce
+            return true; // a signal is already owed/issued — coalesce
         }
         let cb = self.wake.lock().unwrap().clone();
-        if let Some(cb) = cb {
-            cb();
+        match cb {
+            // pre-install acceptance is safe: install_wake pulses once if
+            // anything is pending, so no signal is owed yet
+            None => true,
+            Some(cb) => cb(),
         }
+    }
+
+    /// Terminal teardown while `state` is already held (the acceptance
+    /// path): roll nothing but mark closed, drain pending + waiters, and
+    /// return the work to drop + the waiters to wake AFTER unlock.
+    fn terminal_locked(&self, st: &mut MailboxState) -> (Vec<Envelope>, Vec<Waiter>) {
+        st.closed = true;
+        (st.queue.drain(..).collect(), st.waiters.drain(..).collect())
+    }
+
+    /// Edge-triggered wake for lifecycle/continuation signals —
+    /// coalesced by `pending_wake`, terminated by mailbox close + latch
+    /// when the authority is dead. `false` = terminal failure applied.
+    pub(crate) fn poke_ui(&self) -> bool {
+        if self.signal_ok() {
+            return true;
+        }
+        // terminal: the wake authority is dead — drop every pending
+        // envelope, wake every producer waiter, latch the failure AFTER
+        // close() (which clears it)
+        self.close();
+        self.wake_failed.store(true, Ordering::SeqCst);
+        false
     }
 
     /// The run loop observed the wake.
@@ -286,9 +327,13 @@ impl Mailbox {
     /// failed push and waiter registration. `waiter_id` dedups repolls of
     /// the same pending future.
     /// Atomic push-or-register-wait under ONE state lock. `check_fenced`
-    /// re-verifies cancellation/completion under that same lock, so a
-    /// producer racing a fence can never land a stale envelope — acceptance
-    /// linearizes at push.
+    /// re-verifies cancellation/completion under that same lock.
+    /// ACCEPTANCE LINEARIZES AT push+signal under this one lock: the
+    /// envelope commits only once a durable wake is owned (or owed by
+    /// coalescing). If the wake authority reports failure, THIS envelope
+    /// is rolled back (it is provably still the tail under the lock), the
+    /// mailbox closes terminally, producers wake — the triggering send
+    /// gets a typed Wake failure, never Ok over discarded work.
     fn push_or_wait(
         &self,
         env: Envelope,
@@ -312,13 +357,26 @@ impl Mailbox {
             return PushOutcome::Waiting(env);
         }
         st.queue.push_back(env);
+        if self.signal_ok() {
+            return PushOutcome::Pushed;
+        }
+        // wake establishment failed AT acceptance — roll THIS envelope
+        // back, close terminally, and hand the payload back to the sender
+        let env = st.queue.pop_back().unwrap();
+        self.wake_failed.store(true, Ordering::SeqCst);
+        let (dropped, waiters) = self.terminal_locked(&mut st);
         drop(st);
-        self.poke_ui();
-        PushOutcome::Pushed
+        drop(dropped);
+        for w in waiters {
+            w.waker.wake();
+        }
+        PushOutcome::WakeFailed(env)
     }
 
     /// Bounded push for non-async callers (UiProxy). Returns the envelope
-    /// back on Full so nothing is consumed by a failed push.
+    /// back on Full/Closed/Wake so nothing is consumed by a failed push.
+    /// ACCEPTANCE LINEARIZES AT push+signal under one lock — Ok(()) means
+    /// the envelope committed AND a durable wake is owned.
     pub(crate) fn try_push(
         self: &Arc<Self>,
         env: Envelope,
@@ -331,9 +389,20 @@ impl Mailbox {
             return Err((ProxySendError::Full, env));
         }
         st.queue.push_back(env);
+        if self.signal_ok() {
+            return Ok(());
+        }
+        // wake establishment failed AT acceptance — roll THIS envelope
+        // back (provably the tail), close terminally, typed Wake error
+        let env = st.queue.pop_back().unwrap();
+        self.wake_failed.store(true, Ordering::SeqCst);
+        let (dropped, waiters) = self.terminal_locked(&mut st);
         drop(st);
-        self.poke_ui();
-        Ok(())
+        drop(dropped);
+        for w in waiters {
+            w.waker.wake();
+        }
+        Err((ProxySendError::Wake, env))
     }
 
     /// Remove a pending-future waiter (called from `SendFuture::drop`).
@@ -427,6 +496,13 @@ impl Mailbox {
     /// Visible backlog depth — used by the run loop's continuation check.
     pub(crate) fn queue_len(&self) -> usize {
         self.state.lock().unwrap().queue.len()
+    }
+
+    /// test seam: clone the installed wake callback as an in-flight
+    /// signaler would (proves the owned event outlives detach)
+    #[cfg(test)]
+    pub(crate) fn clone_wake_cb(&self) -> Option<Arc<dyn Fn() -> bool + Send + Sync>> {
+        self.wake.lock().unwrap().clone()
     }
 }
 
@@ -595,6 +671,11 @@ impl Future for SendFuture {
                 this.reclaim(env);
                 this.charge = None;
                 Poll::Ready(Err(SendError::Closed))
+            }
+            PushOutcome::WakeFailed(env) => {
+                this.reclaim(env);
+                this.charge = None;
+                Poll::Ready(Err(SendError::Wake))
             }
         }
     }
@@ -899,7 +980,7 @@ impl Future for CancelWatch {
                 // normal completion: mark done — the registration reaps once
                 // its accepted envelopes have drained (no queue slot needed)
                 this.completed.store(true, Ordering::SeqCst);
-                this.mailbox.poke_ui();
+                let _ = this.mailbox.poke_ui(); // lifecycle signal
                 Poll::Ready(())
             }
         }

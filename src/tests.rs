@@ -186,7 +186,8 @@ impl TestExecutor {
             if let Some(t) = task.as_mut() {
                 let w = task_waker(self.inner.clone(), idx);
                 let mut cx = Context::from_waker(&w);
-                if t.as_mut().poll(&mut cx).is_pending() {
+                let r = t.as_mut().poll(&mut cx);
+                if r.is_pending() {
                     let mut e = self.inner.lock().unwrap();
                     e.tasks[idx] = task.take();
                 }
@@ -2402,6 +2403,7 @@ fn install_wake_fires_for_earlier_proxy_send() {
     let c2 = calls.clone();
     rig.rt.mailbox.install_wake(Arc::new(move || {
         *c2.lock().unwrap() += 1;
+        true
     }));
     assert_eq!(*calls.lock().unwrap(), 1, "install must fire once");
     rig.pump().unwrap();
@@ -2487,6 +2489,7 @@ fn install_wake_fires_for_lifecycle_pending() {
     let c2 = calls.clone();
     rig.rt.mailbox.install_wake(Arc::new(move || {
         *c2.lock().unwrap() += 1;
+        true
     }));
     assert_eq!(*calls.lock().unwrap(), 1);
 }
@@ -2508,6 +2511,7 @@ fn purge_and_close_release_charges_outside_the_lock() {
     mb.install_wake(Arc::new(move || {
         // reentrant observation inside the callback — must not deadlock
         *c2.lock().unwrap() += 1;
+        true
     }));
     // a task completes after queueing a send — the envelope's charge is the
     // last outstanding work; dropping it via close wakes the loop
@@ -5938,12 +5942,10 @@ mod native_contract_tests {
         );
     }
 
-    /// F01 — the waitable-event authority against its failure modes.
-    /// A live event signals (durable, already awaited by the run loop);
-    /// a dead event handle is the ONLY failure mode and it is TERMINAL:
-    /// the mailbox closes (pending envelopes dropped, producers see
-    /// Closed, waiters woken) and the typed failure is latched — the
-    /// "accepted work + dead wake" state is unrepresentable.
+    /// F01 — the wake authority's outcome legs. A live event signals
+    /// (durable, already awaited by the run loop); a dead handle reports
+    /// Latched to the caller (the mailbox signal path owns the terminal
+    /// contract for its context); a closed window skips the attempt.
     #[test]
     fn mailbox_wake_failure_is_a_deterministic_outcome() {
         use std::sync::Arc;
@@ -5955,56 +5957,256 @@ mod native_contract_tests {
             fn(&(), &mut Ui<Msg>),
         >;
         let closed = Arc::new(AtomicBool::new(false));
-        let mb = crate::tasks::Mailbox::new();
-        // live event -> Signaled, no latch
-        let ev = unsafe {
-            windows::Win32::System::Threading::CreateEventExW(
-                None,
-                windows::core::PCWSTR::null(),
-                windows::Win32::System::Threading::CREATE_EVENT(0),
-                windows::Win32::System::Threading::EVENT_ALL_ACCESS.0,
-            )
-            .unwrap()
-        };
+        // live event -> Signaled
+        let ev = crate::platform::win32::MailboxEvent::create().unwrap();
         assert_eq!(
-            Be::mailbox_wake_for_test(ev, &closed, &mb),
+            Be::mailbox_wake_for_test(&ev, &closed),
             crate::platform::win32::WakeOutcome::Signaled
         );
-        assert!(
-            !mb.take_wake_failure(),
-            "a successful signal latches nothing"
+        // a NEVER-VALID handle (not a closed-but-reusable one) -> Latched
+        let dead = crate::platform::win32::MailboxEvent::from_raw(
+            windows::Win32::Foundation::HANDLE(0xDEAD_BEEFusize as *mut std::ffi::c_void),
         );
-        unsafe {
-            let _ = windows::Win32::Foundation::CloseHandle(ev);
-        }
-        // a NEVER-VALID handle value (not a closed-but-reusable one) ->
-        // SetEvent fails deterministically -> TERMINAL: mailbox closed
-        // (accepted work dropped, not silently queued), latch set
-        let dead = windows::Win32::Foundation::HANDLE(0xDEAD_BEEFusize as *mut std::ffi::c_void);
-        crate::tasks::UiProxy::<u32>::new(mb.clone())
-            .try_send(7u32)
-            .unwrap();
         assert_eq!(
-            Be::mailbox_wake_for_test(dead, &closed, &mb),
+            Be::mailbox_wake_for_test(&dead, &closed),
             crate::platform::win32::WakeOutcome::Latched
         );
-        assert!(mb.is_closed(), "dead wake authority must close the mailbox");
-        assert!(
-            mb.take_wake_failure(),
-            "SetEvent failure must latch the typed failure"
-        );
-        assert!(
-            crate::tasks::UiProxy::<u32>::new(mb.clone())
-                .try_send(9u32)
-                .is_err(),
-            "producers see terminal Closed after the wake channel died"
-        );
-        // closed suppresses the wake entirely — no attempt, no latch
-        let mb2 = crate::tasks::Mailbox::new();
+        std::mem::forget(dead); // don't CloseHandle a fabricated value
+        // closed suppresses the wake entirely — no attempt
         closed.store(true, Ordering::SeqCst);
         assert_eq!(
-            Be::mailbox_wake_for_test(ev, &closed, &mb2),
+            Be::mailbox_wake_for_test(&ev, &closed),
             crate::platform::win32::WakeOutcome::Skipped
+        );
+    }
+
+    /// F01 — the TRIGGERING synchronous send must observe the wake
+    /// failure: UiProxy::try_send pushes, the installed wake fails, the
+    /// EXACT envelope is rolled back, the send returns typed Wake — not
+    /// Ok(()) over discarded work. Terminal state: closed + latch; later
+    /// sends get Closed.
+    #[test]
+    fn mailbox_wake_failure_rejects_the_triggering_send() {
+        use crate::tasks::{Mailbox, ProxySendError, UiProxy};
+        let mb = Mailbox::new();
+        // real installed seam — the signal authority reports failure
+        mb.install_wake(std::sync::Arc::new(|| false));
+        let proxy = UiProxy::<u32>::new(mb.clone());
+        // the send that establishes the failing wake -> typed failure
+        assert_eq!(proxy.try_send(7u32), Err(ProxySendError::Wake));
+        // its envelope was rolled back — never queued, never delivered
+        assert_eq!(mb.queue_len(), 0);
+        assert!(mb.pop().is_none(), "rolled-back envelope must not exist");
+        assert!(mb.is_closed(), "wake failure closes the mailbox");
+        assert!(mb.take_wake_failure(), "typed failure is latched");
+        // later producers see the terminal state
+        assert_eq!(proxy.try_send(8u32), Err(ProxySendError::Closed));
+    }
+
+    /// F01 — the TRIGGERING async send must observe the wake failure:
+    /// a real TaskSender::send (SendFuture polled by the executor)
+    /// resolves Err(SendError::Wake) — not Ok then Closed on the next.
+    #[test]
+    fn mailbox_wake_failure_rejects_the_triggering_async_send() {
+        use std::sync::{Arc, Mutex};
+        let result: Arc<Mutex<Option<crate::tasks::SendError>>> = Arc::new(Mutex::new(None));
+        struct S;
+        let res2 = result.clone();
+        let mut rig = Rig::new(
+            S,
+            move |_: &mut S, m: Msg, cx: &mut UpdateCtx<Msg>| {
+                if let Msg::Kick = m {
+                    let res = res2.clone();
+                    let _ = cx.spawn("waker", |job| async move {
+                        *res.lock().unwrap() = job.send(Msg::Chunk(1)).await.err();
+                    });
+                }
+            },
+            |_: &S, _: &mut Ui<Msg>| {},
+        );
+        rig.view().unwrap();
+        // the real installed seam fails — the send's own acceptance path
+        rig.rt.mailbox.install_wake(std::sync::Arc::new(|| false));
+        rig.rt.push_msg(Msg::Kick);
+        rig.pump().unwrap(); // update runs, spawns the task
+        rig.exec.poll(); // SendFuture poll -> push_or_wait -> WakeFailed
+        assert_eq!(
+            *result.lock().unwrap(),
+            Some(crate::tasks::SendError::Wake),
+            "the triggering async send must resolve typed Wake, not Ok"
+        );
+        assert!(rig.rt.mailbox.is_closed());
+    }
+
+    /// F01 — a waiter registered on a FULL mailbox must be awakened by
+    /// the terminal wake failure (not left parked): fill to cap so the
+    /// async send pends, install the failing seam, poke -> the waiter
+    /// wakes and its next poll resolves terminally.
+    #[test]
+    fn mailbox_wake_failure_wakes_registered_waiters() {
+        use std::sync::{Arc, Mutex};
+        let result: Arc<Mutex<Option<crate::tasks::SendError>>> = Arc::new(Mutex::new(None));
+        struct S;
+        let res2 = result.clone();
+        let mut rig = Rig::new(
+            S,
+            move |_: &mut S, m: Msg, cx: &mut UpdateCtx<Msg>| {
+                if let Msg::Kick = m {
+                    let res = res2.clone();
+                    let _ = cx.spawn("waiter", |job| async move {
+                        *res.lock().unwrap() = job.send(Msg::Chunk(9)).await.err();
+                    });
+                }
+            },
+            |_: &S, _: &mut Ui<Msg>| {},
+        );
+        rig.view().unwrap();
+        rig.rt.mailbox.install_wake(std::sync::Arc::new(|| true));
+        rig.rt.push_msg(Msg::Kick);
+        rig.pump().unwrap(); // update runs, spawns the task
+        // fill the mailbox to cap AFTER the spawn — the async send pends
+        let proxy = crate::tasks::UiProxy::<Msg>::new(rig.rt.mailbox.clone());
+        for _ in 0..crate::tasks::MAILBOX_CAP {
+            proxy.try_send(Msg::Chunk(0)).unwrap();
+        }
+        rig.exec.poll(); // send pends on the full mailbox -> waiter registered
+        assert!(
+            result.lock().unwrap().is_none(),
+            "send must still be pending"
+        );
+        // now the wake authority dies — install_wake's own pending-pulse
+        // invokes the failing seam: terminal close + latch
+        rig.rt.mailbox.install_wake(std::sync::Arc::new(|| false));
+        assert!(rig.rt.mailbox.is_closed(), "dead wake -> terminal close");
+        assert!(rig.rt.mailbox.take_wake_failure());
+        // the woken waiter resolves TERMINALLY: CancelWatch sees the
+        // closed mailbox, drops the parked SendFuture (its Drop
+        // unregisters the waiter — no dead waiter), task completes
+        rig.exec.poll();
+        assert_eq!(
+            rig.exec.live(),
+            0,
+            "the woken waiter must terminate, not remain parked"
+        );
+    }
+
+    /// F01 — handle lifetime: an admitted signaler (cloned callback Arc)
+    /// outlives detach — its SetEvent still lands on a VALID handle; the
+    /// HANDLE closes only when the last owner drops.
+    #[test]
+    fn mailbox_event_outlives_detached_signaler() {
+        let ev = std::sync::Arc::new(crate::platform::win32::MailboxEvent::create().unwrap());
+        let mb = crate::tasks::Mailbox::new();
+        let ev2 = ev.clone();
+        mb.install_wake(std::sync::Arc::new(move || ev2.signal()));
+        // clone the stored callback as an in-flight signaler would
+        let signaler = mb.clone_wake_cb().unwrap();
+        // shutdown detaches the seam AND drops the run loop's Arc
+        mb.close();
+        let event_ptr = ev.raw().0 as usize;
+        drop(ev);
+        // the in-flight signaler still owns an Arc — signal must land
+        assert!(signaler(), "detached signaler's event must still be valid");
+        unsafe {
+            let evp = windows::Win32::Foundation::HANDLE(event_ptr as *mut std::ffi::c_void);
+            assert_eq!(
+                windows::Win32::System::Threading::WaitForSingleObject(evp, 0),
+                windows::Win32::Foundation::WAIT_OBJECT_0,
+                "the admitted signaler's SetEvent landed on the live event"
+            );
+        }
+        drop(signaler); // last owner gone — handle closes exactly once
+    }
+
+    /// F01 — the event turn enters through the SAME native-entry guard
+    /// as every other Backend entry: a reentrant arrival queued during
+    /// the guarded turn is drained before guarded_turn returns.
+    #[test]
+    fn mailbox_event_turn_uses_the_native_entry_guard() {
+        struct S {
+            hits: u32,
+        }
+        let mut rig = Rig::new(
+            S { hits: 0 },
+            |s: &mut S, m: Msg, _: &mut UpdateCtx<Msg>| {
+                if let Msg::Scoped(9, _) = m {
+                    s.hits += 1;
+                }
+            },
+            |_: &S, ui: &mut Ui<Msg>| {
+                ui.label("x");
+            },
+        );
+        rig.view().unwrap();
+        let Rig { rt, .. } = rig;
+        let mut be = crate::platform::win32::Backend::for_test(
+            rt,
+            crate::platform::win32::PeerCtx::for_test().unwrap(),
+        )
+        .unwrap();
+        // accepted mailbox work + a reentrant QueuedMsg arriving
+        // mid-drain — the guarded turn must drain BOTH before returning
+        crate::tasks::UiProxy::<Msg>::new(be.rt.mailbox.clone())
+            .try_send(Msg::Scoped(9, 0))
+            .unwrap();
+        {
+            let mut q = be.reentrant_queue.borrow_mut();
+            q.push_back(QueuedMsg {
+                msg: WM_TIMER,
+                wparam: 1usize,
+                lparam: 0,
+                rect: None,
+                arrival_focus: None,
+            });
+        }
+        be.guarded_turn().unwrap();
+        assert_eq!(be.rt.state.hits, 1, "mailbox envelope delivered");
+        assert!(
+            be.reentrant_queue.borrow().is_empty(),
+            "reentrant arrivals drain inside the guarded turn"
+        );
+    }
+
+    /// F01 — init failure: a failing wake-event creation produces a
+    /// typed UiError::Platform. Because init_wake_event runs BEFORE
+    /// window::create, an Err unwinds run() with no HWND, no installed
+    /// route pointer — nothing dangles on the dropped Backend.
+    #[test]
+    fn wake_event_init_failure_is_typed() {
+        let bad = crate::platform::win32::init_wake_event(Err(windows::core::Error::new(
+            windows::core::HRESULT(-1),
+            "forced",
+        )));
+        assert!(matches!(bad, Err(crate::UiError::Platform(_))));
+        let good =
+            crate::platform::win32::init_wake_event(crate::platform::win32::MailboxEvent::create());
+        assert!(good.is_ok());
+    }
+
+    /// F01 — wait classification: every legal MsgWait result maps to its
+    /// class; WAIT_FAILED and undocumented codes are typed terminal
+    /// errors — never silently treated as "input ready".
+    #[test]
+    fn wait_classification_is_total() {
+        use crate::platform::win32::{WaitClass, classify_wait};
+        assert_eq!(
+            classify_wait(windows::Win32::Foundation::WAIT_OBJECT_0, 1).unwrap(),
+            WaitClass::Event
+        );
+        assert_eq!(
+            classify_wait(
+                windows::Win32::Foundation::WAIT_EVENT(
+                    windows::Win32::Foundation::WAIT_OBJECT_0.0 + 1
+                ),
+                1
+            )
+            .unwrap(),
+            WaitClass::Input
+        );
+        assert!(classify_wait(windows::Win32::Foundation::WAIT_FAILED, 1).is_err());
+        assert!(
+            classify_wait(windows::Win32::Foundation::WAIT_EVENT(0x1234), 1).is_err(),
+            "undocumented results are typed terminal errors"
         );
     }
 
@@ -6076,22 +6278,16 @@ mod native_contract_tests {
         });
         let receiver_tid = rx.recv().unwrap();
         let mb = crate::tasks::Mailbox::new();
-        let ev = unsafe {
-            windows::Win32::System::Threading::CreateEventExW(
-                None,
-                windows::core::PCWSTR::null(),
-                windows::Win32::System::Threading::CREATE_EVENT(0),
-                windows::Win32::System::Threading::EVENT_ALL_ACCESS.0,
-            )
-            .unwrap()
-        };
-        EV.store(ev.0 as usize, Ordering::SeqCst);
+        let ev = std::sync::Arc::new(crate::platform::win32::MailboxEvent::create().unwrap());
+        EV.store(ev.raw().0 as usize, Ordering::SeqCst);
         MB.store(
             std::sync::Arc::into_raw(mb.clone()) as usize,
             Ordering::SeqCst,
         );
-        // saturate the receiver's posted queue to quota — the exact
-        // ERROR_NOT_ENOUGH_QUOTA condition the old wake died on
+        // saturate the receiver's posted queue — the old wake died when
+        // PostMessageW hit queue quota; the event authority is immune by
+        // construction. The fill is bounded to keep queue-busy pressure
+        // honest without starving the desktop heap sibling tests need.
         unsafe {
             let mut quota = 0usize;
             while PostThreadMessageW(
@@ -6103,7 +6299,9 @@ mod native_contract_tests {
             .is_ok()
             {
                 quota += 1;
-                assert!(quota < 20000, "post quota never filled");
+                if quota >= 512 {
+                    break;
+                }
             }
         }
         let closed = std::sync::Arc::new(AtomicBool::new(false));
@@ -6118,7 +6316,7 @@ mod native_contract_tests {
             fn(&(), &mut Ui<Msg>),
         >;
         assert_eq!(
-            Be::mailbox_wake_for_test(ev, &closed, &mb),
+            Be::mailbox_wake_for_test(&ev, &closed),
             crate::platform::win32::WakeOutcome::Signaled
         );
         receiver.join().unwrap();
@@ -6134,7 +6332,7 @@ mod native_contract_tests {
             drop(std::sync::Arc::from_raw(
                 MB.swap(0, Ordering::SeqCst) as *const crate::tasks::Mailbox
             ));
-            let _ = windows::Win32::Foundation::CloseHandle(ev);
+            drop(ev);
         }
     }
 

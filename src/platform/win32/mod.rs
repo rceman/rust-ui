@@ -547,6 +547,62 @@ fn deferrable(msg: u32) -> bool {
     )
 }
 
+/// Owned kernel wake event — the HANDLE lives exactly as long as the
+/// last `Arc<MailboxEvent>`: the run loop holds one, the installed wake
+/// callback holds one, and any in-flight signaler cloned from the
+/// callback holds one until its call returns. `CloseHandle` can never
+/// precede the last legitimate signaler — a detached callback that was
+/// already cloned still signals a VALID handle.
+pub(crate) struct MailboxEvent(HANDLE);
+// kernel event handles are safe to signal/wait across threads
+unsafe impl Send for MailboxEvent {}
+unsafe impl Sync for MailboxEvent {}
+
+impl MailboxEvent {
+    /// Auto-reset event — the sole cross-thread mailbox wake authority.
+    pub(crate) fn create() -> windows::core::Result<Self> {
+        unsafe { CreateEventExW(None, PCWSTR::null(), CREATE_EVENT(0), EVENT_ALL_ACCESS.0) }
+            .map(MailboxEvent)
+    }
+
+    /// Signal the event — the ONLY primitive behind the mailbox wake.
+    pub(crate) fn signal(&self) -> bool {
+        unsafe { SetEvent(self.0).is_ok() }
+    }
+
+    /// test seam: wrap an arbitrary raw handle (e.g. a never-valid one)
+    /// to exercise the SetEvent-failure terminal contract
+    #[cfg(test)]
+    pub(crate) fn from_raw(h: HANDLE) -> Self {
+        MailboxEvent(h)
+    }
+
+    /// test seam: the raw handle for wait assertions
+    #[cfg(test)]
+    pub(crate) fn raw(&self) -> HANDLE {
+        self.0
+    }
+}
+
+impl Drop for MailboxEvent {
+    fn drop(&mut self) {
+        unsafe {
+            let _ = CloseHandle(self.0);
+        }
+    }
+}
+
+/// Wake-authority creation for `run()` — returns the typed platform
+/// failure `run` propagates. Called BEFORE `window::create`, so a
+/// failure unwinds with no HWND, no installed route pointer, and only
+/// the not-yet-live Backend to drop — nothing leaks or dangles.
+pub(crate) fn init_wake_event(
+    raw: windows::core::Result<MailboxEvent>,
+) -> UiResult<Arc<MailboxEvent>> {
+    raw.map(Arc::new)
+        .map_err(|e| UiError::Platform(format!("mailbox wake event: {e}")))
+}
+
 /// Where a `mailbox_wake` attempt landed — the signaled event, the
 /// closed short-circuit, or the terminal latch.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -554,12 +610,41 @@ pub(crate) enum WakeOutcome {
     /// the mailbox wake event was signaled — the run loop's
     /// MsgWaitForMultipleObjectsEx is already waiting on it
     Signaled,
-    /// window already closed — no wake attempted
+    /// window already closed — no wake attempted (counts as a placed
+    /// wake for the callback contract: mailbox teardown owns the rest)
     Skipped,
-    /// SetEvent itself failed — the wake channel is terminally dead; the
-    /// mailbox was closed (pending work dropped, producers woken) and
-    /// the typed failure latched
+    /// SetEvent itself failed — the wake channel is terminally dead;
+    /// the CALLER (mailbox signal path) applies the terminal contract
     Latched,
+}
+
+/// Classification of a `MsgWaitForMultipleObjectsEx` result — every
+/// legal result is an explicit branch; anything else (incl. WAIT_FAILED
+/// and undocumented codes) is a typed terminal platform error.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum WaitClass {
+    /// WAIT_OBJECT_0 — the mailbox wake event fired
+    Event,
+    /// WAIT_OBJECT_0 + handle_count — the message queue holds new input
+    Input,
+}
+
+pub(crate) fn classify_wait(wait: WAIT_EVENT, handle_count: usize) -> UiResult<WaitClass> {
+    if wait == WAIT_OBJECT_0 {
+        return Ok(WaitClass::Event);
+    }
+    if wait.0 == WAIT_OBJECT_0.0 + handle_count as u32 {
+        return Ok(WaitClass::Input);
+    }
+    if wait == WAIT_FAILED {
+        return Err(UiError::Platform(format!(
+            "MsgWaitForMultipleObjectsEx WAIT_FAILED: {}",
+            std::io::Error::last_os_error()
+        )));
+    }
+    Err(UiError::Platform(format!(
+        "MsgWaitForMultipleObjectsEx returned undocumented result {wait:?}"
+    )))
 }
 
 impl<S, M, U, V> Backend<S, M, U, V>
@@ -2417,48 +2502,45 @@ where
         Ok(())
     }
 
-    /// THE cross-thread mailbox wake authority — one owned waitable
-    /// event. `SetEvent` is the entire wake: it is independent of the
+    /// THE cross-thread mailbox wake authority — `SetEvent` on the owned
+    /// `MailboxEvent` is the entire wake: it is independent of the
     /// receiver's message-queue capacity, SendMessage cooperation and
     /// timer synthesis, and the run loop's `MsgWaitForMultipleObjectsEx`
     /// is ALWAYS waiting on it — so an accepted envelope implies an
     /// already-owned durable signal (no accepted-but-unwakeable state).
     ///
-    /// `SetEvent` failure means the event handle is dead — the wake
-    /// channel is terminally broken, so the mailbox itself is closed
-    /// (pending envelopes dropped, producer waiters woken, later sends
-    /// get `Closed`) and the typed failure is latched for the turn
-    /// safe-point / run-exit check. Accepted work is never left silently
-    /// queued behind a dead wake.
-    fn mailbox_wake(
-        event_raw: usize,
-        closed: &AtomicBool,
-        mb: &Arc<crate::tasks::Mailbox>,
-    ) -> WakeOutcome {
+    /// `SetEvent` failure means the event handle is dead — `Latched`
+    /// reports the terminal outcome to the mailbox signal path, which
+    /// owns the rollback/close contract for its context.
+    fn mailbox_wake(ev: &MailboxEvent, closed: &AtomicBool) -> WakeOutcome {
         if closed.load(Ordering::SeqCst) {
             return WakeOutcome::Skipped;
         }
-        let signaled = unsafe { SetEvent(HANDLE(event_raw as *mut c_void)).is_ok() };
-        if signaled {
-            return WakeOutcome::Signaled;
+        if ev.signal() {
+            WakeOutcome::Signaled
+        } else {
+            WakeOutcome::Latched
         }
-        // terminal: detach producers' callback, drop pending envelopes,
-        // wake producer waiters — THEN latch (close() clears the flag)
-        mb.close();
-        mb.wake_post_failed();
-        WakeOutcome::Latched
     }
 
     /// test seam: exercise the wake authority against a caller-provided
-    /// event handle (live event -> Signaled; dead handle -> terminal
-    /// mailbox close + Latched; closed window -> Skipped)
+    /// event (live event -> Signaled; dead handle -> Latched; closed
+    /// window -> Skipped)
     #[cfg(test)]
-    pub(crate) fn mailbox_wake_for_test(
-        event: HANDLE,
-        closed: &AtomicBool,
-        mb: &Arc<crate::tasks::Mailbox>,
-    ) -> WakeOutcome {
-        Self::mailbox_wake(event.0 as usize, closed, mb)
+    pub(crate) fn mailbox_wake_for_test(ev: &MailboxEvent, closed: &AtomicBool) -> WakeOutcome {
+        Self::mailbox_wake(ev, closed)
+    }
+
+    /// One Backend entry under the native-entry ownership guard — the
+    /// same authority the initial turn and every event-driven turn use:
+    /// synchronous native callbacks that re-enter during the turn are
+    /// QUEUED (in_dispatch), never form a second mutable Backend route,
+    /// and the queue is drained before the entry completes.
+    pub(crate) fn guarded_turn(&mut self) -> UiResult {
+        self.in_dispatch.set(true);
+        let r = self.turn();
+        self.in_dispatch.set(false);
+        r.and_then(|_| self.drain_reentrant())
     }
 
     /// fatal (typed) error from inside a WndProc — surface on next turn
@@ -2798,6 +2880,12 @@ where
     });
     backend.rt.theme = theme;
 
+    // THE mailbox wake authority — ONE owned auto-reset event, created
+    // BEFORE the HWND takes the live Backend pointer: a create failure
+    // returns before any native window exists, so no HWND can ever
+    // dangle a pointer to a Backend being unwound
+    let wake_event = init_wake_event(MailboxEvent::create())?;
+
     // the window carries a stable pointer to the route object — its lifetime
     // is the loop's lifetime; WM_NCDESTROY clears it before `backend` drops
     let route = backend.as_mut() as *mut Backend<S, M, U, V>;
@@ -2829,43 +2917,18 @@ where
         .scale
         .set(space::ScaleFactor(scale.0.max(0.5)));
 
-    // THE mailbox wake authority — ONE auto-reset waitable event the
-    // run loop waits on alongside the message queue. An accepted
-    // envelope implies SetEvent has signaled a handle the loop is
-    // already inside MsgWaitForMultipleObjectsEx on — progress cannot
-    // depend on the target's message-queue capacity, send cooperation,
-    // timer synthesis, another producer, or incidental input.
-    //
-    // Owned by the run() scope: created BEFORE the wake callback is
-    // installed, and the guard below detaches the mailbox callback
-    // (mailbox.close()) BEFORE CloseHandle — producers can never observe
-    // a stale handle.
-    let wake_event = unsafe {
-        CreateEventExW(None, PCWSTR::null(), CREATE_EVENT(0), EVENT_ALL_ACCESS.0)
-            .map_err(|e| UiError::Platform(format!("mailbox wake event: {e}")))?
-    };
-    /// detach-then-close, exactly once, on every exit path of run()
-    struct WakeEventGuard {
-        mb: Arc<crate::tasks::Mailbox>,
-        ev: HANDLE,
-    }
-    impl Drop for WakeEventGuard {
-        fn drop(&mut self) {
-            self.mb.close(); // detaches the producer-side callback FIRST
-            unsafe {
-                let _ = CloseHandle(self.ev);
-            }
-        }
-    }
-    let _wake_guard = WakeEventGuard {
-        mb: backend.rt.mailbox.clone(),
-        ev: wake_event,
-    };
+    // producers signal the owned event via the ONE wake authority. The
+    // callback Arc holds the event alive for every admitted signaler —
+    // mailbox.close() detaches the stored callback first, and any
+    // in-flight clone still signals a VALID handle; the HANDLE closes
+    // only when the last Arc (loop + callback + in-flight) drops.
     let closed = backend.closed.clone();
-    let mb = backend.rt.mailbox.clone();
-    let event_raw = wake_event.0 as usize;
+    let ev = wake_event.clone();
     backend.rt.mailbox.install_wake(Arc::new(move || {
-        Backend::<S, M, U, V>::mailbox_wake(event_raw, &closed, &mb);
+        matches!(
+            Backend::<S, M, U, V>::mailbox_wake(&ev, &closed),
+            WakeOutcome::Signaled | WakeOutcome::Skipped
+        )
     }));
 
     /// Every failure path after window creation destroys the HWND first —
@@ -2898,37 +2961,43 @@ where
     // the initial turn is a native-entry backend operation — peers mount
     // inside it and their host callbacks can re-enter the WndProc; run it
     // under the same ownership guard as real dispatch
-    backend.in_dispatch.set(true);
-    let initial = backend.turn();
-    backend.in_dispatch.set(false);
-    if let Err(e) = initial.and_then(|_| backend.drain_reentrant()) {
+    // initial view/layout/paint — same native-entry ownership authority
+    // as every later event-driven turn
+    if let Err(e) = backend.guarded_turn() {
         return bail(&mut backend, e);
-    } // initial view/layout/paint
+    }
 
     // blocking wait on BOTH authorities — the mailbox wake event AND the
     // message queue. Idle sleeps with zero polling: the wait returns on
     // the event (mailbox work accepted), on queued input, or on WM_QUIT.
+    let handles = [wake_event.0];
     unsafe {
-        let handles = [wake_event];
         let mut msg = MSG::default();
         'run: loop {
             // block until: event signaled (WAIT_OBJECT_0) or unseen input
-            // arrives (WAIT_OBJECT_0 + 1). MWMO_INPUTAVAILABLE already-seen
-            // input is fine because the PeekMessage sweep drains ALL of it.
+            // arrives (WAIT_OBJECT_0 + handle_count). MWMO_INPUTAVAILABLE
+            // already-seen input is fine because the PeekMessage sweep
+            // drains ALL of it. Every result class is explicit —
+            // WAIT_FAILED/undocumented -> typed terminal teardown.
             let wait = MsgWaitForMultipleObjectsEx(
                 Some(&handles),
                 INFINITE,
                 QS_ALLINPUT,
                 MWMO_INPUTAVAILABLE,
             );
-            if wait == WAIT_OBJECT_0 {
-                // mailbox signaled — one bounded turn drains a sweep of
-                // envelopes; backlog continuation re-signals below
-                if let Err(e) = backend.turn() {
-                    return bail(&mut backend, e);
+            match classify_wait(wait, handles.len()) {
+                Ok(WaitClass::Event) => {
+                    // mailbox signaled — one guarded bounded turn drains
+                    // a sweep; reentrant native work queues, never forms
+                    // a second entry; backlog continuation re-signals below
+                    if let Err(e) = backend.guarded_turn() {
+                        return bail(&mut backend, e);
+                    }
                 }
+                Ok(WaitClass::Input) => {}
+                Err(e) => return bail(&mut backend, e),
             }
-            // drain every queued message (also covers WAIT_OBJECT_0+1)
+            // drain every queued message (also covers WaitClass::Input)
             while PeekMessageW(&mut msg, None, 0, 0, PM_REMOVE).as_bool() {
                 if msg.message == WM_QUIT {
                     break 'run;
@@ -2943,10 +3012,13 @@ where
             }
             // bounded-drain continuation — a turn can leave mailbox work
             // when the sweep bound hit mid-drain or dispatch enqueued
-            // more; re-signal the SAME authority instead of needing a
-            // producer or incidental input to wake us again
-            if backend.rt.mailbox.queue_len() > 0 {
-                let _ = SetEvent(wake_event);
+            // more; re-signal through the SAME checked authority — a
+            // failed signal applies the terminal contract inside poke_ui
+            if backend.rt.mailbox.queue_len() > 0 && !backend.rt.mailbox.poke_ui() {
+                return bail(
+                    &mut backend,
+                    UiError::Platform("mailbox wake signal failed".into()),
+                );
             }
         }
     }
