@@ -302,7 +302,10 @@ pub(crate) fn palette(
     }
 }
 
-/// Waker seam: mailbox wake posts to the window — no polling.
+/// Same-thread continuation: a reentrant/deferred native callback posts
+/// this so the deferred work runs through the guarded turn path — it is
+/// NOT the cross-thread mailbox authority (the owned `MailboxEvent`
+/// handles producers on other threads).
 pub(crate) const WM_PUMP: u32 = WM_APP + 7;
 /// generation-fenced UIA actions routed through the UI thread
 pub(crate) const WM_UIA_PRESS: u32 = WM_APP + 8;
@@ -697,10 +700,10 @@ where
         // a pump post may still be in flight after this turn settles — it
         // clears the flag so a later reentrant call re-arms the post
         self.pump_queued.set(false);
-        // safe-point: a cross-thread mailbox wake whose post failed is a
+        // safe-point: a cross-thread mailbox wake whose signal failed is a
         // broken progress guarantee — surface typed, same as wake_pump
         if self.rt.mailbox.take_wake_failure() {
-            return Err(UiError::Platform("mailbox wake post failed".into()));
+            return Err(UiError::Platform("mailbox wake signal failed".into()));
         }
         // peer-emitted semantic events (ack edits, selections)
         let items: Vec<NativeSinkItem> = std::mem::take(&mut *self.peer_ctx.sink.lock().unwrap());
@@ -2924,12 +2927,22 @@ where
     // only when the last Arc (loop + callback + in-flight) drops.
     let closed = backend.closed.clone();
     let ev = wake_event.clone();
-    backend.rt.mailbox.install_wake(Arc::new(move || {
-        matches!(
-            Backend::<S, M, U, V>::mailbox_wake(&ev, &closed),
-            WakeOutcome::Signaled | WakeOutcome::Skipped
-        )
-    }));
+    if backend
+        .rt
+        .mailbox
+        .install_wake(Arc::new(move || {
+            matches!(
+                Backend::<S, M, U, V>::mailbox_wake(&ev, &closed),
+                WakeOutcome::Signaled | WakeOutcome::Skipped
+            )
+        }))
+        .is_err()
+    {
+        return bail(
+            &mut backend,
+            UiError::Platform("mailbox wake install failed".into()),
+        );
+    }
 
     /// Every failure path after window creation destroys the HWND first —
     /// WM_NCDESTROY detaches the route pointer so the live window can never
@@ -3026,7 +3039,7 @@ where
     // surfaces — the loop is ending, so report the broken progress
     // guarantee rather than silently exiting over stranded work
     if backend.rt.mailbox.take_wake_failure() {
-        return Err(UiError::Platform("mailbox wake post failed".into()));
+        return Err(UiError::Platform("mailbox wake signal failed".into()));
     }
     // evidence hook (RUI_PERF=<path>): dump the frame counters on clean
     // shutdown — proves event-driven idle + native-drive accounting

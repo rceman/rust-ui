@@ -259,10 +259,14 @@ where
 
         // leftovers (or work a commit just queued — e.g. ack events) ride the
         // same signal authority: next turn drains them, no polling needed.
-        // A false return means the wake authority died — the mailbox
-        // applied its terminal contract inside poke_ui itself.
+        // The UI turn owns this result — a terminal wake failure propagates
+        // typed instead of masking stranded work behind the next wait.
         if !self.events.is_empty() || self.mailbox.queue_len() > 0 {
-            let _ = self.mailbox.poke_ui();
+            if !self.mailbox.poke_ui() {
+                return Err(UiError::Platform(
+                    "mailbox continuation signal failed".into(),
+                ));
+            }
         }
 
         // first turn mounts the initial view — afterwards review only on

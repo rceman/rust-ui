@@ -197,10 +197,93 @@ struct Waiter {
     waker: Waker,
 }
 
+/// Wake-authority state — lives INSIDE the one state mutex, so a signal
+/// attempt serializes against every acceptance/lifecycle path: while a
+/// callback is in flight the lock is held and no producer can commit an
+/// acceptance past a signal that is about to fail.
+enum WakeState {
+    /// No seam installed yet. `owed` = a startup-wake obligation accrued:
+    /// a pre-install acceptance or lifecycle poke means `install_wake`
+    /// MUST synchronously signal (and surfaces the typed failure to
+    /// `App::run` if that install-time signal fails). It is NOT a durable
+    /// signal — nothing was ever delivered anywhere. Never cleared by
+    /// `wake_seen` — only the install consumes it.
+    Uninstalled { owed: bool },
+    /// Seam installed, no undelivered signal outstanding.
+    Idle,
+    /// A signal was delivered since the last `wake_seen` — reuse it.
+    Confirmed,
+    /// The wake authority reported failure, or the mailbox closed —
+    /// no signal, no callback, no revival.
+    Terminal,
+}
+
 struct MailboxState {
     queue: VecDeque<Envelope>,
     closed: bool,
     waiters: Vec<Waiter>,
+    /// the installed wake seam — invoked ONLY under this lock. Callback
+    /// contract: strictly NO mailbox reentry (the real seam is
+    /// `SetEvent` on an owned event — a pure signal, no state access).
+    wake_cb: Option<Arc<dyn Fn() -> bool + Send + Sync>>,
+    wake_state: WakeState,
+    /// latched: a wake callback reported failure — the run loop reads it
+    /// once at its safe point; a later `close()` must not clear it.
+    wake_failed: bool,
+}
+
+impl MailboxState {
+    /// Invoke/observe the wake authority UNDER the state lock.
+    /// `true` = the caller's commit is safe: the signal was delivered, a
+    /// Confirmed edge was reused, OR — pre-install — a startup-wake
+    /// obligation was recorded that `install_wake` discharges
+    /// synchronously (a failed install-time pulse terminal-closes and
+    /// reports the typed failure to `App::run`). `false` = Terminal, or
+    /// the callback reported terminal failure — the CALLER applies
+    /// `terminal_locked` (still under the lock).
+    fn signal(&mut self) -> bool {
+        match self.wake_state {
+            WakeState::Terminal => false,
+            WakeState::Confirmed => true,
+            WakeState::Uninstalled { .. } => {
+                // no durable signal exists yet — the acceptance is
+                // recorded as a startup obligation install_wake pulses
+                self.wake_state = WakeState::Uninstalled { owed: true };
+                true
+            }
+            WakeState::Idle => {
+                // the seam is always Some in an installed state
+                let cb = self.wake_cb.clone().expect("installed wake seam");
+                if cb() {
+                    self.wake_state = WakeState::Confirmed;
+                    true
+                } else {
+                    false
+                }
+            }
+        }
+    }
+
+    /// Terminal close under the already-held lock: detach the callback,
+    /// mark closed + Terminal, drain queue + waiters. The failure latch
+    /// is untouched — `take_wake_failure` still surfaces a real failure
+    /// after a routine close. Drops/wakes happen AFTER the lock releases.
+    fn terminal_locked(
+        &mut self,
+    ) -> (
+        Vec<Envelope>,
+        Vec<Waiter>,
+        Option<Arc<dyn Fn() -> bool + Send + Sync>>,
+    ) {
+        self.closed = true;
+        self.wake_state = WakeState::Terminal;
+        let cb = self.wake_cb.take();
+        (
+            self.queue.drain(..).collect(),
+            self.waiters.drain(..).collect(),
+            cb,
+        )
+    }
 }
 
 /// Outcome of an atomic push-or-register-wait attempt — the envelope is
@@ -219,20 +302,16 @@ enum PushOutcome {
 
 /// Shared bounded mailbox. The UI thread drains it; workers push into it.
 /// Waking is coalesced through one seam callback — no periodic polling.
-/// Lock discipline: every state mutation happens under `state`; ALL waker
-/// wakes happen AFTER the lock is dropped.
+/// Lock discipline: the ONE `state` mutex serializes lifecycle signals,
+/// acceptance, install, wake_seen, and close. The installed wake callback
+/// is invoked only under it (callback contract: no mailbox reentry —
+/// the real seam is `SetEvent`); every drop (envelopes, charges, the
+/// callback Arc) and every waker wake happens AFTER the lock releases.
 pub(crate) struct Mailbox {
     state: Mutex<MailboxState>,
-    /// wake seam — set once by the run loop; `pending` delivers edges.
-    /// The callback returns the signal result: true = a durable wake was
-    /// placed (or correctly skipped for a closed window); false = the
-    /// wake authority is dead — callers apply the terminal contract.
-    wake: Mutex<Option<Arc<dyn Fn() -> bool + Send + Sync>>>,
-    pending_wake: AtomicBool,
-    /// a wake callback reported its post failed — latched for the run
-    /// loop's `take_wake_failure` safe point
-    wake_failed: AtomicBool,
 }
+
+type WakeCb = Arc<dyn Fn() -> bool + Send + Sync>;
 
 impl Mailbox {
     pub(crate) fn new() -> Arc<Self> {
@@ -241,86 +320,103 @@ impl Mailbox {
                 queue: VecDeque::with_capacity(MAILBOX_CAP),
                 closed: false,
                 waiters: Vec::new(),
+                wake_cb: None,
+                wake_state: WakeState::Uninstalled { owed: false },
+                wake_failed: false,
             }),
-            wake: Mutex::new(None),
-            pending_wake: AtomicBool::new(false),
-            wake_failed: AtomicBool::new(false),
         })
     }
 
-    /// Run-loop wake callback. If envelopes were already queued (or a wake
-    /// was poked) before the seam was installed, the callback fires ONCE
-    /// immediately — bypassing `pending_wake` coalescing, which would
-    /// otherwise swallow exactly the delivery it is meant to report.
-    pub(crate) fn install_wake(&self, wake: Arc<dyn Fn() -> bool + Send + Sync>) {
-        {
-            *self.wake.lock().unwrap() = Some(wake);
-        } // sequential — never hold `wake` across `state` (lock order)
-        let pending = {
-            let was_pending = self.pending_wake.swap(false, Ordering::SeqCst);
-            let st = self.state.lock().unwrap();
-            // an earlier lifecycle poke AND queued envelopes both count —
-            // a stale `pending_wake` must not strand lifecycle-only work
-            was_pending || !st.queue.is_empty()
+    /// Run-loop wake callback. Installs under the state lock: a rejected
+    /// mailbox reports `Closed` without installing; otherwise the seam
+    /// takes over in `Idle` and — if a pre-install send accrued `owed`,
+    /// a delivered Confirmed edge outlived the previous seam, or the
+    /// queue is nonempty — pulses synchronously. A failed pulse applies
+    /// the terminal contract under the same lock and reports `Wake`.
+    pub(crate) fn install_wake(&self, wake: WakeCb) -> Result<(), ProxySendError> {
+        let (dropped, waiters, old_cb, failed_cb, err) = {
+            let mut st = self.state.lock().unwrap();
+            if st.closed {
+                return Err(ProxySendError::Closed);
+            }
+            // an earlier Confirmed edge is owed to the NEW seam — the
+            // installed-callback contract re-establishes the pending wake
+            let owed = match st.wake_state {
+                WakeState::Uninstalled { owed } => owed,
+                WakeState::Confirmed => true,
+                _ => false,
+            };
+            let old_cb = st.wake_cb.replace(wake);
+            st.wake_state = WakeState::Idle;
+            if owed || !st.queue.is_empty() {
+                if st.signal() {
+                    (Vec::new(), Vec::new(), old_cb, None, None)
+                } else {
+                    st.wake_failed = true;
+                    let (d, w, failed_cb) = st.terminal_locked();
+                    (d, w, old_cb, failed_cb, Some(ProxySendError::Wake))
+                }
+            } else {
+                (Vec::new(), Vec::new(), old_cb, None, None)
+            }
         };
-        if pending {
-            // install-time pending pulse — a false return means the
-            // terminal contract already ran inside poke_ui
-            let _ = self.poke_ui();
+        // callback Arc destruction happens AFTER the state lock releases —
+        // a captured destructor may safely reenter mailbox state
+        drop(old_cb);
+        drop(failed_cb);
+        drop(dropped);
+        for w in waiters {
+            w.waker.wake();
+        }
+        match err {
+            Some(e) => Err(e),
+            None => Ok(()),
         }
     }
 
-    /// Run-loop safe point: did a cross-thread wake post fail since the
+    /// Run-loop safe point: did a cross-thread wake signal fail since the
     /// last check? Latch cleared on read — each failure surfaces once.
     pub(crate) fn take_wake_failure(&self) -> bool {
-        self.wake_failed.swap(false, Ordering::SeqCst)
+        let mut st = self.state.lock().unwrap();
+        let f = st.wake_failed;
+        st.wake_failed = false;
+        f
     }
 
-    /// The ONE signal authority — edge-coalesced invoke of the installed
-    /// wake callback. `true` = a durable wake is owned (signaled, owed by
-    /// a coalesced pending edge, or a not-yet-installed seam that
-    /// install_wake will pulse); `false` = the wake authority reported
-    /// terminal failure — the CALLER applies the terminal contract for
-    /// its context (rollback under lock, or terminal close outside it).
-    fn signal_ok(&self) -> bool {
-        if self.pending_wake.swap(true, Ordering::SeqCst) {
-            return true; // a signal is already owed/issued — coalesce
-        }
-        let cb = self.wake.lock().unwrap().clone();
-        match cb {
-            // pre-install acceptance is safe: install_wake pulses once if
-            // anything is pending, so no signal is owed yet
-            None => true,
-            Some(cb) => cb(),
-        }
-    }
-
-    /// Terminal teardown while `state` is already held (the acceptance
-    /// path): roll nothing but mark closed, drain pending + waiters, and
-    /// return the work to drop + the waiters to wake AFTER unlock.
-    fn terminal_locked(&self, st: &mut MailboxState) -> (Vec<Envelope>, Vec<Waiter>) {
-        st.closed = true;
-        (st.queue.drain(..).collect(), st.waiters.drain(..).collect())
-    }
-
-    /// Edge-triggered wake for lifecycle/continuation signals —
-    /// coalesced by `pending_wake`, terminated by mailbox close + latch
-    /// when the authority is dead. `false` = terminal failure applied.
+    /// Edge-triggered wake for lifecycle/continuation signals — invoked
+    /// under the state lock, serialized against acceptance. `false` =
+    /// the wake authority reported terminal failure (terminal contract
+    /// applied under the same lock before any producer could commit) OR
+    /// the mailbox is already Terminal — no signal, no revival.
     pub(crate) fn poke_ui(&self) -> bool {
-        if self.signal_ok() {
-            return true;
+        let (dropped, waiters, cb, ok) = {
+            let mut st = self.state.lock().unwrap();
+            if matches!(st.wake_state, WakeState::Terminal) {
+                (Vec::new(), Vec::new(), None, false)
+            } else if st.signal() {
+                (Vec::new(), Vec::new(), None, true)
+            } else {
+                st.wake_failed = true;
+                let (d, w, c) = st.terminal_locked();
+                (d, w, c, false)
+            }
+        };
+        drop(cb);
+        drop(dropped);
+        for w in waiters {
+            w.waker.wake();
         }
-        // terminal: the wake authority is dead — drop every pending
-        // envelope, wake every producer waiter, latch the failure AFTER
-        // close() (which clears it)
-        self.close();
-        self.wake_failed.store(true, Ordering::SeqCst);
-        false
+        ok
     }
 
-    /// The run loop observed the wake.
+    /// The run loop observed the wake — consumes ONLY a delivered
+    /// (Confirmed) edge; an Uninstalled `owed` obligation survives until
+    /// `install_wake` discharges it.
     pub(crate) fn wake_seen(&self) {
-        self.pending_wake.store(false, Ordering::SeqCst);
+        let mut st = self.state.lock().unwrap();
+        if matches!(st.wake_state, WakeState::Confirmed) {
+            st.wake_state = WakeState::Idle;
+        }
     }
 
     /// Atomic push-or-register-wait under ONE lock — no lost wake between a
@@ -329,11 +425,16 @@ impl Mailbox {
     /// Atomic push-or-register-wait under ONE state lock. `check_fenced`
     /// re-verifies cancellation/completion under that same lock.
     /// ACCEPTANCE LINEARIZES AT push+signal under this one lock: the
-    /// envelope commits only once a durable wake is owned (or owed by
-    /// coalescing). If the wake authority reports failure, THIS envelope
-    /// is rolled back (it is provably still the tail under the lock), the
-    /// mailbox closes terminally, producers wake — the triggering send
-    /// gets a typed Wake failure, never Ok over discarded work.
+    /// envelope commits only once a wake is accounted for: INSTALLED → a
+    /// just-delivered or Confirmed-reused signal; NOT-YET-INSTALLED → a
+    /// recorded startup obligation `install_wake` synchronously
+    /// discharges (and whose failure terminal-closes + reports typed
+    /// Wake to `App::run`). Coalescing only ever reuses a Confirmed edge —
+    /// `owed` is a pre-install accounting, not an owed coalesced signal.
+    /// If the wake authority reports failure, THIS envelope is rolled
+    /// back (it is provably still the tail under the lock), the mailbox
+    /// closes terminally, producers wake — the triggering send gets a
+    /// typed Wake failure, never Ok over discarded work.
     fn push_or_wait(
         &self,
         env: Envelope,
@@ -357,15 +458,17 @@ impl Mailbox {
             return PushOutcome::Waiting(env);
         }
         st.queue.push_back(env);
-        if self.signal_ok() {
+        if st.signal() {
             return PushOutcome::Pushed;
         }
         // wake establishment failed AT acceptance — roll THIS envelope
-        // back, close terminally, and hand the payload back to the sender
+        // back, close terminally UNDER this lock (before any other
+        // producer can commit), and hand the payload back to the sender
         let env = st.queue.pop_back().unwrap();
-        self.wake_failed.store(true, Ordering::SeqCst);
-        let (dropped, waiters) = self.terminal_locked(&mut st);
+        st.wake_failed = true;
+        let (dropped, waiters, cb) = st.terminal_locked();
         drop(st);
+        drop(cb);
         drop(dropped);
         for w in waiters {
             w.waker.wake();
@@ -376,7 +479,9 @@ impl Mailbox {
     /// Bounded push for non-async callers (UiProxy). Returns the envelope
     /// back on Full/Closed/Wake so nothing is consumed by a failed push.
     /// ACCEPTANCE LINEARIZES AT push+signal under one lock — Ok(()) means
-    /// the envelope committed AND a durable wake is owned.
+    /// the envelope committed AND a wake is accounted for — an installed
+    /// Confirmed/delivered signal, or a recorded startup obligation
+    /// `install_wake` discharges synchronously (reporting failure typed).
     pub(crate) fn try_push(
         self: &Arc<Self>,
         env: Envelope,
@@ -389,15 +494,17 @@ impl Mailbox {
             return Err((ProxySendError::Full, env));
         }
         st.queue.push_back(env);
-        if self.signal_ok() {
+        if st.signal() {
             return Ok(());
         }
         // wake establishment failed AT acceptance — roll THIS envelope
-        // back (provably the tail), close terminally, typed Wake error
+        // back (provably the tail), close terminally under this lock,
+        // typed Wake error
         let env = st.queue.pop_back().unwrap();
-        self.wake_failed.store(true, Ordering::SeqCst);
-        let (dropped, waiters) = self.terminal_locked(&mut st);
+        st.wake_failed = true;
+        let (dropped, waiters, cb) = st.terminal_locked();
         drop(st);
+        drop(cb);
         drop(dropped);
         for w in waiters {
             w.waker.wake();
@@ -462,25 +569,15 @@ impl Mailbox {
         self.fence_reg(reg, &std::sync::atomic::AtomicBool::new(false));
     }
 
-    /// Window close: closed flag + drain; every pending producer/cancel
-    /// waiter wakes outside the lock. The wake callback and pending flag are
-    /// dropped — a retained `UiProxy` can never resurrect a stale HWND
-    /// callback.
+    /// Window close: closed + Terminal + callback detached under the one
+    /// lock — a retained `UiProxy` can never resurrect a stale HWND seam.
+    /// Every pending producer/cancel waiter wakes, and every envelope
+    /// drops, only after the lock releases. A real wake failure stays
+    /// latched — a routine close must not erase it.
     pub(crate) fn close(&self) {
-        // the callback goes first — nothing can invoke a stale HWND seam
-        let cb = {
-            let mut w = self.wake.lock().unwrap();
-            w.take()
-        };
-        self.pending_wake.store(false, Ordering::SeqCst);
-        self.wake_failed.store(false, Ordering::SeqCst);
-        let (dropped, waiters) = {
+        let (dropped, waiters, cb) = {
             let mut st = self.state.lock().unwrap();
-            st.closed = true;
-            (
-                st.queue.drain(..).collect::<Vec<_>>(),
-                st.waiters.drain(..).collect::<Vec<_>>(),
-            )
+            st.terminal_locked()
         };
         drop(cb);
         drop(dropped); // release charges outside the lock
@@ -502,7 +599,15 @@ impl Mailbox {
     /// signaler would (proves the owned event outlives detach)
     #[cfg(test)]
     pub(crate) fn clone_wake_cb(&self) -> Option<Arc<dyn Fn() -> bool + Send + Sync>> {
-        self.wake.lock().unwrap().clone()
+        self.state.lock().unwrap().wake_cb.clone()
+    }
+
+    /// test seam: is the ONE mailbox state lock currently held? The
+    /// overlap tests use this as structural proof that a producer
+    /// serialized behind an in-flight lifecycle signal.
+    #[cfg(test)]
+    pub(crate) fn state_try_locked(&self) -> bool {
+        self.state.try_lock().is_err()
     }
 }
 
