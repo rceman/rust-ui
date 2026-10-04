@@ -19,6 +19,15 @@ use crate::{Ui, UiResult};
 use super::{Backend, WM_PUMP, WM_UIA_FOCUS, WM_UIA_PRESS};
 
 pub(super) const DEADLINE_TIMER: usize = 1;
+/// One-shot mailbox-recovery timer — armed by `mailbox_wake` ONLY when
+/// the posted wake AND the bounded synchronous send both fail. WM_TIMER
+/// is synthesized by the target's message wait, not posted through its
+/// thread queue, so it still lands when the queue is saturated or the
+/// receiver was briefly unable to process a send — the wake is owned,
+/// bounded (single fire) and guarantees progress for accepted mailbox
+/// work without another producer. The id lives far outside both the
+/// framework id (1) and the native pool range.
+pub(crate) const MAILBOX_WAKE_TIMER: usize = usize::MAX - 7;
 /// Peer-timer ID namespace — framework timers are small ints; every
 /// richedit-requested timer is NATIVE_TIMER_BASE + n so the WM_TIMER route
 /// is unambiguous forever.
@@ -568,6 +577,14 @@ pub(crate) mod wndproc {
                         let _ = KillTimer(Some(hwnd), DEADLINE_TIMER);
                     }
                     be.deadline_fire()?;
+                } else if wparam.0 == MAILBOX_WAKE_TIMER {
+                    // the mailbox-recovery wake fired — one-shot: kill it
+                    // and run the deferred turn, which drains the mailbox
+                    // and reads the failure latch at its safe point
+                    unsafe {
+                        let _ = KillTimer(Some(hwnd), MAILBOX_WAKE_TIMER);
+                    }
+                    be.turn()?;
                 } else if native_timer_decode(wparam.0).is_some() {
                     // tid is the win32 id — the map resolves owner+richedit id
                     be.native_timer_fire(wparam.0)?;

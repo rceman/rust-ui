@@ -544,6 +544,24 @@ fn deferrable(msg: u32) -> bool {
     )
 }
 
+/// Where a `mailbox_wake` attempt landed — which route produced
+/// progress, the terminal latch, or the closed short-circuit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum WakeOutcome {
+    /// WM_PUMP posted to the target's queue
+    Posted,
+    /// synchronous send delivered after the post failed
+    Sent,
+    /// recovery timer armed after post+send both failed — WM_TIMER is
+    /// synthesized by the target's wait, so the pump lands the moment
+    /// the receiver becomes capable again (no second producer needed)
+    TimerArmed,
+    /// all three routes failed — the typed failure is latched
+    Latched,
+    /// window already closed — no wake attempted
+    Skipped,
+}
+
 impl<S, M, U, V> Backend<S, M, U, V>
 where
     M: 'static,
@@ -2400,21 +2418,34 @@ where
     }
 
     /// One cross-thread mailbox wake attempt — the shared progress
-    /// authority behind `poke_ui`. Post-first (cheap, queue-coalesced);
-    /// when the post itself fails, fall back to a bounded SYNCHRONOUS
-    /// send — the target thread's own message wait delivers it — so a
-    /// single failed post still guarantees progress instead of needing
-    /// another enqueue or an unrelated UI turn. Only when BOTH routes
-    /// fail is the typed failure latched (read at the turn safe-point
-    /// and at run-loop exit).
-    fn mailbox_wake(hwnd_raw: usize, closed: &AtomicBool, mb: &Arc<crate::tasks::Mailbox>) {
+    /// authority behind `poke_ui`. Three routes, in order:
+    ///
+    /// 1. `PostMessageW` — cheap, queue-coalesced;
+    /// 2. bounded SYNCHRONOUS `SendMessageTimeoutW` — delivered by the
+    ///    target's own wait, so a failed post still guarantees progress;
+    /// 3. one-shot `MAILBOX_WAKE_TIMER` — WM_TIMER is SYNTHESIZED by the
+    ///    target's message wait, not posted through its thread queue,
+    ///    so it still fires when the queue was saturated or the receiver
+    ///    was briefly unable to answer the send. This is the progress
+    ///    guarantee that needs no second producer, no new enqueue and no
+    ///    incidental UI input: once the receiver returns to its wait the
+    ///    pump runs and the mailbox drains.
+    ///
+    /// Only when ALL THREE routes fail (or the window is already closed)
+    /// is the typed failure latched — read at the turn safe-point and at
+    /// run-loop exit.
+    fn mailbox_wake(
+        hwnd_raw: usize,
+        closed: &AtomicBool,
+        mb: &Arc<crate::tasks::Mailbox>,
+    ) -> WakeOutcome {
         if closed.load(Ordering::SeqCst) {
-            return;
+            return WakeOutcome::Skipped;
         }
         let hwnd = HWND(hwnd_raw as *mut c_void);
         let posted = unsafe { PostMessageW(Some(hwnd), WM_PUMP, WPARAM(0), LPARAM(0)).is_ok() };
         if posted {
-            return;
+            return WakeOutcome::Posted;
         }
         let mut result = 0usize;
         let delivered = unsafe {
@@ -2429,20 +2460,27 @@ where
             )
             .0 != 0
         };
-        if !delivered {
-            mb.wake_post_failed();
+        if delivered {
+            return WakeOutcome::Sent;
         }
+        let armed = unsafe { SetTimer(Some(hwnd), window::MAILBOX_WAKE_TIMER, 50, None) } != 0;
+        if armed {
+            return WakeOutcome::TimerArmed;
+        }
+        mb.wake_post_failed();
+        WakeOutcome::Latched
     }
 
     /// test seam: exercise the wake authority against a caller-provided
-    /// hwnd (live -> posted; destroyed -> post+send fail -> latch)
+    /// hwnd (live -> Posted; dead -> post+send+timer all fail -> Latched;
+    /// saturated queue + blocked receiver -> TimerArmed)
     #[cfg(test)]
     pub(crate) fn mailbox_wake_for_test(
         hwnd: HWND,
         closed: &AtomicBool,
         mb: &Arc<crate::tasks::Mailbox>,
-    ) {
-        Self::mailbox_wake(hwnd.0 as usize, closed, mb);
+    ) -> WakeOutcome {
+        Self::mailbox_wake(hwnd.0 as usize, closed, mb)
     }
 
     /// fatal (typed) error from inside a WndProc — surface on next turn
