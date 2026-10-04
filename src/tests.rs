@@ -5938,12 +5938,12 @@ mod native_contract_tests {
         );
     }
 
-    /// F01 — the mailbox wake must have a deterministic outcome when the
-    /// posted WM_PUMP fails: post fails -> bounded synchronous send ->
-    /// one-shot recovery timer -> only then the typed failure latch.
-    /// Proven against a live-then-destroyed window: destroyed hwnd fails
-    /// ALL THREE routes -> latch set; a live hwnd's post succeeds -> no
-    /// latch; closed suppresses the attempt entirely.
+    /// F01 — the waitable-event authority against its failure modes.
+    /// A live event signals (durable, already awaited by the run loop);
+    /// a dead event handle is the ONLY failure mode and it is TERMINAL:
+    /// the mailbox closes (pending envelopes dropped, producers see
+    /// Closed, waiters woken) and the typed failure is latched — the
+    /// "accepted work + dead wake" state is unrepresentable.
     #[test]
     fn mailbox_wake_failure_is_a_deterministic_outcome() {
         use std::sync::Arc;
@@ -5956,138 +5956,146 @@ mod native_contract_tests {
         >;
         let closed = Arc::new(AtomicBool::new(false));
         let mb = crate::tasks::Mailbox::new();
-        let hwnd = probe_hwnd();
-        // live hwnd -> post succeeds -> no failure latched
+        // live event -> Signaled, no latch
+        let ev = unsafe {
+            windows::Win32::System::Threading::CreateEventExW(
+                None,
+                windows::core::PCWSTR::null(),
+                windows::Win32::System::Threading::CREATE_EVENT(0),
+                windows::Win32::System::Threading::EVENT_ALL_ACCESS.0,
+            )
+            .unwrap()
+        };
         assert_eq!(
-            Be::mailbox_wake_for_test(hwnd, &closed, &mb),
-            crate::platform::win32::WakeOutcome::Posted
-        );
-        assert!(!mb.take_wake_failure(), "a successful post latches nothing");
-        // destroy the hwnd -> post fails, send fails, timer arm fails ->
-        // the typed failure is latched for the turn safe-point
-        unsafe {
-            let _ = windows::Win32::UI::WindowsAndMessaging::DestroyWindow(hwnd);
-        }
-        assert_eq!(
-            Be::mailbox_wake_for_test(hwnd, &closed, &mb),
-            crate::platform::win32::WakeOutcome::Latched
-        );
-        assert!(
-            mb.take_wake_failure(),
-            "post+send+timer all failing on a dead hwnd must latch the failure"
-        );
-        // closed suppresses the wake entirely — no attempt, no latch
-        closed.store(true, Ordering::SeqCst);
-        assert_eq!(
-            Be::mailbox_wake_for_test(hwnd, &closed, &mb),
-            crate::platform::win32::WakeOutcome::Skipped
+            Be::mailbox_wake_for_test(ev, &closed, &mb),
+            crate::platform::win32::WakeOutcome::Signaled
         );
         assert!(
             !mb.take_wake_failure(),
-            "a closed window never latches a wake failure"
+            "a successful signal latches nothing"
+        );
+        unsafe {
+            let _ = windows::Win32::Foundation::CloseHandle(ev);
+        }
+        // a NEVER-VALID handle value (not a closed-but-reusable one) ->
+        // SetEvent fails deterministically -> TERMINAL: mailbox closed
+        // (accepted work dropped, not silently queued), latch set
+        let dead = windows::Win32::Foundation::HANDLE(0xDEAD_BEEFusize as *mut std::ffi::c_void);
+        crate::tasks::UiProxy::<u32>::new(mb.clone())
+            .try_send(7u32)
+            .unwrap();
+        assert_eq!(
+            Be::mailbox_wake_for_test(dead, &closed, &mb),
+            crate::platform::win32::WakeOutcome::Latched
+        );
+        assert!(mb.is_closed(), "dead wake authority must close the mailbox");
+        assert!(
+            mb.take_wake_failure(),
+            "SetEvent failure must latch the typed failure"
+        );
+        assert!(
+            crate::tasks::UiProxy::<u32>::new(mb.clone())
+                .try_send(9u32)
+                .is_err(),
+            "producers see terminal Closed after the wake channel died"
+        );
+        // closed suppresses the wake entirely — no attempt, no latch
+        let mb2 = crate::tasks::Mailbox::new();
+        closed.store(true, Ordering::SeqCst);
+        assert_eq!(
+            Be::mailbox_wake_for_test(ev, &closed, &mb2),
+            crate::platform::win32::WakeOutcome::Skipped
         );
     }
 
-    /// F01 — the exact remaining defect, proven end-to-end on REAL OS
-    /// primitives: the mailbox accepts work, the posted wake fails on a
-    /// SATURATED receiver queue (ERROR_NOT_ENOUGH_QUOTA), the bounded
-    /// synchronous send times out while the receiver is blocked, NO
-    /// second producer/enqueue/UI input ever occurs — and the one-shot
-    /// recovery WM_TIMER still delivers the pump the moment the receiver
-    /// returns to its wait, draining the accepted work. The system cannot
-    /// sit blocked forever with pending work + an unread latch.
+    /// F01 — the systemic invariant on REAL OS primitives: a receiver
+    /// thread blocked in `MsgWaitForMultipleObjectsEx` on BOTH the event
+    /// and its message queue; its posted queue is SATURATED to quota
+    /// (the exact condition that killed the old posted wake) and it is
+    /// briefly blocked — the accepted envelope still delivers because
+    /// progress lives on the waitable event, independent of queue
+    /// capacity, send cooperation, timers, or a second producer.
     #[test]
-    fn mailbox_wake_survives_queue_saturation_then_recovery() {
-        use std::sync::atomic::{AtomicBool, AtomicUsize};
+    fn mailbox_event_wakes_through_queue_saturation() {
+        use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
         use std::sync::mpsc;
-        // mailbox the receiver's WM_TIMER handler drains — the real
-        // accepted-work container, not a flag surrogate
         static MB: AtomicUsize = AtomicUsize::new(0);
+        static EV: AtomicUsize = AtomicUsize::new(0);
         static DELIVERED: AtomicBool = AtomicBool::new(false);
-        unsafe extern "system" fn recv_wndproc(
-            hwnd: windows::Win32::Foundation::HWND,
-            msg: u32,
-            wp: windows::Win32::Foundation::WPARAM,
-            lp: windows::Win32::Foundation::LPARAM,
-        ) -> windows::Win32::Foundation::LRESULT {
-            if msg == WM_TIMER && wp.0 == crate::platform::win32::window::MAILBOX_WAKE_TIMER {
-                unsafe {
-                    let _ = KillTimer(
-                        Some(hwnd),
-                        crate::platform::win32::window::MAILBOX_WAKE_TIMER,
-                    );
-                    let mbp = MB.load(std::sync::atomic::Ordering::SeqCst)
-                        as *const crate::tasks::Mailbox;
-                    if !mbp.is_null() && (*mbp).pop().is_some() {
-                        DELIVERED.store(true, std::sync::atomic::Ordering::SeqCst);
-                    }
-                    PostQuitMessage(0);
-                }
-                return windows::Win32::Foundation::LRESULT(0);
-            }
-            unsafe { windows::Win32::UI::WindowsAndMessaging::DefWindowProcW(hwnd, msg, wp, lp) }
-        }
-        let (tx, rx) = mpsc::channel::<usize>();
+        let (tx, rx) = mpsc::channel::<u32>();
         let receiver = std::thread::spawn(move || {
             unsafe {
-                let cls = windows::core::w!("rustui_wake_recv");
-                let wc = WNDCLASSEXW {
-                    cbSize: std::mem::size_of::<WNDCLASSEXW>() as u32,
-                    lpszClassName: cls,
-                    hInstance: windows::Win32::System::LibraryLoader::GetModuleHandleW(None)
-                        .unwrap()
-                        .into(),
-                    lpfnWndProc: Some(recv_wndproc),
-                    ..Default::default()
-                };
-                let _ = RegisterClassExW(&wc);
-                let hwnd = CreateWindowExW(
-                    WINDOW_EX_STYLE(0),
-                    cls,
-                    windows::core::w!("wake_recv"),
-                    WS_OVERLAPPEDWINDOW,
-                    0,
-                    0,
-                    200,
-                    100,
-                    None,
-                    None,
-                    None,
-                    None,
-                )
-                .unwrap();
-                tx.send(hwnd.0 as usize).unwrap();
-                // BLOCK: the send attempt must find the receiver unable
-                // to answer so the timeout branch runs deterministically
-                std::thread::sleep(std::time::Duration::from_millis(900));
-                // receiver recovers: real blocking GetMessage loop — the
-                // synthesized WM_TIMER fires here, drains the mailbox and
-                // posts WM_QUIT
+                // create the thread's message queue, then hand its id to
+                // the saturating producer
                 let mut m = MSG::default();
-                let mut pumped = 0u32;
-                while GetMessageW(&mut m, None, 0, 0).as_bool() && pumped < 20000 {
-                    pumped += 1;
-                    DispatchMessageW(&m);
+                PeekMessageW(
+                    &mut m,
+                    None,
+                    0,
+                    0,
+                    windows::Win32::UI::WindowsAndMessaging::PM_NOREMOVE,
+                );
+                tx.send(windows::Win32::System::Threading::GetCurrentThreadId())
+                    .unwrap();
+            }
+            // BLOCK while the producer saturates the queue — the old
+            // posted route failed here; the event route cannot
+            std::thread::sleep(std::time::Duration::from_millis(700));
+            // the run loop's real shape — drain queued input first, then
+            // the event wait returns WAIT_OBJECT_0 for the mailbox pulse
+            unsafe {
+                let ev = windows::Win32::Foundation::HANDLE(
+                    EV.load(Ordering::SeqCst) as *mut std::ffi::c_void
+                );
+                let mut m = MSG::default();
+                while PeekMessageW(
+                    &mut m,
+                    None,
+                    0,
+                    0,
+                    windows::Win32::UI::WindowsAndMessaging::PM_REMOVE,
+                )
+                .as_bool()
+                {}
+                let wait = windows::Win32::UI::WindowsAndMessaging::MsgWaitForMultipleObjectsEx(
+                    Some(&[ev]),
+                    10000,
+                    windows::Win32::UI::WindowsAndMessaging::QS_ALLINPUT,
+                    windows::Win32::UI::WindowsAndMessaging::MWMO_INPUTAVAILABLE,
+                );
+                assert_eq!(
+                    wait,
+                    windows::Win32::Foundation::WAIT_OBJECT_0,
+                    "the mailbox event must fire the wait after saturation drains"
+                );
+                let mbp = MB.load(Ordering::SeqCst) as *const crate::tasks::Mailbox;
+                if (*mbp).pop().is_some() {
+                    DELIVERED.store(true, Ordering::SeqCst);
                 }
-                let _ = DestroyWindow(hwnd);
             }
         });
-        let hwnd = windows::Win32::Foundation::HWND(rx.recv().unwrap() as *mut std::ffi::c_void);
+        let receiver_tid = rx.recv().unwrap();
         let mb = crate::tasks::Mailbox::new();
-        // work is ACCEPTED into the mailbox before the wake attempt
-        let proxy = crate::tasks::UiProxy::<u32>::new(mb.clone());
-        proxy.try_send(42u32).unwrap();
+        let ev = unsafe {
+            windows::Win32::System::Threading::CreateEventExW(
+                None,
+                windows::core::PCWSTR::null(),
+                windows::Win32::System::Threading::CREATE_EVENT(0),
+                windows::Win32::System::Threading::EVENT_ALL_ACCESS.0,
+            )
+            .unwrap()
+        };
+        EV.store(ev.0 as usize, Ordering::SeqCst);
         MB.store(
             std::sync::Arc::into_raw(mb.clone()) as usize,
-            std::sync::atomic::Ordering::SeqCst,
+            Ordering::SeqCst,
         );
-        let closed = std::sync::Arc::new(AtomicBool::new(false));
-        // saturate the receiver's posted queue — the SAME quota failure
-        // the reviewer reproduced (post_error 1816)
+        // saturate the receiver's posted queue to quota — the exact
+        // ERROR_NOT_ENOUGH_QUOTA condition the old wake died on
         unsafe {
             let mut quota = 0usize;
-            while PostMessageW(
-                Some(hwnd),
+            while PostThreadMessageW(
+                receiver_tid,
                 WM_USER,
                 windows::Win32::Foundation::WPARAM(0),
                 windows::Win32::Foundation::LPARAM(0),
@@ -6098,48 +6106,94 @@ mod native_contract_tests {
                 assert!(quota < 20000, "post quota never filled");
             }
         }
+        let closed = std::sync::Arc::new(AtomicBool::new(false));
+        // ONE producer, ONE accepted envelope — no second enqueue, no UI
+        crate::tasks::UiProxy::<u32>::new(mb.clone())
+            .try_send(42u32)
+            .unwrap();
         type Be = crate::platform::win32::Backend<
             (),
             Msg,
             fn(&mut (), Msg, &mut UpdateCtx<Msg>),
             fn(&(), &mut Ui<Msg>),
         >;
-        // single wake attempt — no producer, no second enqueue, no UI
-        let outcome = Be::mailbox_wake_for_test(hwnd, &closed, &mb);
         assert_eq!(
-            outcome,
-            crate::platform::win32::WakeOutcome::TimerArmed,
-            "post failed (quota) + send timed out -> recovery timer armed"
+            Be::mailbox_wake_for_test(ev, &closed, &mb),
+            crate::platform::win32::WakeOutcome::Signaled
         );
         receiver.join().unwrap();
         assert!(
-            DELIVERED.load(std::sync::atomic::Ordering::SeqCst),
-            "the accepted mailbox envelope was delivered after recovery"
+            DELIVERED.load(Ordering::SeqCst),
+            "the accepted envelope was delivered through the event wait"
         );
         assert!(
             !mb.take_wake_failure(),
-            "timer-delivered progress must not also latch a failure"
+            "a signaled event must not latch a failure"
         );
         unsafe {
             drop(std::sync::Arc::from_raw(
-                MB.swap(0, std::sync::atomic::Ordering::SeqCst) as *const crate::tasks::Mailbox,
+                MB.swap(0, Ordering::SeqCst) as *const crate::tasks::Mailbox
             ));
+            let _ = windows::Win32::Foundation::CloseHandle(ev);
         }
     }
 
-    /// F01 — the WM_TIMER recovery arm routes to `be.turn()`: a real
-    /// mailbox envelope queued before dispatch is delivered to the app's
-    /// update by the turn the recovery timer drives.
+    /// F01 — idle must stay blocked: an unsignaled event + empty queue
+    /// leaves the shared wait sleeping (timeout) — no self-wake, no
+    /// polling loop.
     #[test]
-    fn mailbox_recovery_timer_dispatches_a_turn() {
+    fn mailbox_wait_blocks_when_idle() {
+        unsafe {
+            let ev = windows::Win32::System::Threading::CreateEventExW(
+                None,
+                windows::core::PCWSTR::null(),
+                windows::Win32::System::Threading::CREATE_EVENT(0),
+                windows::Win32::System::Threading::EVENT_ALL_ACCESS.0,
+            )
+            .unwrap();
+            let wait = windows::Win32::UI::WindowsAndMessaging::MsgWaitForMultipleObjectsEx(
+                Some(&[ev]),
+                200,
+                windows::Win32::UI::WindowsAndMessaging::QS_ALLINPUT,
+                windows::Win32::UI::WindowsAndMessaging::MWMO_INPUTAVAILABLE,
+            );
+            assert_eq!(
+                wait,
+                windows::Win32::Foundation::WAIT_TIMEOUT,
+                "idle wait must block — no self-firing wake"
+            );
+            let _ = windows::Win32::Foundation::CloseHandle(ev);
+        }
+    }
+
+    /// F01 — shutdown race: a producer after terminal close is rejected
+    /// with Closed — no envelope can be accepted behind a dead wake.
+    #[test]
+    fn mailbox_send_after_close_is_terminal_closed() {
+        let mb = crate::tasks::Mailbox::new();
+        let proxy = crate::tasks::UiProxy::<u32>::new(mb.clone());
+        proxy.try_send(1u32).unwrap();
+        mb.close();
+        assert!(matches!(
+            proxy.try_send(2u32),
+            Err(crate::tasks::ProxySendError::Closed)
+        ));
+        assert_eq!(mb.queue_len(), 0, "close dropped the pending envelope");
+    }
+
+    /// F01 — coalescing + exact delivery: several producer pushes may
+    /// collapse into one event pulse (auto-reset); one turn still drains
+    /// every envelope exactly once — no lost work, no duplicates.
+    #[test]
+    fn mailbox_event_coalescing_delivers_everything_once() {
         struct S {
-            hits: u32,
+            got: Vec<u32>,
         }
         let mut rig = Rig::new(
-            S { hits: 0 },
+            S { got: Vec::new() },
             |s: &mut S, m: Msg, _: &mut UpdateCtx<Msg>| {
-                if let Msg::Scoped(9, _) = m {
-                    s.hits += 1;
+                if let Msg::Scoped(n, _) = m {
+                    s.got.push(n);
                 }
             },
             |_: &S, ui: &mut Ui<Msg>| {
@@ -6153,28 +6207,14 @@ mod native_contract_tests {
             crate::platform::win32::PeerCtx::for_test().unwrap(),
         )
         .unwrap();
-        // real accepted work in the mailbox (proxy producer path)
-        crate::tasks::UiProxy::<Msg>::new(be.rt.mailbox.clone())
-            .try_send(Msg::Scoped(9, 0))
-            .unwrap();
-        // dispatch the recovery-timer arrival through the real owned path
-        crate::platform::win32::window::wndproc::dispatch_owned(
-            windows::Win32::Foundation::HWND::default(),
-            QueuedMsg {
-                msg: WM_TIMER,
-                wparam: crate::platform::win32::window::MAILBOX_WAKE_TIMER,
-                lparam: 0,
-                rect: None,
-                arrival_focus: None,
-            },
-            &mut be,
-        )
-        .unwrap();
-        // the turn the timer drove drained the mailbox into update
-        assert_eq!(
-            be.rt.state.hits, 1,
-            "recovery timer turn delivered the envelope"
-        );
+        let proxy = crate::tasks::UiProxy::<Msg>::new(be.rt.mailbox.clone());
+        for i in 0..5 {
+            proxy.try_send(Msg::Scoped(i, 0)).unwrap();
+        }
+        // one bounded turn — all five envelopes deliver exactly once,
+        // in order, regardless of how many wake signals coalesced
+        be.turn().unwrap();
+        assert_eq!(be.rt.state.got, vec![0, 1, 2, 3, 4]);
     }
 
     /// F01 — painted-key replay ownership: a queued Enter captured with
