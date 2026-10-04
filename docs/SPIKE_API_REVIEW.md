@@ -1,6 +1,6 @@
 # Spike API review — composer contract v0.1
 
-**Current candidate:** `eaf5a56` on `agent/windows-native-composer-contract-spike-v0.1-swe2`
+**Current candidate:** `00dc29a` on `agent/windows-native-composer-contract-spike-v0.1-swe2`
 **Reviewed candidate (historical):** `0405a80` — the API excerpts below
 reflect that review-time snapshot; the public API surface has not
 changed since.
