@@ -445,7 +445,8 @@
         "data-part": opts.fieldKey ? "field" : undefined,
         "data-key": opts.fieldKey,
         "data-orientation": horizontal ? "horizontal" : "vertical",
-        "data-disabled": opts.disabled || undefined,
+        "data-disabled": opts.disabled ? "true" : undefined,
+        "data-invalid": opts.invalid ? "true" : undefined,
         // row: settings-row layout - full width, control right-aligned
         class:
           `cn-field cn-field-orientation-${horizontal ? "horizontal" : "vertical"} group/field flex ${opts.row ? "w-full justify-between" : "w-72"} ${horizontal ? "flex-row items-center" : "flex-col *:w-full [&>.sr-only]:w-auto"}`,
@@ -606,16 +607,19 @@
     e({ automation_id: `textarea.default.${st}`, component: "textarea", variant: "default", state: st, category: "forms", render: () => textarea({ ...opts, id: `textarea.default.${st}` }) });
   }
 
-  const cbRow = (cbEl, labelText) =>
-    h("div", { class: "flex items-center gap-2" }, cbEl + h("span", { class: "cn-label text-sm font-medium" }, labelText));
+  const cbRow = (cbEl, labelText, ownerId) =>
+    h("div", { class: "flex items-center gap-2" }, cbEl +
+      // label lives outside the checkbox control element; data-part-owner
+      // attributes it to the control's parts in the contract (C02)
+      h("span", { class: "cn-label text-sm font-medium", "data-part": "label", "data-part-owner": ownerId }, labelText));
   for (const st of ["unchecked", "checked", "disabled", "disabled-checked", "invalid", "invalid-checked"]) {
     const opts = { id: `checkbox.default.${st}` };
     const checked = st === "checked" || st === "disabled-checked" || st === "invalid-checked";
     if (st.startsWith("disabled")) opts.disabled = true;
     if (st.startsWith("invalid")) opts.invalid = true;
-    e({ automation_id: opts.id, component: "checkbox", variant: "default", state: st, category: "forms", render: () => cbRow(checkbox(checked ? "checked" : "unchecked", opts), st.replace(/-/g, " ")) });
+    e({ automation_id: opts.id, component: "checkbox", variant: "default", state: st, category: "forms", render: () => cbRow(checkbox(checked ? "checked" : "unchecked", opts), st.replace(/-/g, " "), opts.id) });
   }
-  e({ automation_id: "checkbox.default.focus-visible", component: "checkbox", variant: "default", state: "focus-visible", category: "forms", render: () => cbRow(checkbox("checked", { force: "focus,focus-visible", id: "checkbox.default.focus-visible" }), "Focus visible") });
+  e({ automation_id: "checkbox.default.focus-visible", component: "checkbox", variant: "default", state: "focus-visible", category: "forms", render: () => cbRow(checkbox("checked", { force: "focus,focus-visible", id: "checkbox.default.focus-visible" }), "Focus visible", "checkbox.default.focus-visible") });
 
   // Radio group: one group per state cell
   e({ automation_id: "radio-group.default.selected", component: "radio-group", variant: "default", state: "selected", category: "forms", render: () => radioGroup({ id: "radio-group.default.selected", items: [{ checked: true, label: "Option A", key: "option-a" }, { checked: false, label: "Option B", key: "option-b" }] }) });
@@ -649,7 +653,7 @@
 
   // Field - label + description, error, disabled
   e({ automation_id: "field.default", component: "field", variant: "default", state: "normal", category: "forms", render: () => field({ id: "field.default", label: "Email", description: "We'll only use this for notifications.", control: input({ placeholder: "you@example.com" }) }) });
-  e({ automation_id: "field.default.invalid", component: "field", variant: "default", state: "invalid", category: "forms", render: () => field({ id: "field.default.invalid", label: "Email", error: "Enter a valid email address.", control: input({ value: "not-an-email", invalid: true }) }) });
+  e({ automation_id: "field.default.invalid", component: "field", variant: "default", state: "invalid", category: "forms", render: () => field({ id: "field.default.invalid", label: "Email", error: "Enter a valid email address.", control: input({ value: "not-an-email", invalid: true }), invalid: true }) });
   e({ automation_id: "field.default.disabled", component: "field", variant: "default", state: "disabled", category: "forms", render: () => field({ id: "field.default.disabled", label: "Email", description: "Locked for this account.", control: input({ placeholder: "you@example.com", disabled: true, part: "control" }), disabled: true }) });
   e({ automation_id: "field.horizontal", component: "field", variant: "horizontal", state: "normal", category: "forms", render: () => field({ id: "field.horizontal", orientation: "horizontal", label: "Two-factor auth", description: "Require a second factor at sign-in.", control: switch_(true) }) });
 
@@ -938,22 +942,30 @@
             "data-open": true, "data-side": "bottom", "data-align": "start", role: "menu",
             class: "cn-dropdown-menu-content cn-dropdown-menu-content-logical z-50 max-h-(--available-height) w-(--anchor-width) origin-(--transform-origin) overflow-x-hidden overflow-y-auto outline-none data-closed:overflow-hidden w-48",
           },
-            h("div", { "data-slot": "dropdown-menu-label", "data-part": "label", class: "cn-dropdown-menu-label" }, "My Account") +
-            h("div", { "data-slot": "dropdown-menu-separator", "data-part": "separator", "data-key": "1", class: "cn-dropdown-menu-separator" }) +
-            h("div", { "data-slot": "dropdown-menu-group", role: "group" },
+            // upstream grouping (dropdown-menu-example.tsx): Group+Label per
+            // section - "My Account" items / checkboxes "Appearance" /
+            // radio "Panel Position"; destructive tail ungrouped
+            h("div", { "data-slot": "dropdown-menu-group", "data-part": "group", "data-key": "account", role: "group" },
+              h("div", { "data-slot": "dropdown-menu-label", "data-part": "label", "data-key": "account", class: "cn-dropdown-menu-label" }, "My Account") +
               menuItem("Profile", { key: "profile", icon: "user", cls: "cn-dropdown-menu-item group/dropdown-menu-item relative flex cursor-default items-center outline-hidden select-none data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0", shortcut: "Ctrl+Shift+P" }) +
               menuItem("Settings", { key: "settings", icon: "settings", cls: "cn-dropdown-menu-item group/dropdown-menu-item relative flex cursor-default items-center outline-hidden select-none data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0", shortcut: "Ctrl+," }) +
               menuItem("Team members", { key: "team", icon: "user", highlighted: true, force: "focus", id: "dropdown-menu.default.item-highlighted", cls: "cn-dropdown-menu-item group/dropdown-menu-item relative flex cursor-default items-center outline-hidden select-none data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0" }) +
-              menuItem("Billing", { key: "billing", icon: "settings", disabled: true, cls: "cn-dropdown-menu-item group/dropdown-menu-item relative flex cursor-default items-center outline-hidden select-none data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0" }) +
+              menuItem("Billing", { key: "billing", icon: "settings", disabled: true, cls: "cn-dropdown-menu-item group/dropdown-menu-item relative flex cursor-default items-center outline-hidden select-none data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0" })) +
+            h("div", { "data-slot": "dropdown-menu-separator", "data-part": "separator", "data-key": "1", class: "cn-dropdown-menu-separator" }) +
+            h("div", { "data-slot": "dropdown-menu-group", "data-part": "group", "data-key": "appearance", role: "group" },
+              h("div", { "data-slot": "dropdown-menu-label", "data-part": "label", "data-key": "appearance", class: "cn-dropdown-menu-label" }, "Appearance") +
               menuItem("Show toolbar", { key: "toolbar", slot: "dropdown-menu-checkbox-item", type: "checkbox", checked: true, indicator: h("span", { "data-slot": "dropdown-menu-item-indicator", "data-part": "indicator", class: "cn-dropdown-menu-item-indicator" }, ic("check")), cls: "cn-dropdown-menu-checkbox-item group/dropdown-menu-item relative flex cursor-default items-center outline-hidden select-none data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0" }) +
-              menuItem("Word wrap", { key: "word-wrap", slot: "dropdown-menu-checkbox-item", type: "checkbox", checked: false, indicator: h("span", { "data-slot": "dropdown-menu-item-indicator", "data-part": "indicator", class: "cn-dropdown-menu-item-indicator" }), cls: "cn-dropdown-menu-checkbox-item group/dropdown-menu-item relative flex cursor-default items-center outline-hidden select-none data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0" }) +
+              menuItem("Word wrap", { key: "word-wrap", slot: "dropdown-menu-checkbox-item", type: "checkbox", checked: false, indicator: h("span", { "data-slot": "dropdown-menu-item-indicator", "data-part": "indicator", class: "cn-dropdown-menu-item-indicator" }), cls: "cn-dropdown-menu-checkbox-item group/dropdown-menu-item relative flex cursor-default items-center outline-hidden select-none data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0" })) +
+            h("div", { "data-slot": "dropdown-menu-separator", "data-part": "separator", "data-key": "2", class: "cn-dropdown-menu-separator" }) +
+            h("div", { "data-slot": "dropdown-menu-group", "data-part": "group", "data-key": "panel-position", role: "group" },
+              h("div", { "data-slot": "dropdown-menu-label", "data-part": "label", "data-key": "panel-position", class: "cn-dropdown-menu-label" }, "Panel Position") +
               h("div", { "data-slot": "dropdown-menu-radio-group", role: "group" },
                 menuItem("Panel left", { key: "panel-left", slot: "dropdown-menu-radio-item", type: "radio", checked: true, indicator: h("span", { "data-slot": "dropdown-menu-item-indicator", "data-part": "indicator", class: "cn-dropdown-menu-item-indicator" }, ic("check")), cls: "cn-dropdown-menu-radio-item group/dropdown-menu-item relative flex cursor-default items-center outline-hidden select-none data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0" }) +
                 menuItem("Panel right", { key: "panel-right", slot: "dropdown-menu-radio-item", type: "radio", checked: false, indicator: h("span", { "data-slot": "dropdown-menu-item-indicator", "data-part": "indicator", class: "cn-dropdown-menu-item-indicator" }), cls: "cn-dropdown-menu-radio-item group/dropdown-menu-item relative flex cursor-default items-center outline-hidden select-none data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0" }))) +
-            h("div", { "data-slot": "dropdown-menu-separator", "data-part": "separator", "data-key": "2", class: "cn-dropdown-menu-separator" }) +
+            h("div", { "data-slot": "dropdown-menu-separator", "data-part": "separator", "data-key": "3", class: "cn-dropdown-menu-separator" }) +
             menuItem("Delete account", { key: "delete", variant: "destructive", cls: "cn-dropdown-menu-item group/dropdown-menu-item relative flex cursor-default items-center outline-hidden select-none data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0", icon: "log-out" }) +
             menuItem("Delete workspace", { key: "delete-ws", variant: "destructive", highlighted: true, force: "focus", id: "dropdown-menu.default.item-destructive-highlighted", icon: "log-out", cls: "cn-dropdown-menu-item group/dropdown-menu-item relative flex cursor-default items-center outline-hidden select-none data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0" }))),
-        "h-[420px]"),
+        "h-[464px]"),
   });
 
   // Select open (trigger + popup list - selected item indicator)
@@ -1080,7 +1092,7 @@
             h("div", { class: "text-muted-foreground text-sm" }, "Customize how the app looks.")) +
           h("div", { "data-slot": "separator", "data-part": "separator", "data-key": "header", "data-orientation": "horizontal", role: "separator", class: "bg-border mt-4 h-px shrink-0" }) +
           h("div", { class: "flex flex-1 flex-col overflow-y-auto" },
-            h("div", { class: "flex w-full flex-col" },
+            h("div", { class: "flex w-full flex-col pt-3" },
               field({ orientation: "horizontal", row: true, fieldKey: "theme", label: "Theme", description: "Select the interface theme.", control: selectTrigger({ text: "System", placeholder: false }) }) +
               h("div", { "data-slot": "separator", "data-part": "separator", "data-key": "row-1", "data-orientation": "horizontal", role: "separator", class: "bg-border my-3 h-px shrink-0" }) +
               field({ orientation: "horizontal", row: true, fieldKey: "animations", label: "Animations", description: "UI transitions and motion.", control: switch_(true) }) +

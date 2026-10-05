@@ -4,17 +4,22 @@
 // against the screenshot, and proves Geist font resolution exhaustively via
 // CSS.getPlatformFontsForNode. Emits reference.json.
 //
-// Order per page/state/theme (R01):
-//   font proof FIRST (it mutates the DOM: data-fontproof attrs + mirror
-//   nodes; CDP-forced pseudo states do not survive DOM mutation - see the
-//   rev-2 light screenshot defect) and its mutations are fully removed
-//   -> force pseudo states -> settle (>=2 rAF + fonts.ready)
-//   -> measure the EFFECTIVE state -> token-binding eval + pressed parity in
-//   THIS session -> screenshot -> pixel guard + ink validation vs the PNG.
+// CAPTURE PIPELINE ORDER (per page/state/theme, exactly as implemented):
+//   goto ?page&theme&capture=1[&state] -> [data-render-done] -> fonts.ready
+//   -> font proof (light+default only: data-fontproof attrs + mirror nodes,
+//      fully reverted - post-proof DOM mutation drops CDP-forced states)
+//   -> capture-state assertions (scroll/focus/selection)
+//   -> CDP forcePseudoState on every [data-force-state]
+//   -> settle (>=2 rAF + document.fonts.ready)
+//   -> measure IN_PAGE_MEASURE (rect/box/text_runs/parts + text inventory)
+//   -> token-binding eval + pressed parity IN THIS session
+//   -> capture-state assertions again
+//   -> screenshot -> pixel guard (forced-vs-twin crops) + ink validation
+//   -> store under captures[<page>/<state>] -> session detach -> next goto.
 // The screenshot, contract, live binding values and pixel guard all describe
 // the same painted state; no "forced states can't change geometry"
 // assumption (active:translate-y-px is real geometry).
-const { chromium } = require("playwright");
+const { launchCanonical, VIEWPORT } = require("./browser");
 const fs = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
@@ -24,7 +29,6 @@ const V = require("./validate");
 
 const ROOT = path.join(__dirname, "..");
 const URL_BASE = "file:///" + path.join(ROOT, "index.html").replace(/\\/g, "/");
-const VIEWPORT = { width: 1440, height: 1000 };
 const round = (n) => Math.round(n * 1000) / 1000;
 const tokens = JSON.parse(fs.readFileSync(path.join(ROOT, "tokens.json"), "utf8"));
 const bindingsDoc = JSON.parse(fs.readFileSync(path.join(ROOT, "token-bindings.json"), "utf8"));
@@ -34,236 +38,6 @@ const CAPTURE_STATES = {
   navigation: ["default", "settings-nav-collapsed"],
 };
 
-// In-page measurement. Contract authority is the post-force painted state.
-const IN_PAGE_MEASURE = `(() => {
-  const round = (n) => Math.round(n * 1000) / 1000;
-  const errors = [];
-
-  // keyed part identity: chain of data-part ancestors inside the element,
-  // with data-key qualifiers - e.g. item[production].indicator, row[0].cell[1].
-  const partKey = (p, stop) => {
-    const chain = [];
-    let cur = p;
-    while (cur && cur !== stop && cur !== document.body) {
-      if (cur.hasAttribute && cur.hasAttribute("data-part")) {
-        const k = cur.getAttribute("data-key");
-        chain.unshift(
-          k ? cur.getAttribute("data-part") + "[" + k + "]"
-            : cur.getAttribute("data-part"));
-      }
-      cur = cur.parentElement;
-    }
-    return chain.join(".");
-  };
-
-  // canvas font metrics for an effective font (ascent/descent)
-  const ctx2d = document.createElement("canvas").getContext("2d");
-  const fontMetrics = (cs) => {
-    ctx2d.font = cs.fontStyle + " " + cs.fontVariant + " " + cs.fontWeight + " " + cs.fontSize + " / " + cs.lineHeight + " " + cs.fontFamily;
-    try { ctx2d.font = cs.fontStyle + " " + cs.fontWeight + " " + cs.fontSize + " " + cs.fontFamily; } catch (_) {}
-    const m = ctx2d.measureText("Mg");
-    return { ascent: m.fontBoundingBoxAscent, descent: m.fontBoundingBoxDescent };
-  };
-  // baseline_y (element-local, px from element top): the Range rect of a
-  // text node already starts at the font box top (ascent above baseline),
-  // so baseline = rangeTop + fontBoundingBoxAscent of the effective font.
-  const baselineOf = (lineTop, lineHeight, fm) => round(lineTop + fm.ascent);
-
-  // Mirror an input/textarea into a styled div positioned identically, then
-  // measure the mirror's text lines (Range.getClientRects). Value text uses
-  // the control color; placeholder text uses the ::placeholder color.
-  const measureControl = (el, elRect) => {
-    const cs = getComputedStyle(el);
-    const isTa = el.tagName === "TEXTAREA";
-    const runs = [];
-    const entries = [];
-    if (el.value && el.value.trim()) entries.push({ kind: "value", text: el.value, color: cs.color });
-    if (!el.value && el.placeholder && el.placeholder.trim())
-      entries.push({ kind: "placeholder", text: el.placeholder, color: getComputedStyle(el, "::placeholder").color });
-    if (!entries.length) return runs;
-    const fm = fontMetrics(cs);
-    const lh = parseFloat(cs.lineHeight) || fm.ascent + fm.descent;
-    for (const ent of entries) {
-      const m = document.createElement("div");
-      m.setAttribute("style",
-        "position:absolute;left:" + elRect.x + "px;top:" + elRect.y + "px;" +
-        "width:" + elRect.width + "px;" +
-        (isTa ? "" : "height:" + elRect.height + "px;") +
-        "box-sizing:border-box;" +
-        "padding:" + cs.padding + ";border-width:0;" +
-        "font:" + cs.fontStyle + " " + cs.fontWeight + " " + cs.fontSize + "/" + cs.lineHeight + " " + cs.fontFamily + ";" +
-        "letter-spacing:" + cs.letterSpacing + ";text-indent:" + cs.textIndent + ";" +
-        "white-space:" + (isTa ? "pre-wrap" : "pre") + ";" +
-        "overflow-wrap:break-word;word-break:break-word;" +
-        "pointer-events:none;visibility:hidden;");
-      m.textContent = ent.text;
-      document.body.appendChild(m);
-      const tn = m.firstChild;
-      const range = document.createRange();
-      range.selectNodeContents(tn);
-      const rects = [...range.getClientRects()].filter((r) => r.width > 0 || r.height > 0);
-      const lines = rects.map((r) => ({
-        rect: { x: round(r.x - elRect.x), y: round(r.y - elRect.y), width: round(r.width), height: round(r.height) },
-        baseline_y: baselineOf(r.y - elRect.y, lh, fm),
-      }));
-      const u = { x: 1e9, y: 1e9, x2: -1e9, y2: -1e9 };
-      for (const r of rects) {
-        u.x = Math.min(u.x, r.x - elRect.x); u.y = Math.min(u.y, r.y - elRect.y);
-        u.x2 = Math.max(u.x2, r.x - elRect.x + r.width); u.y2 = Math.max(u.y2, r.y - elRect.y + r.height);
-      }
-      runs.push({
-        key: ent.kind, font_ascent: fm.ascent, font_descent: fm.descent,
-        content: ent.text.slice(0, 200),
-        source: ent.kind,
-        rect: rects.length ? { x: round(u.x), y: round(u.y), width: round(u.x2 - u.x), height: round(u.y2 - u.y) } : null,
-        lines,
-        font_family: cs.fontFamily,
-        font_size: round(parseFloat(cs.fontSize)),
-        font_weight: parseInt(cs.fontWeight, 10) || 400,
-        line_height: cs.lineHeight === "normal" ? round(fm.ascent + fm.descent) : round(parseFloat(cs.lineHeight)),
-        color: ent.color,
-        measure: "mirror-div identical box/font styles (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
-      });
-      m.remove();
-    }
-    return runs;
-  };
-
-  // leaf DOM text runs: each non-whitespace text node = one run; the run's
-  // effective font is its parent element's computed style
-  const measureDomText = (el, elRect) => {
-    const runs = [];
-    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
-    let n; let idx = 0;
-    while ((n = walker.nextNode())) {
-      if (!n.nodeValue || !n.nodeValue.trim()) continue;
-      const parent = n.parentElement;
-      if (parent && parent.closest("[data-automation-id]") !== el) continue; // nested element owns its text
-      const cs = getComputedStyle(parent);
-      const fm = fontMetrics(cs);
-      const lh = parseFloat(cs.lineHeight) || fm.ascent + fm.descent;
-      // sr-only/visually-hidden text: laid out (Range gives rects) but not
-      // painted - clipped to 1px. Recorded for the a11y contract, excluded
-      // from pixel-ink validation.
-      const clipped =
-        cs.clipPath === "inset(50%)" || cs.clipPath === "inset(50% 50% 50% 50%)" ||
-        (cs.clip && cs.clip !== "auto") ||
-        (parent.offsetWidth <= 1 && parent.offsetHeight <= 1 && cs.overflow !== "visible");
-      const range = document.createRange();
-      range.selectNodeContents(n);
-      const rects = [...range.getClientRects()].filter((r) => r.width > 0 || r.height > 0);
-      if (!rects.length) continue;
-      const u = { x: 1e9, y: 1e9, x2: -1e9, y2: -1e9 };
-      for (const r of rects) {
-        u.x = Math.min(u.x, r.x - elRect.x); u.y = Math.min(u.y, r.y - elRect.y);
-        u.x2 = Math.max(u.x2, r.x - elRect.x + r.width); u.y2 = Math.max(u.y2, r.y - elRect.y + r.height);
-      }
-      runs.push({
-        key: "text[" + idx + "]", font_ascent: fm.ascent, font_descent: fm.descent,
-        content: n.nodeValue.trim().slice(0, 200),
-        source: "dom",
-        rect: { x: round(u.x), y: round(u.y), width: round(u.x2 - u.x), height: round(u.y2 - u.y) },
-        lines: rects.map((r) => ({
-          rect: { x: round(r.x - elRect.x), y: round(r.y - elRect.y), width: round(r.width), height: round(r.height) },
-          baseline_y: baselineOf(r.y - elRect.y, lh, fm),
-        })),
-        font_family: cs.fontFamily,
-        font_size: round(parseFloat(cs.fontSize)),
-        font_weight: parseInt(cs.fontWeight, 10) || 400,
-        line_height: cs.lineHeight === "normal" ? round(fm.ascent + fm.descent) : round(parseFloat(cs.lineHeight)),
-        color: cs.color,
-        visible: clipped ? false : true,
-      });
-      idx++;
-    }
-    return runs;
-  };
-
-  const els = [...document.querySelectorAll("[data-automation-id]")];
-  const out = [];
-  for (const el of els) {
-    const r = el.getBoundingClientRect();
-    const cs = getComputedStyle(el);
-    const rec = {
-      automation_id: el.getAttribute("data-automation-id"),
-      tag: el.tagName.toLowerCase(),
-      slot: el.getAttribute("data-slot"),
-      force_state: el.getAttribute("data-force-state") || null,
-      rect: { x: round(r.x), y: round(r.y), width: round(r.width), height: round(r.height) },
-      box: {
-        border_radius: [
-          round(parseFloat(cs.borderTopLeftRadius)),
-          round(parseFloat(cs.borderTopRightRadius)),
-          round(parseFloat(cs.borderBottomRightRadius)),
-          round(parseFloat(cs.borderBottomLeftRadius)),
-        ],
-        border_width: [
-          round(parseFloat(cs.borderTopWidth)),
-          round(parseFloat(cs.borderRightWidth)),
-          round(parseFloat(cs.borderBottomWidth)),
-          round(parseFloat(cs.borderLeftWidth)),
-        ],
-        padding: [
-          round(parseFloat(cs.paddingTop)),
-          round(parseFloat(cs.paddingRight)),
-          round(parseFloat(cs.paddingBottom)),
-          round(parseFloat(cs.paddingLeft)),
-        ],
-        opacity: round(parseFloat(cs.opacity)),
-        color: cs.color,
-        background_color: cs.backgroundColor,
-        border_color: cs.borderColor,
-        outline: cs.outlineStyle !== "none" ? { width: round(parseFloat(cs.outlineWidth)), color: cs.outlineColor } : null,
-        box_shadow: cs.boxShadow === "none" ? null : cs.boxShadow,
-        line_height: cs.lineHeight,
-        overflow_x: cs.overflowX,
-        overflow_y: cs.overflowY,
-      },
-      parts: {},
-      text: null,
-      text_runs: [],
-    };
-    // parts: descendants with data-part, keyed; nested automation elements own
-    // their own parts (skip to avoid double-count)
-    for (const p of el.querySelectorAll("[data-part]")) {
-      if (p.closest("[data-automation-id]") !== el) continue;
-      const key = partKey(p, el);
-      const pr = p.getBoundingClientRect();
-      const pcs = getComputedStyle(p);
-      const prec = {
-        x: round(pr.x - r.x), y: round(pr.y - r.y),
-        width: round(pr.width), height: round(pr.height),
-        background_color: pcs.backgroundColor,
-        color: pcs.color,
-      };
-      if (rec.parts[key]) {
-        errors.push(rec.automation_id + ": duplicate part key '" + key + "'");
-      } else {
-        rec.parts[key] = prec;
-      }
-    }
-    if (el.tagName === "INPUT" || el.tagName === "TEXTAREA") {
-      rec.text_runs = measureControl(el, r);
-    } else {
-      rec.text_runs = measureDomText(el, r);
-    }
-    // compatibility summary: first run's font on the element
-    const tr = rec.text_runs[0];
-    if (tr) {
-      rec.text = {
-        content: rec.text_runs.map((x) => x.content).join("\\n").slice(0, 200),
-        rect: tr.rect,
-        font_family: tr.font_family,
-        font_size: tr.font_size,
-        font_weight: tr.font_weight,
-        line_height: tr.line_height,
-        baseline_proxy_y: tr.lines[0] ? tr.lines[0].baseline_y : null,
-      };
-    }
-    out.push(rec);
-  }
-  return { elements: out, errors, doc: { width: round(document.documentElement.scrollWidth), height: round(document.documentElement.scrollHeight) } };
-})()`;
 
 // Ink validation against the just-taken screenshot: inside each text run's
 // rect (+/-1 px), find ink = pixels differing from the dominant local color
@@ -520,9 +294,11 @@ const BINDING_EVAL = (bds) =>
       const comp = parts[prop === "translate-x" ? 0 : 1] || "0px";
       return [id, part, prop, cst, resv(comp, prop === "translate-x" ? r.width : r.height)];
     }
-    const m = { "background-color": "backgroundColor", "color": "color", "border-color": "borderColor", "border-top-width": "borderTopWidth", "border-top-left-radius": "borderTopLeftRadius", "padding-left": "paddingLeft", "padding-right": "paddingRight", "padding-top": "paddingTop", "padding-bottom": "paddingBottom", "margin-top": "marginTop", "height": "height", "width": "width", "font-size": "fontSize", "font-weight": "fontWeight", "line-height": "lineHeight", "opacity": "opacity", "translate-x": "translate", "translate-y": "translate", "box-shadow-width": "boxShadow", "box-shadow-color": "boxShadow", "box-shadow-alpha": "boxShadow" }[prop];
+    const m = { "background-color": "backgroundColor", "color": "color", "border-color": "borderColor", "border-top-width": "borderTopWidth", "border-top-left-radius": "borderTopLeftRadius", "padding-left": "paddingLeft", "padding-right": "paddingRight", "padding-top": "paddingTop", "padding-bottom": "paddingBottom", "margin-top": "marginTop", "height": "height", "width": "width", "font-size": "fontSize", "font-weight": "fontWeight", "line-height": "lineHeight", "opacity": "opacity", "translate-x": "translate", "translate-y": "translate", "box-shadow-width": "boxShadow", "box-shadow-color": "boxShadow", "box-shadow-alpha": "boxShadow", "box-shadow-layers": "boxShadow" }[prop];
     return [id, part, prop, cst, cs[m]];
   })`;
+
+const { IN_PAGE_MEASURE, STATE_ASSERT } = require("./measure");
 
 // R01 pressed parity: pressed vs normal specimen y-offset (translate-y-px),
 // measured on the live post-force DOM.
@@ -565,10 +341,7 @@ async function main() {
   fs.mkdirSync(shotsLight, { recursive: true });
   fs.mkdirSync(shotsDark, { recursive: true });
 
-  const browser = await chromium.launch({
-    channel: "chromium",
-    args: ["--disable-gpu", "--force-color-profile=srgb", "--disable-lcd-text"],
-  });
+  const browser = await launchCanonical();
   const chromiumVersion = browser.version();
 
   const pages = [
@@ -584,6 +357,7 @@ async function main() {
   let fontResolved = { sans: new Set(), mono: new Set() };
   const allErrors = [];
   const live = {};          // same-session binding values (contract.bindings_live)
+  const textInventories = {}; // per page/state owned-text inventory (C02)
   const pressedPairs = [];  // same-session R01 evidence (contract.proofs)
   let pixelGuardPairs = 0;
   let pixelGuardSkipped = 0;
@@ -644,6 +418,12 @@ async function main() {
         );
         if (badIcons.length) allErrors.push(`empty svg(s) on ${pg}/${st}/${theme}: ${badIcons.join(" | ")}`);
 
+        // V04: capture-state sanity before measuring - a contaminated
+        // document (scrolled, wrong focus/selection) must never reach the
+        // contract or the screenshot
+        const stateErrsPre = await page.evaluate(STATE_ASSERT);
+        for (const e of stateErrsPre) allErrors.push(`capture-state ${pg}/${st}/${theme} pre-measure: ${e}`);
+
         const measured = await page.evaluate(IN_PAGE_MEASURE);
         for (const e of measured.errors) allErrors.push(`${pg}/${st}/${theme}: ${e}`);
         docSizes[`${pg}/${st}/${theme}`] = measured.doc;
@@ -651,14 +431,20 @@ async function main() {
         if (theme === "light") {
           for (const mrec of measured.elements) {
             const id = mrec.automation_id;
-            elements[id] = elements[id] || { rec: mrec, placements: [] };
-            elements[id].rec = mrec;
-            elements[id].placements.push({
-              page: pg, capture_state: st,
-              x: mrec.rect.x, y: mrec.rect.y,
-              width: mrec.rect.width, height: mrec.rect.height,
-            });
+            if (!elements[id]) elements[id] = { captures: {}, slot: mrec.slot, tag: mrec.tag, force_state: mrec.force_state };
+            const acc = elements[id];
+            // identity across captures is required: data-slot/tag must not
+            // differ between the places the same automation id renders
+            if (acc.slot !== mrec.slot || acc.tag !== mrec.tag)
+              allErrors.push(`identity divergence ${id}: ${pg}/${st} slot=${mrec.slot} tag=${mrec.tag} vs earlier slot=${acc.slot} tag=${acc.tag}`);
+            acc.captures[`${pg}/${st}`] = {
+              rect: mrec.rect, box: mrec.box, parts: mrec.parts,
+            };
+            if (mrec.interaction) acc.captures[`${pg}/${st}`].interaction = mrec.interaction;
+            if (mrec.text) acc.captures[`${pg}/${st}`].text = mrec.text;
+            if (mrec.text_runs && mrec.text_runs.length) acc.captures[`${pg}/${st}`].text_runs = mrec.text_runs;
           }
+          textInventories[`${pg}/${st}`] = measured.textInventory;
           const hov = await page.evaluate(() => {
             const a = document.querySelector("[data-automation-id='button.default']");
             const b = document.querySelector("[data-automation-id='button.default.hover']");
@@ -670,17 +456,18 @@ async function main() {
           });
           if (hov) forcedVerified.push({ page: pg, state: st, ...hov, applies: hov.normal !== hov.forced });
         } else {
-          // dark pass: assert geometry identical to light (post-force rects)
+          // dark pass: assert geometry identical to light, per capture
           for (const mrec of measured.elements) {
             const id = mrec.automation_id;
-            const light = elements[id] && elements[id].placements.find((p) => p.page === pg && p.capture_state === st);
+            const light = elements[id] && elements[id].captures[`${pg}/${st}`];
             if (!light) continue;
+            const lr = light.rect;
             const same =
-              light.x === mrec.rect.x && light.y === mrec.rect.y &&
-              light.width === mrec.rect.width && light.height === mrec.rect.height;
+              lr.x === mrec.rect.x && lr.y === mrec.rect.y &&
+              lr.width === mrec.rect.width && lr.height === mrec.rect.height;
             if (!same) {
               geoDivergences++;
-              allErrors.push(`GEOMETRY DIVERGENCE ${id} ${pg}/${st}: light=${JSON.stringify(light)} dark=${JSON.stringify(mrec.rect)}`);
+              allErrors.push(`GEOMETRY DIVERGENCE ${id} ${pg}/${st}: light=${JSON.stringify(lr)} dark=${JSON.stringify(mrec.rect)}`);
             }
           }
         }
@@ -694,7 +481,13 @@ async function main() {
           for (const [id, part, prop, cst, v] of vals) {
             if (v === null || v === undefined) continue;
             const k2 = `${id}|${part}|${theme}|${cst === "default" ? "" : cst}`;
-            (live[k2] = live[k2] || {})[prop] = v;
+            // same id + same part + same state must evaluate identically on
+            // every page that renders it (the key has no page on purpose)
+            if (live[k2] && prop in live[k2] && live[k2][prop] !== v) {
+              allErrors.push(`bindings divergence ${k2} ${prop}: '${live[k2][prop]}' vs '${v}'`);
+            } else {
+              (live[k2] = live[k2] || {})[prop] = v;
+            }
           }
         }
         for (const pr of await page.evaluate(PRESSED_EVAL)) {
@@ -702,6 +495,10 @@ async function main() {
           if (Math.abs(pr.dy - 1) > 0.01)
             allErrors.push(`R01 ${pg}/${st}/${theme} ${pr.id}: pressed dy ${round(pr.dy)}px != 1px (translate-y-px)`);
         }
+
+        // V04: the applied capture state must still hold for the screenshot
+        const stateErrsShot = await page.evaluate(STATE_ASSERT);
+        for (const e of stateErrsShot) allErrors.push(`capture-state ${pg}/${st}/${theme} pre-shot: ${e}`);
 
         const name = st === "default" ? pg : `${pg}--${st}`;
         const shotBuf = await page.screenshot({
@@ -822,8 +619,8 @@ async function main() {
       size: meta.size ?? null,
       category: meta.category || null,
       kind,
-      data_slot: v.rec.slot,
-      tag: v.rec.tag,
+      data_slot: v.slot,
+      tag: v.tag,
     };
     if (kind === "overlay-content") {
       entry.trigger = id.replace(/\.content$/, ".trigger");
@@ -832,20 +629,27 @@ async function main() {
     if (kind === "stage" && meta.meta?.anchor) entry.anchor = meta.meta.anchor;
     if (meta.meta?.parent) entry.parent = meta.meta.parent;
     if (meta.meta?.presentation) entry.presentation = meta.meta.presentation;
-    entry.placements = v.placements;
-    entry.box = v.rec.box;
-    if (v.rec.text) entry.text = v.rec.text;
-    if (v.rec.text_runs && v.rec.text_runs.length) entry.text_runs = v.rec.text_runs;
-    if (Object.keys(v.rec.parts).length) entry.parts = v.rec.parts;
-    if (v.rec.force_state) entry.forced_state = v.rec.force_state;
+    entry.captures = {};
+    for (const k of Object.keys(v.captures).sort()) entry.captures[k] = v.captures[k];
+    if (v.force_state) entry.forced_state = v.force_state;
     elsOut.push(entry);
   }
   elsOut.sort((a, b) => a.automation_id.localeCompare(b.automation_id));
 
+  // C01-d same-state consistency (formal V04 invariant): same automation id
+  // + same capture state on different pages must record identical
+  // appearance (box, interaction, part paint, text_runs, element size) -
+  // exceptions are only the explicit SAME_STATE_EXCEPTIONS list.
+  {
+    const { errs, checked } = V.validateSameStateConsistency({ elements: elsOut });
+    for (const e of errs) allErrors.push(e);
+    console.log(`same-state consistency: ${checked.ids} multi-page ids, ${checked.pairs} same-state pairs compared`);
+  }
+
   const contract = {
-    "$schema": "rust-ui.shadcn-reference.contract/0.1",
+    "$schema": "rust-ui.shadcn-reference.contract/0.2",
     reference_version: "0.1",
-    candidate_revision: 2,
+    candidate_revision: 3,
     coordinate_space: {
       unit: "css-px",
       rust_ui_equivalent: "Dp (1 css-px = 1 rust-ui logical Dp)",
@@ -862,15 +666,19 @@ async function main() {
     })),
     notes: {
       measurement_order:
-        "font proof (mutation pass, fully reverted) -> force pseudo states -> settle (3x rAF + fonts.ready) -> measure -> token-binding eval + pressed parity in the same session -> screenshot: the contract records the PAINTED post-force state (R01); bindings_live values were read immediately before each screenshot",
+        "goto -> [data-render-done] -> fonts.ready -> font proof (light+default only; data-fontproof mutation fully reverted) -> capture-state assertions -> CDP forcePseudoState -> settle (3x rAF + fonts.ready) -> measure -> token-binding eval + pressed parity in the same session -> capture-state assertions -> screenshot -> pixel guard + ink validation -> store under captures[<page>/<state>] -> session detach: the contract records the PAINTED post-force state (R01); bindings_live values were read immediately before each screenshot",
       baseline_formula:
-        "baseline_y = line_rect_top + fontBoundingBoxAscent of the run's effective font (canvas measureText); each line validated against rendered ink: inside the line box always, and inside the ink band (+descent) for letter/digit runs",
+        "baseline_y = line rect top + fontBoundingBoxAscent of the run's effective font (canvas measureText on that font); each line validated against rendered ink: inside the line box always, and inside the ink band (+descent) for letter/digit runs",
       control_text:
-        "input/textarea text_runs are measured via a mirror element with identical box/font styles (value + placeholder); browser editing behavior is not authority",
-      geometry: "placements/box measured post-force in light theme; dark geometry asserted identical",
+        "input/textarea text_runs are measured via a mirror div at the control's position: same font/letter-spacing/text-indent/whitespace and padding, but border-width suppressed (the control's border would shift the text origin); browser editing behavior is not authority",
+      geometry:
+        "captures[<page>/<state>] measured post-force in light theme; dark geometry asserted identical per capture; hidden parts record {visible:false, reason:'not-rendered'}",
+      text_ownership:
+        "data-part-owner attributes parts/text outside an element's subtree to it (owner parts carry label_gap); every visible text node must resolve to an owner or a data-text-exempt gallery-chrome class (contract.text_inventory)",
       pixel_guard:
         "every forced-state specimen with a same-size unforced twin must produce a different screenshot crop (4px pad absorbs the pressed +1px translate)",
     },
+    text_inventory: textInventories,
     proofs: {
       pressed_pairs: pressedPairs,
       pixel_guard: { pairs_checked: pixelGuardPairs, size_mismatch_or_no_twin: pixelGuardSkipped },
@@ -884,7 +692,7 @@ async function main() {
   const reference = {
     "$schema": "rust-ui.shadcn-reference.reference/0.1",
     reference_version: "0.1",
-    candidate_revision: 2,
+    candidate_revision: 3,
     status: "candidate - pre-freeze review revision; freeze policy applies after split review approval",
     authority: {
       site: "https://ui.shadcn.com/",

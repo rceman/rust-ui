@@ -6,7 +6,7 @@ HTML/CSS reference of the current official shadcn visual language
 radius default), frozen as the measurement target for a later native
 rust-ui Gallery.
 
-Status: `reference_version: "0.1"`, `candidate_revision: 2` - a pre-freeze
+Status: `reference_version: "0.1"`, `candidate_revision: 3` - a pre-freeze
 candidate revision; freeze policy applies after split review approval.
 
 Hierarchy:
@@ -47,6 +47,35 @@ Rules:
   `token-bindings.json` binds live computed values to tokens.
 - Automation ids are the future `data-automation-id` / UIA `AutomationId`
   bridge; repeated parts are keyed semantically (`item[x].indicator`).
+- Capture environment: Playwright bundled Chromium (`channel:'chromium'`)
+  launched only via `scripts/browser.js` with
+  `--disable-gpu --force-color-profile=srgb --disable-lcd-text
+  --disable-partial-raster`. The last flag is load-bearing: diagnosed
+  nondeterminism - after paint invalidation (CDP `forcePseudoState` +
+  measurement work) Chromium's partial rasterizer rerasters only the
+  invalidated rect, and the fractional rounded corners of the SettingsNav
+  Select trigger (x=925.96875, w=90.03125) received different AA coverage
+  than a full-tile raster.
+- Capture pipeline order (per page/state/theme, exactly as implemented):
+  goto -> render-done -> fonts.ready -> font-proof mutation + full revert
+  (light+default only) -> capture-state assertions -> CDP force -> settle
+  -> measure -> bindings/pressed eval -> state assertions -> screenshot ->
+  pixel guard/ink validation -> store under `captures[<page>/<state>]` ->
+  session detach -> next goto.
+- `contract.json` schema `contract/0.2`: per-capture records
+  (`elements[].captures["<page>/<capture_state>"]` with rect/box/text/
+  text_runs/parts and, for editable elements,
+  `interaction {focused, selection|null}`); hidden parts record
+  `{visible:false}`; `data-part-owner` attributes out-of-subtree text/parts
+  (checkbox labels) to their owner.
+- Single-focus model (V04): a document has one focus/selection. The
+  `default` capture state focuses `native-text.single-line.selection`
+  ([0,6]) on every page where it appears; `native-text.multiline.selection`'s
+  focused/selected appearance is captured under
+  `native-text/multiline-selection` and recorded unfocused in default
+  captures. `validateSameStateConsistency` enforces "same id + same capture
+  state on different pages => identical appearance", live-checked by
+  `validateCaptureAuthority` (rect + box paint + interaction + part paint).
 
 Git bases: foundation review `e827f3dfb5d29e50bcc64f90e5d735624641d878`;
 frozen foundation production `00dc29acfeb686d6a190d91624de7ab9a48e1e92`.

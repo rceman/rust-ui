@@ -166,7 +166,10 @@
   @apply text-muted-foreground mt-1.5 text-center font-mono text-[10px] leading-tight whitespace-nowrap;
 }
 .overlay-stage {
-  @apply ring-foreground/10 relative rounded-xl bg-muted/40 ring-1 overflow-hidden;
+  /* gallery-only staging: muted tint in light; in dark the muted stage is
+     nearly indistinguishable from the popover surface, so stages sit on the
+     page background instead - no Shadcn token touched */
+  @apply ring-foreground/10 relative rounded-xl bg-muted/40 ring-1 overflow-hidden dark:bg-background;
 }
 /* overlay positioners are normally portal-mounted fixed layers; inside a
    stage they are clipped-absolute - the recorded anchor data stays upstream */

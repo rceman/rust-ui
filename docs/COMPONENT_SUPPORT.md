@@ -30,6 +30,11 @@ native component exists.
 Windows foundation `00dc29a`) but the shadcn visual/state contract is not
 implemented or measured.
 
+The `Desktop-responsive` column ("responsive layout target" - `layout`,
+`modes` planned modes) describes intended target capability unless the
+`Status` column says otherwise; no `PLANNED` / `REFERENCE_ONLY` /
+`DEFERRED` row may read as shipped.
+
 ## Core
 
 | Component / Pattern | Tier | Reference | Native API | Windows | macOS | Linux | Visual parity | Interaction parity | Accessibility | Desktop-responsive | Status | Notes |

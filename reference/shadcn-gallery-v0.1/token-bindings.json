@@ -1,7 +1,7 @@
 {
   "$schema": "rust-ui.shadcn-reference.token-bindings/0.1",
   "reference_version": "0.1",
-  "candidate_revision": 2,
+  "candidate_revision": 3,
   "rule": "each binding compares the LIVE computed value (after forced state) against the tokens.json value; colors to sRGB+alpha (tol <=1/255 per channel, alpha <=0.005), lengths exact to 0.01px; box-shadow-width/-color/-alpha inspect the focus ring shadow",
   "bindings": [
     {
@@ -2349,6 +2349,20 @@
     {
       "automation_id": "tabs.default.active",
       "theme": "light",
+      "css_property": "box-shadow-layers",
+      "token_path": "shadows.shadow-sm",
+      "part": "list.tab[account]"
+    },
+    {
+      "automation_id": "tabs.default.active",
+      "theme": "dark",
+      "css_property": "box-shadow-layers",
+      "token_path": "shadows.shadow-sm",
+      "part": "list.tab[account]"
+    },
+    {
+      "automation_id": "tabs.default.active",
+      "theme": "light",
       "css_property": "height",
       "token_path": "control_heights_px.tabs-list",
       "part": "list"
@@ -2492,42 +2506,42 @@
       "theme": "light",
       "css_property": "padding-left",
       "token_path": "horizontal_padding_px.menu-item.x",
-      "part": "item[profile]"
+      "part": "group[account].item[profile]"
     },
     {
       "automation_id": "dropdown-menu.default.content",
       "theme": "dark",
       "css_property": "padding-left",
       "token_path": "horizontal_padding_px.menu-item.x",
-      "part": "item[profile]"
+      "part": "group[account].item[profile]"
     },
     {
       "automation_id": "dropdown-menu.default.content",
       "theme": "light",
       "css_property": "padding-top",
       "token_path": "horizontal_padding_px.menu-item.y",
-      "part": "item[profile]"
+      "part": "group[account].item[profile]"
     },
     {
       "automation_id": "dropdown-menu.default.content",
       "theme": "dark",
       "css_property": "padding-top",
       "token_path": "horizontal_padding_px.menu-item.y",
-      "part": "item[profile]"
+      "part": "group[account].item[profile]"
     },
     {
       "automation_id": "dropdown-menu.default.content",
       "theme": "light",
       "css_property": "font-size",
       "token_path": "typography.sizes_px.14.px",
-      "part": "item[profile]"
+      "part": "group[account].item[profile]"
     },
     {
       "automation_id": "dropdown-menu.default.content",
       "theme": "dark",
       "css_property": "font-size",
       "token_path": "typography.sizes_px.14.px",
-      "part": "item[profile]"
+      "part": "group[account].item[profile]"
     },
     {
       "automation_id": "dropdown-menu.default.item-highlighted",
@@ -2558,14 +2572,14 @@
       "theme": "light",
       "css_property": "opacity",
       "token_path": "disabled.opacity",
-      "part": "item[billing]"
+      "part": "group[account].item[billing]"
     },
     {
       "automation_id": "dropdown-menu.default.content",
       "theme": "dark",
       "css_property": "opacity",
       "token_path": "disabled.opacity",
-      "part": "item[billing]"
+      "part": "group[account].item[billing]"
     },
     {
       "automation_id": "dropdown-menu.default.content",
@@ -2760,6 +2774,42 @@
       "theme": "dark",
       "css_property": "background-color",
       "token_path": "colors.{theme}.popover.alpha"
+    },
+    {
+      "automation_id": "popover.default.content",
+      "theme": "light",
+      "css_property": "box-shadow-layers",
+      "token_path": "shadows.shadow-md"
+    },
+    {
+      "automation_id": "popover.default.content",
+      "theme": "dark",
+      "css_property": "box-shadow-layers",
+      "token_path": "shadows.shadow-md"
+    },
+    {
+      "automation_id": "dropdown-menu.default.content",
+      "theme": "light",
+      "css_property": "box-shadow-layers",
+      "token_path": "shadows.shadow-md"
+    },
+    {
+      "automation_id": "dropdown-menu.default.content",
+      "theme": "dark",
+      "css_property": "box-shadow-layers",
+      "token_path": "shadows.shadow-md"
+    },
+    {
+      "automation_id": "select.default.open.content",
+      "theme": "light",
+      "css_property": "box-shadow-layers",
+      "token_path": "shadows.shadow-md"
+    },
+    {
+      "automation_id": "select.default.open.content",
+      "theme": "dark",
+      "css_property": "box-shadow-layers",
+      "token_path": "shadows.shadow-md"
     },
     {
       "automation_id": "popover.default.content",

@@ -227,6 +227,10 @@ num("select.default.open.content", "opacity", "disabled.opacity", { part: "item[
 num("select.default.open.trigger", "height", "control_heights_px.button.default");
 
 // ---------------- tabs ----------------
+// effect shadow layers (C03): parse ALL effect layers of the live computed
+// box-shadow (order preserved, ring layers excluded) against the structured
+// token layers
+both("tabs.default.active", "box-shadow-layers", "shadows.shadow-sm", { part: "list.tab[account]" });
 num("tabs.default.active", "height", "control_heights_px.tabs-list", { part: "list" });
 b("tabs.default.active", "light", "background-color", "colors.light.background.srgb", { part: "list.tab[account]" });
 b("tabs.default.active", "dark", "background-color", "translucent.input-30-dark.dark.srgb", { part: "list.tab[account]" });
@@ -238,11 +242,11 @@ ring("tabs.default.focus-visible", { part: "list.tab[password]" });
 // ---------------- dropdown-menu ----------------
 col("dropdown-menu.default.content", "background-color", "popover");
 num("dropdown-menu.default.content", "border-top-left-radius", "radii_px.lg.px");
-num("dropdown-menu.default.content", "padding-left", "horizontal_padding_px.menu-item.x", { part: "item[profile]" });
-num("dropdown-menu.default.content", "padding-top", "horizontal_padding_px.menu-item.y", { part: "item[profile]" });
-num("dropdown-menu.default.content", "font-size", "typography.sizes_px.14.px", { part: "item[profile]" });
+num("dropdown-menu.default.content", "padding-left", "horizontal_padding_px.menu-item.x", { part: "group[account].item[profile]" });
+num("dropdown-menu.default.content", "padding-top", "horizontal_padding_px.menu-item.y", { part: "group[account].item[profile]" });
+num("dropdown-menu.default.content", "font-size", "typography.sizes_px.14.px", { part: "group[account].item[profile]" });
 col("dropdown-menu.default.item-highlighted", "background-color", "accent"); // highlighted item
-num("dropdown-menu.default.content", "opacity", "disabled.opacity", { part: "item[billing]" });
+num("dropdown-menu.default.content", "opacity", "disabled.opacity", { part: "group[account].item[billing]" });
 both("dropdown-menu.default.content", "color", "colors.{theme}.destructive.srgb", { part: "item[delete]" });
 trn("dropdown-menu.default.item-destructive-highlighted", "background-color", "destructive-10-20"); // destructive highlighted /10 light /20 dark
 
@@ -257,6 +261,9 @@ trn("alert-dialog.default", "background-color", "backdrop-black-10", { part: "ba
 col("alert-dialog.default.content", "background-color", "popover");
 
 // ---------------- popover / tooltip ----------------
+both("popover.default.content", "box-shadow-layers", "shadows.shadow-md");
+both("dropdown-menu.default.content", "box-shadow-layers", "shadows.shadow-md");
+both("select.default.open.content", "box-shadow-layers", "shadows.shadow-md");
 col("popover.default.content", "background-color", "popover");
 num("popover.default.content", "border-top-left-radius", "radii_px.lg.px");
 col("tooltip.default.content", "background-color", "foreground");
@@ -327,6 +334,10 @@ num("typography.code-block", "padding-top", "horizontal_padding_px.code-block-pr
 num("typography.code-block", "padding-bottom", "horizontal_padding_px.code-block-pre.y", { part: "pre" });
 
 // ---------------- gallery shell ----------------
+// shell.nav.* active-tab shadow is NOT bound: the same automation id renders
+// active on its own page but inactive elsewhere - a page-stable binding
+// would violate the same-id/same-state dedup rule (shadow-sm covered via
+// tabs.default.active instead).
 num("shell.title", "font-size", "typography.sizes_px.14.px");
 num("shell.title", "font-weight", "typography.weight_values.semibold");
 
@@ -334,7 +345,7 @@ fs.writeFileSync(path.join(__dirname, "..", "token-bindings.json"),
   JSON.stringify({
     "$schema": "rust-ui.shadcn-reference.token-bindings/0.1",
     reference_version: "0.1",
-    candidate_revision: 2,
+    candidate_revision: 3,
     rule: "each binding compares the LIVE computed value (after forced state) against the tokens.json value; colors to sRGB+alpha (tol <=1/255 per channel, alpha <=0.005), lengths exact to 0.01px; box-shadow-width/-color/-alpha inspect the focus ring shadow",
     bindings: B,
   }, null, 2),

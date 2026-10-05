@@ -1,10 +1,15 @@
 {
   "$schema": "rust-ui.shadcn-reference.coverage/0.1",
   "reference_version": "0.1",
-  "candidate_revision": 2,
+  "candidate_revision": 3,
   "rule": "core = complete visually material desktop state/size coverage (every upstream recipe/wrapper state selector maps to a specimen, a measured equivalence, or an n/a reason); later = representative; reference-only = no completeness commitment",
   "families": {
     "button": {
+      "hooks": [
+        "^cn-button$",
+        "^cn-button-variant-",
+        "^cn-button-size-"
+      ],
       "states": {
         "cn-button-variant-{default,secondary,outline,ghost,destructive,link}": {
           "specimens": [
@@ -14,7 +19,8 @@
             "button.ghost",
             "button.destructive",
             "button.link"
-          ]
+          ],
+          "selectors": []
         },
         "hover:": {
           "specimens": [
@@ -24,6 +30,9 @@
             "button.ghost.hover",
             "button.destructive.hover",
             "button.link.hover"
+          ],
+          "selectors": [
+            "hover"
           ]
         },
         "active:not-aria-[haspopup]:translate-y-px (pressed)": {
@@ -34,6 +43,9 @@
             "button.ghost.pressed",
             "button.destructive.pressed",
             "button.link.pressed"
+          ],
+          "selectors": [
+            "active"
           ]
         },
         "focus-visible:": {
@@ -44,6 +56,9 @@
             "button.ghost.focus-visible",
             "button.destructive.focus-visible",
             "button.link.focus-visible"
+          ],
+          "selectors": [
+            "focus-visible"
           ]
         },
         "disabled:": {
@@ -54,6 +69,9 @@
             "button.ghost.disabled",
             "button.destructive.disabled",
             "button.link.disabled"
+          ],
+          "selectors": [
+            "disabled"
           ]
         },
         "aria-invalid:": {
@@ -64,13 +82,18 @@
             "button.ghost.invalid",
             "button.destructive.invalid",
             "button.link.invalid"
+          ],
+          "selectors": [
+            "aria-invalid"
           ]
         },
         "data-icon=inline-start": {
-          "specimen": "button.default.icon-inline-start"
+          "specimen": "button.default.icon-inline-start",
+          "selectors": []
         },
         "data-icon=inline-end": {
-          "specimen": "button.default.icon-inline-end"
+          "specimen": "button.default.icon-inline-end",
+          "selectors": []
         },
         "cn-button-size-{xs,sm,default,lg}": {
           "specimens": [
@@ -78,19 +101,28 @@
             "button.default.size-sm",
             "button.default",
             "button.default.size-lg"
-          ]
+          ],
+          "selectors": []
         },
         "aria-expanded / data-popup-open (menu-trigger output)": {
           "equivalent_to": "dropdown-menu.default",
-          "reason": "the open trigger is the dropdown-menu specimen's trigger part (aria-expanded recorded); button recipe carries no distinct open variant beyond translate suppression"
+          "reason": "the open trigger is the dropdown-menu specimen's trigger part (aria-expanded recorded); button recipe carries no distinct open variant beyond translate suppression",
+          "selectors": [
+            "aria-expanded",
+            "data-popup-open"
+          ]
         },
         "cn-button-size-icon-*": {
           "equivalent_to": "icon-button.default.size-icon",
-          "reason": "icon sizes are the icon-button family's specimens (component split)"
+          "reason": "icon sizes are the icon-button family's specimens (component split)",
+          "selectors": []
         }
       }
     },
     "icon-button": {
+      "hooks": [
+        "^cn-button-size-icon"
+      ],
       "states": {
         "variant x {normal,hover,pressed,focus-visible,disabled}": {
           "specimens": [
@@ -119,6 +151,12 @@
             "icon-button.destructive.pressed",
             "icon-button.destructive.focus-visible",
             "icon-button.destructive.disabled"
+          ],
+          "selectors": [
+            "hover",
+            "active",
+            "focus-visible",
+            "disabled"
           ]
         },
         "cn-button-size-icon-{xs,sm,icon,lg}": {
@@ -127,68 +165,118 @@
             "icon-button.default.size-icon-sm",
             "icon-button.default.size-icon",
             "icon-button.default.size-icon-lg"
-          ]
+          ],
+          "selectors": []
         }
       }
     },
     "input": {
+      "hooks": [
+        "^cn-input$"
+      ],
       "states": {
         "placeholder": {
-          "specimen": "input.default.placeholder"
+          "specimen": "input.default.placeholder",
+          "selectors": [
+            "placeholder"
+          ]
         },
         "filled": {
-          "specimen": "input.default.filled"
+          "specimen": "input.default.filled",
+          "selectors": []
         },
         "focus-visible (border-ring + ring-ring/50)": {
-          "specimen": "input.default.focus-visible"
+          "specimen": "input.default.focus-visible",
+          "selectors": [
+            "focus-visible"
+          ]
         },
         "disabled (bg-input/50)": {
-          "specimen": "input.default.disabled"
+          "specimen": "input.default.disabled",
+          "selectors": [
+            "disabled",
+            "data-disabled"
+          ]
         },
         "aria-invalid (border-destructive + ring-destructive/20)": {
-          "specimen": "input.default.invalid"
+          "specimen": "input.default.invalid",
+          "selectors": [
+            "aria-invalid"
+          ]
         },
         "aria-invalid + focus-visible combined": {
           "specimen": "input.default.invalid-focus-visible",
-          "note": "measured distinct (rev 2): invalid paints outline-width 3px, invalid+focus-visible 1px, both themes"
+          "note": "measured distinct (rev 2): invalid paints outline-width 3px, invalid+focus-visible 1px, both themes",
+          "selectors": [
+            "aria-invalid",
+            "focus-visible"
+          ]
         },
         "readonly": {
           "equivalent_to": "input.default.filled",
-          "reason": "upstream recipe has no readonly styling - visually identical to filled"
+          "reason": "upstream recipe has no readonly styling - visually identical to filled",
+          "selectors": []
         },
         "file: (file input styling)": {
-          "n/a": "file picker chrome is not a desktop rust-ui contract surface"
+          "n/a": "file picker chrome is not a desktop rust-ui contract surface",
+          "selectors": []
         }
       }
     },
     "textarea": {
+      "hooks": [
+        "^cn-textarea$"
+      ],
       "states": {
         "placeholder": {
-          "specimen": "textarea.default.placeholder"
+          "specimen": "textarea.default.placeholder",
+          "selectors": [
+            "placeholder"
+          ]
         },
         "filled": {
-          "specimen": "textarea.default.filled"
+          "specimen": "textarea.default.filled",
+          "selectors": []
         },
         "focus-visible": {
-          "specimen": "textarea.default.focus-visible"
+          "specimen": "textarea.default.focus-visible",
+          "selectors": [
+            "focus-visible"
+          ]
         },
         "disabled": {
-          "specimen": "textarea.default.disabled"
+          "specimen": "textarea.default.disabled",
+          "selectors": [
+            "disabled",
+            "data-disabled"
+          ]
         },
         "aria-invalid": {
-          "specimen": "textarea.default.invalid"
+          "specimen": "textarea.default.invalid",
+          "selectors": [
+            "aria-invalid"
+          ]
         },
         "aria-invalid + focus-visible combined": {
           "specimen": "textarea.default.invalid-focus-visible",
-          "note": "measured distinct (rev 2): outline-width 3px -> 1px, both themes"
+          "note": "measured distinct (rev 2): outline-width 3px -> 1px, both themes",
+          "selectors": [
+            "aria-invalid",
+            "focus-visible"
+          ]
         },
         "readonly": {
           "equivalent_to": "textarea.default.filled",
-          "reason": "no upstream readonly styling"
+          "reason": "no upstream readonly styling",
+          "selectors": []
         }
       }
     },
     "native-text": {
+      "hooks": [
+        "^cn-input$",
+        "^cn-textarea$"
+      ],
       "states": {
         "single-line placeholder/filled/focused/selection/disabled/readonly/invalid": {
           "specimens": [
@@ -199,6 +287,13 @@
             "native-text.single-line.disabled",
             "native-text.single-line.readonly",
             "native-text.single-line.invalid"
+          ],
+          "selectors": [
+            "placeholder",
+            "focus-visible",
+            "disabled",
+            "data-disabled",
+            "aria-invalid"
           ]
         },
         "multiline same set incl. invalid": {
@@ -210,12 +305,22 @@
             "native-text.multiline.disabled",
             "native-text.multiline.readonly",
             "native-text.multiline.invalid"
+          ],
+          "selectors": [
+            "placeholder",
+            "focus-visible",
+            "disabled",
+            "data-disabled",
+            "aria-invalid"
           ]
         }
       },
       "note": "native-text uses the upstream input/textarea recipes but documents the future RichEdit contract; resize grip suppressed (UA artifact)"
     },
     "checkbox": {
+      "hooks": [
+        "^cn-checkbox"
+      ],
       "states": {
         "unchecked / checked / focus-visible / disabled": {
           "specimens": [
@@ -223,43 +328,82 @@
             "checkbox.default.checked",
             "checkbox.default.focus-visible",
             "checkbox.default.disabled"
+          ],
+          "selectors": [
+            "data-checked",
+            "focus-visible",
+            "disabled"
           ]
         },
         "disabled-checked": {
-          "specimen": "checkbox.default.disabled-checked"
+          "specimen": "checkbox.default.disabled-checked",
+          "selectors": [
+            "data-checked",
+            "disabled"
+          ]
         },
         "aria-invalid (border-destructive)": {
-          "specimen": "checkbox.default.invalid"
+          "specimen": "checkbox.default.invalid",
+          "selectors": [
+            "aria-invalid",
+            "data-invalid"
+          ]
         },
         "aria-invalid + checked (aria-invalid:aria-checked:border-primary)": {
-          "specimen": "checkbox.default.invalid-checked"
+          "specimen": "checkbox.default.invalid-checked",
+          "selectors": [
+            "aria-invalid",
+            "aria-checked",
+            "data-checked"
+          ]
         },
         "data-indeterminate": {
-          "n/a": "upstream Nova recipe has no indeterminate styling; Base UI exposes data-indeterminate unstyled - deferred"
+          "n/a": "upstream Nova recipe has no indeterminate styling; Base UI exposes data-indeterminate unstyled - deferred",
+          "selectors": []
         }
       }
     },
     "radio-group": {
+      "hooks": [
+        "^cn-radio"
+      ],
       "states": {
         "checked + unchecked items": {
           "specimens": [
             "radio-group.default.selected",
             "radio-group.default.unselected"
+          ],
+          "selectors": [
+            "data-checked",
+            "aria-checked"
           ]
         },
         "focus-visible": {
-          "specimen": "radio-group.default.focus-visible"
+          "specimen": "radio-group.default.focus-visible",
+          "selectors": [
+            "focus-visible"
+          ]
         },
         "disabled": {
-          "specimen": "radio-group.default.disabled"
+          "specimen": "radio-group.default.disabled",
+          "selectors": [
+            "disabled"
+          ]
         },
         "aria-invalid": {
-          "specimen": "radio-group.default.invalid"
+          "specimen": "radio-group.default.invalid",
+          "selectors": [
+            "aria-invalid",
+            "data-invalid"
+          ]
         }
       },
       "parts": "both items keyed item[option-a]/item[option-b]; checked indicator item[option-a].indicator (the dot)"
     },
     "switch": {
+      "hooks": [
+        "^cn-switch"
+      ],
       "states": {
         "checked / unchecked / focus-visible / disabled": {
           "specimens": [
@@ -267,24 +411,42 @@
             "switch.default.checked",
             "switch.default.focus-visible",
             "switch.default.disabled"
+          ],
+          "selectors": [
+            "data-checked",
+            "data-unchecked",
+            "focus-visible",
+            "disabled"
           ]
         },
         "disabled-checked": {
-          "specimen": "switch.default.disabled-checked"
+          "specimen": "switch.default.disabled-checked",
+          "selectors": [
+            "data-checked",
+            "disabled"
+          ]
         },
         "aria-invalid": {
-          "specimen": "switch.default.invalid"
+          "specimen": "switch.default.invalid",
+          "selectors": [
+            "aria-invalid",
+            "data-invalid"
+          ]
         },
         "size sm + default": {
           "specimens": [
             "switch.default.size-sm",
             "switch.default.size-sm-unchecked",
             "switch.default.checked"
-          ]
+          ],
+          "selectors": []
         }
       }
     },
     "select": {
+      "hooks": [
+        "^cn-select"
+      ],
       "states": {
         "trigger placeholder/filled/focus-visible/disabled/invalid": {
           "specimens": [
@@ -293,13 +455,26 @@
             "select.default.focus-visible",
             "select.default.disabled",
             "select.default.invalid"
+          ],
+          "selectors": [
+            "data-placeholder",
+            "focus-visible",
+            "disabled",
+            "aria-invalid",
+            "hover"
           ]
         },
         "trigger size sm": {
-          "specimen": "select.default.size-sm"
+          "specimen": "select.default.size-sm",
+          "selectors": []
         },
         "trigger open (data-popup-open + aria-expanded)": {
-          "specimen": "select.default.open.trigger"
+          "specimen": "select.default.open.trigger",
+          "selectors": [
+            "data-popup-open",
+            "data-open",
+            "aria-expanded"
+          ]
         },
         "content: label + items (normal, highlighted, selected+indicator, disabled) + separator": {
           "specimens": [
@@ -314,14 +489,24 @@
             "item[eu-west]",
             "separator"
           ],
-          "parts_on": "select.default.open.content"
+          "parts_on": "select.default.open.content",
+          "selectors": [
+            "data-open",
+            "data-highlighted",
+            "data-disabled",
+            "hover"
+          ]
         },
         "alignItemWithTrigger=true item-aligned mode": {
-          "n/a": "frozen in alignItemWithTrigger=false (side=bottom) as in upstream select-example; deferred to a later reference version"
+          "n/a": "frozen in alignItemWithTrigger=false (side=bottom) as in upstream select-example; deferred to a later reference version",
+          "selectors": []
         }
       }
     },
     "tabs": {
+      "hooks": [
+        "^cn-tabs"
+      ],
       "states": {
         "default + line variants x active/inactive/hover/focus-visible/disabled": {
           "specimens": [
@@ -335,11 +520,22 @@
             "tabs.line.hover",
             "tabs.line.focus-visible",
             "tabs.line.disabled"
+          ],
+          "selectors": [
+            "data-active",
+            "aria-selected",
+            "hover",
+            "focus-visible",
+            "disabled",
+            "aria-disabled"
           ]
         }
       }
     },
     "dropdown-menu": {
+      "hooks": [
+        "^cn-dropdown-menu"
+      ],
       "states": {
         "label + item normal/highlighted/disabled + destructive + destructive-highlighted": {
           "specimens": [
@@ -348,51 +544,88 @@
             "dropdown-menu.default.item-destructive-highlighted"
           ],
           "parts": [
-            "label",
-            "item[profile]",
-            "item[settings]",
-            "item[billing]",
+            "group[account].label[account]",
+            "group[account].item[profile]",
+            "group[account].item[settings]",
+            "group[account].item[billing]",
             "item[delete]"
           ],
-          "parts_on": "dropdown-menu.default.content"
+          "parts_on": "dropdown-menu.default.content",
+          "selectors": [
+            "data-open",
+            "data-highlighted",
+            "data-disabled",
+            "hover"
+          ]
+        },
+        "group labels (upstream Group+Label sections)": {
+          "specimen": "dropdown-menu.default.content",
+          "parts": [
+            "group[appearance].label[appearance]",
+            "group[panel-position].label[panel-position]"
+          ],
+          "selectors": []
         },
         "checkbox item checked + unchecked": {
           "specimen": "dropdown-menu.default.content",
           "parts": [
-            "item[toolbar]",
-            "item[word-wrap]"
+            "group[appearance].item[toolbar]",
+            "group[appearance].item[word-wrap]"
+          ],
+          "selectors": [
+            "aria-checked",
+            "data-checked",
+            "data-unchecked"
           ]
         },
         "radio items checked + unchecked": {
           "specimen": "dropdown-menu.default.content",
           "parts": [
-            "item[panel-left]",
-            "item[panel-right]"
+            "group[panel-position].item[panel-left]",
+            "group[panel-position].item[panel-right]"
+          ],
+          "selectors": [
+            "aria-checked",
+            "data-checked",
+            "data-unchecked"
           ]
         },
         "separator": {
           "specimen": "dropdown-menu.default.content",
           "parts": [
             "separator[1]",
-            "separator[2]"
-          ]
+            "separator[2]",
+            "separator[3]"
+          ],
+          "selectors": []
         },
         "trigger aria-expanded + data-popup-open": {
-          "specimen": "dropdown-menu.default.trigger"
+          "specimen": "dropdown-menu.default.trigger",
+          "selectors": [
+            "aria-expanded",
+            "data-popup-open",
+            "data-open"
+          ]
         },
         "submenu (SubTrigger/SubContent)": {
-          "n/a": "single bounded stage; sub-menu surface reuses the same content recipe - no distinct visuals beyond slide-in direction"
+          "n/a": "single bounded stage; sub-menu surface reuses the same content recipe - no distinct visuals beyond slide-in direction",
+          "selectors": []
         }
       }
     },
     "settings-nav": {
+      "hooks": [
+        "^cn-sidebar"
+      ],
       "states": {
         "expanded (collapsible=none, w=16rem)": {
-          "specimen": "settings-nav.default"
+          "specimen": "settings-nav.default",
+          "selectors": []
         },
         "collapsed rail (collapsible=icon, w=3rem)": {
           "specimen": "settings-nav.default",
-          "capture_state": "settings-nav-collapsed"
+          "capture_state": "settings-nav-collapsed",
+          "selectors": []
         },
         "item states: default/hover/focus-visible/active/disabled": {
           "specimens": [
@@ -401,35 +634,61 @@
             "settings-nav-item.default.focus-visible",
             "settings-nav-item.default.active",
             "settings-nav-item.default.disabled"
+          ],
+          "selectors": [
+            "data-active",
+            "hover",
+            "focus-visible",
+            "disabled",
+            "active"
           ]
         },
         "mobile Sheet/offcanvas/useIsMobile": {
-          "n/a": "rust-ui is desktop-only; upstream mobile path vendored verbatim, never transcribed"
+          "n/a": "rust-ui is desktop-only; upstream mobile path vendored verbatim, never transcribed",
+          "selectors": [
+            "data-open",
+            "aria-expanded"
+          ]
         }
       },
       "note": "uses --sidebar/--sidebar-accent neutral tokens only; upstream dark --sidebar-primary (blue) is never referenced"
     },
     "tooltip": {
+      "hooks": [
+        "^cn-tooltip"
+      ],
       "states": {
         "open top + arrow": {
           "specimens": [
             "tooltip.default.trigger",
             "tooltip.default.content"
+          ],
+          "selectors": [
+            "data-open"
           ]
         }
       }
     },
     "popover": {
+      "hooks": [
+        "^cn-popover"
+      ],
       "states": {
         "open anchored content": {
           "specimens": [
             "popover.default.trigger",
             "popover.default.content"
+          ],
+          "selectors": [
+            "data-open"
           ]
         }
       }
     },
     "dialog": {
+      "hooks": [
+        "^cn-dialog"
+      ],
       "states": {
         "open surface: title/description/body/footer/close + backdrop": {
           "specimen": "dialog.default.content",
@@ -438,59 +697,98 @@
             "header.description",
             "close",
             "footer"
+          ],
+          "selectors": [
+            "data-open"
           ]
         },
         "close-button hover/pressed": {
           "equivalent_to": "icon-button.ghost",
-          "reason": "close is a ghost icon-button at its own 24px size; colors identical, size recorded via part rect"
+          "reason": "close is a ghost icon-button at its own 24px size; colors identical, size recorded via part rect",
+          "selectors": [
+            "hover",
+            "active"
+          ]
         }
       }
     },
     "field": {
+      "hooks": [
+        "^cn-field(-|$)"
+      ],
       "states": {
         "vertical default / invalid / disabled": {
           "specimens": [
             "field.default",
             "field.default.invalid",
             "field.default.disabled"
+          ],
+          "selectors": [
+            "data-invalid",
+            "data-disabled",
+            "disabled"
           ]
         },
         "orientation=horizontal (label+description beside control)": {
-          "specimen": "field.horizontal"
+          "specimen": "field.horizontal",
+          "selectors": []
+        },
+        "choice-card label styling (has-data-checked / bordered hover / focus ring)": {
+          "n/a": "gallery renders plain label+control fields, not the bordered choice-card label variant upstream provides",
+          "selectors": [
+            "data-checked",
+            "hover",
+            "focus-visible"
+          ]
         }
       }
     },
     "kbd": {
+      "hooks": [
+        "^cn-kbd"
+      ],
       "states": {
         "default + group": {
           "specimens": [
             "kbd.default",
             "kbd.group"
-          ]
+          ],
+          "selectors": []
         }
       }
     },
     "card": {
+      "hooks": [
+        "^cn-card"
+      ],
       "states": {
         "default + size-sm": {
           "specimens": [
             "card.default",
             "card.default.size-sm"
-          ]
+          ],
+          "selectors": []
         }
       }
     },
     "separator": {
+      "hooks": [
+        "^cn-separator"
+      ],
       "states": {
         "horizontal + vertical": {
           "specimens": [
             "separator.horizontal",
             "separator.vertical"
-          ]
+          ],
+          "selectors": []
         }
       }
     },
     "badge": {
+      "hooks": [
+        "^cn-badge"
+      ],
       "states": {
         "all 6 variants": {
           "specimens": [
@@ -500,35 +798,62 @@
             "badge.destructive",
             "badge.ghost",
             "badge.link"
+          ],
+          "selectors": [
+            "hover",
+            "focus-visible"
           ]
         }
       }
     },
     "alert": {
+      "hooks": [
+        "^cn-alert(-|$)"
+      ],
       "states": {
         "default + destructive": {
           "specimens": [
             "alert.default",
             "alert.destructive"
+          ],
+          "selectors": []
+        },
+        "action/trigger interactive states (cn-alert-action hover/data-open)": {
+          "n/a": "v0.1 renders only the static alert surface; interactive alert actions have no specimen",
+          "selectors": [
+            "hover",
+            "data-open"
           ]
         }
       }
     },
     "skeleton": {
+      "hooks": [
+        "^cn-skeleton"
+      ],
       "states": {
         "default (avatar + lines)": {
-          "specimen": "skeleton.default"
+          "specimen": "skeleton.default",
+          "selectors": []
         }
       }
     },
     "label": {
+      "hooks": [
+        "^cn-label$"
+      ],
       "states": {
         "default": {
-          "specimen": "label.default"
+          "specimen": "label.default",
+          "selectors": [
+            "disabled",
+            "data-disabled"
+          ]
         }
       }
     },
     "typography": {
+      "hooks": [],
       "states": {
         "h1/h2/h3/h4/p/lead/small/muted/inline-code": {
           "specimens": [
@@ -541,14 +866,17 @@
             "typography.small",
             "typography.muted",
             "typography.inline-code"
-          ]
+          ],
+          "selectors": []
         },
         "code-block (docs surface, Geist Mono, no highlighting)": {
-          "specimen": "typography.code-block"
+          "specimen": "typography.code-block",
+          "selectors": []
         }
       }
     },
     "gallery-shell": {
+      "hooks": [],
       "states": {
         "tabs nav + theme switch (system/light/dark)": {
           "specimens": [
@@ -557,7 +885,8 @@
             "shell.theme.light",
             "shell.theme.dark",
             "shell.theme.system"
-          ]
+          ],
+          "selectors": []
         }
       }
     }

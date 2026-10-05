@@ -1,5 +1,6 @@
 // reference:check - validates the frozen reference end-to-end:
-//   0. version/schema consistency (reference_version + candidate_revision)
+//   0. version/schema consistency + fail-closed tokens.json domain walk
+//      + canonical launch self-guard (--disable-partial-raster present)
 //   1. theme-neutral.css == themes.ts derivation; local vars in theme-local.css
 //   2. CSS rebuild byte-identical to committed static/gallery.css
 //   3. Re-capture to .check/ - screenshots sha256-identical, contract identical
@@ -7,16 +8,18 @@
 //   5. R07 system/theme-mode listener behavior in one live document
 //   6. EXHAUSTIVE Geist font proof (fail-closed, every text node)
 //   7. R05 button inline-start icon branch proof
-//   8. coverage.json: core selector -> specimen mapping resolves
-//   9. token-bindings.json: live computed values == tokens (R04)
-//  10. R01: pressed-state parity - contract == live post-force rect
-//  11. R03: rendered [data-part] keys == exported contract parts, 1:1
-//  12. R09: attribution paths exist; vendored font sha256
-//  13. hygiene: no abs developer paths, .tmp/debug files, http(s) in render assets
-//  14. token closure (legacy cross-map)
-//  15. reference:selftest - fault injection proves validators fail
+//   8. coverage.json three-way: contract / coverage.json / coverage.js
+//      authority + upstream state-prefix anchoring vs style-nova.css (C04)
+//   9. live capture-authority audit (C01) + live text-ownership audit (C02)
+//  10. token-bindings.json: live computed values == tokens, fail-closed (C03)
+//  11. R01: pressed-state parity - contract == live post-force rect
+//  12. R03: rendered [data-part] keys == exported contract parts, 1:1
+//      (per page/state, incl. hidden + owner-attributed parts)
+//  13. R09: attribution paths exist; vendored font sha256
+//  14. hygiene: no abs developer paths, .tmp/debug files, http(s) in render assets
+//  15. token closure (legacy cross-map)
+//  16. reference:selftest - positive controls + negative mutations
 const { execFileSync, spawnSync } = require("node:child_process");
-const { chromium } = require("playwright");
 const fs = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
@@ -24,7 +27,18 @@ const crypto = require("node:crypto");
 const ROOT = path.join(__dirname, "..");
 const DOC_POINTER = path.join(ROOT, "..", "..", "docs", "SHADCN_REFERENCE_V0_1.md");
 const CHECK = path.join(ROOT, ".check");
+const { launchCanonical, CANONICAL_ARGS } = require("./browser");
+const { IN_PAGE_MEASURE } = require("./measure");
+const coverageAuthority = require("./coverage");
 const V = require("./validate");
+
+// C05 self-guard: the canonical launch must carry --disable-partial-raster.
+// Partial rasterization after CDP forcePseudoState + measurement
+// invalidation rerasters fractional rounded corners into existing tiles
+// with different AA coverage (diagnosed on the settings-nav select
+// trigger). Without the flag the navigation screenshots are nondeterministic.
+if (!CANONICAL_ARGS.includes("--disable-partial-raster"))
+  fail("canonical browser args lack --disable-partial-raster (C05 nondeterminism guard)");
 const URL_BASE = "file:///" + path.join(ROOT, "index.html").replace(/\\/g, "/");
 let failures = 0;
 const fail = (m) => { failures++; console.error(`FAIL ${m}`); };
@@ -39,11 +53,11 @@ const reference = JSON.parse(fs.readFileSync(path.join(ROOT, "reference.json"), 
 const coverage = JSON.parse(fs.readFileSync(path.join(ROOT, "coverage.json"), "utf8"));
 const bindingsDoc = JSON.parse(fs.readFileSync(path.join(ROOT, "token-bindings.json"), "utf8"));
 
-for (const e of V.validateVersions({ reference, contract, coverage, bindings: bindingsDoc })) fail(e);
+for (const e of V.validateVersions({ reference, contract, coverage, bindings: bindingsDoc, tokens })) fail(e);
 if (!contract.elements.length) fail("contract has no elements");
 const ids = contract.elements.map((e) => e.automation_id);
 if (new Set(ids).size !== ids.length) fail("duplicate automation ids in contract");
-ok(`structure - ${ids.length} elements`);
+ok(`structure - ${ids.length} elements / versions + tokens`);
 
 // ---------- 1b. theme-neutral.css is generated verbatim from themes.ts ----
 {
@@ -52,9 +66,11 @@ ok(`structure - ${ids.length} elements`);
   else ok("theme-neutral.css == themes.ts derivation (R08)");
 }
 
-// ---------- 1c. coverage: core selector->specimen resolves --------------
-for (const e of V.validateCoverage(contract, coverage)) fail(e);
-ok(`coverage - ${Object.keys(coverage.families).length} core families mapped`);
+// ---------- 1c. coverage three-way (contract / coverage.json / authority --
+// scripts/coverage.js) + upstream selector anchoring (C04)
+V.validateCoverage._styleCss = fs.readFileSync(path.join(ROOT, "vendor/shadcn/apps/v4/registry/styles/style-nova.css"), "utf8");
+for (const e of V.validateCoverage(contract, coverage, coverageAuthority)) fail(e);
+ok(`coverage - ${Object.keys(coverage.families).length} core families mapped + anchored`);
 
 // ---------- 2. CSS rebuild identical ----------
 const built = path.join(CHECK, "gallery.css");
@@ -100,11 +116,7 @@ else ok("light/dark geometry identical");
 
 // ---------- 5+6. system mode + fonts (live) ----------
 (async () => {
-  const browser = await chromium.launch({
-    channel: 'chromium',
-    // deterministic rasterization: software GL, sRGB profile, grayscale AA
-    args: ['--disable-gpu', '--force-color-profile=srgb', '--disable-lcd-text'],
-  });
+  const browser = await launchCanonical();
   // R07: one live document, full mode-switch sequence; the single matchMedia
   // listener must consult the CURRENT mode and never accumulate.
   const r07 = await browser.newContext({
@@ -329,7 +341,7 @@ else ok("light/dark geometry identical");
           checkedPairs++;
           const cel = contract.elements.find((e2) => e2.automation_id === `${comp}.${v2}.pressed`);
           const celNormal = contract.elements.find((e2) => e2.automation_id === `${comp}.${v2}`);
-          const cp = cel?.placements?.find((x) => x.page === "components");
+          const cp = cel?.captures?.["components/default"]?.rect;
           if (cp && Math.abs(pair.py - cp.y) > 0.01)
             fail(`R01 ${comp}.${v2}.pressed ${theme}: live y ${pair.py} != contract y ${cp.y}`);
           if (Math.abs(pair.dy - 1) > 0.01)
@@ -366,31 +378,119 @@ else ok("light/dark geometry identical");
             }
             return chain.join(".");
           };
+          const owned = {};
+          for (const p of document.querySelectorAll("[data-part-owner]")) {
+            const oid = p.getAttribute("data-part-owner");
+            const k = p.getAttribute("data-key");
+            (owned[oid] = owned[oid] || []).push(k ? p.getAttribute("data-part") + "[" + k + "]" : p.getAttribute("data-part"));
+          }
           const map = {};
           for (const el of document.querySelectorAll("[data-automation-id]")) {
             const id = el.getAttribute("data-automation-id");
             const keys = [];
             for (const pt of el.querySelectorAll("[data-part]")) {
               if (pt.closest("[data-automation-id]") !== el) continue;
+              if (pt.hasAttribute("data-part-owner")) continue;
               keys.push(partKey(pt, el));
             }
+            for (const k of owned[id] || []) keys.push(k);
             map[id] = keys;
           }
           return map;
         })()`);
+        const capKey = `${pageId}/${st}`;
         for (const [id, keys] of Object.entries(got)) {
           enumerated += keys.length;
           for (const e of V.validatePartKeys({ [id]: keys })) fail(e);
           const cel = contract.elements.find((e2) => e2.automation_id === id);
-          const want = cel ? Object.keys(cel.parts || {}).sort() : [];
+          const want = cel && cel.captures && cel.captures[capKey]
+            ? Object.keys(cel.captures[capKey].parts || {}).sort()
+            : [];
           const g = [...keys].sort();
           if (JSON.stringify(g) !== JSON.stringify(want)) mism++;
         }
       }
     }
-    if (mism) fail(`R03 part enumeration: ${mism} elements differ live vs contract`);
-    else ok(`R03 parts 1:1 - ${enumerated} rendered part keys match contract`);
+    if (mism) fail(`R03 part enumeration: ${mism} element/capture pairs differ live vs contract`);
+    else ok(`R03 parts 1:1 - ${enumerated} rendered part keys match contract (per page/state, incl. hidden + owner-attributed)`);
     await ctx.close();
+  }
+
+  // ---------- C01/C02: independent live capture-authority + text-ownership
+  // audit - fresh session, canonical flags, same force/settle order; every
+  // page/state's rendered id set + every multi-capture id's rect/parts must
+  // equal the contract, and every owned text must match a contract text_run.
+  {
+    const ctx = await browser.newContext({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 1 });
+    const pg = await ctx.newPage();
+    const liveCap = {};
+    const liveText = {};
+    for (const pageId of ["all", "components", "forms", "navigation", "typography", "overlays", "native-text"]) {
+      const stList = { navigation: ["default", "settings-nav-collapsed"], "native-text": ["default", "multiline-selection"] }[pageId] || ["default"];
+      for (const st of stList) {
+        await pg.goto(`${URL_BASE}?page=${pageId}&theme=light&capture=1${st === "default" ? "" : `&state=${st}`}`);
+        await pg.waitForSelector("[data-render-done]");
+        const session = await ctx.newCDPSession(pg);
+        await session.send("DOM.enable");
+        await session.send("CSS.enable");
+        const { root } = await session.send("DOM.getDocument");
+        const { nodeIds } = await session.send("DOM.querySelectorAll", { nodeId: root.nodeId, selector: "[data-force-state]" });
+        for (const nodeId of nodeIds) {
+          const { attributes } = await session.send("DOM.getAttributes", { nodeId });
+          const i = attributes.indexOf("data-force-state");
+          await session.send("CSS.forcePseudoState", { nodeId, forcedPseudoClasses: attributes[i + 1].split(",").map((x) => x.trim()) });
+        }
+        await pg.evaluate(`new Promise((r2) => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(r2))))`);
+        await pg.evaluate(() => document.fonts.ready);
+        const m = await pg.evaluate(IN_PAGE_MEASURE);
+        const capKey = `${pageId}/${st}`;
+        liveCap[capKey] = {
+          ids: m.elements.map((e2) => e2.automation_id),
+          elements: Object.fromEntries(m.elements.map((e2) => [e2.automation_id, { rect: e2.rect, box: e2.box, interaction: e2.interaction, parts: e2.parts }])),
+        };
+        liveText[capKey] = m.textInventory;
+        for (const e2 of m.errors) fail(`live-measure ${capKey}: ${e2}`);
+        await session.detach().catch(() => {});
+      }
+    }
+    const ca = V.validateCaptureAuthority(contract, liveCap);
+    for (const e of ca.errs.slice(0, 20)) fail(e);
+    if (ca.errs.length > 20) fail(`... +${ca.errs.length - 20} more capture-authority errors`);
+    else {
+      const spotlight = [
+        ["settings-nav.default", "navigation/default"],
+        ["settings-nav.default", "navigation/settings-nav-collapsed"],
+        ["settings-nav.appearance", "navigation/default"],
+        ["settings-nav.appearance", "navigation/settings-nav-collapsed"],
+        ["native-text.single-line.selection", "native-text/default"],
+        ["native-text.single-line.selection", "all/default"],
+        ["native-text.multiline.selection", "native-text/default"],
+        ["native-text.multiline.selection", "native-text/multiline-selection"],
+      ];
+      for (const [id, capKey] of spotlight) {
+        const el = contract.elements.find((e2) => e2.automation_id === id);
+        const has = el && el.captures && el.captures[capKey];
+        console.log(`     ${id} @ ${capKey}: ${has ? "capture recorded, audited vs live" : "NO CAPTURE"}`);
+        if (!has) fail(`capture-authority spotlight: ${id} has no capture ${capKey}`);
+      }
+      ok(`capture authority - ${ca.multiCount} multi-capture ids audited live, id sets equal on every page/state`);
+    }
+    const to = V.validateTextOwnership(contract, liveText);
+    for (const e of to.errs.slice(0, 20)) fail(e);
+    if (to.errs.length > 20) fail(`... +${to.errs.length - 20} more text-ownership errors`);
+    else ok(`text ownership - ${to.checked} owned text nodes match contract text_runs`);
+    await ctx.close();
+  }
+
+  // ---------- C01-d same-state consistency: same id + same capture state on
+  // different pages => identical recorded appearance (box / interaction /
+  // part paint / text_runs / element size); exceptions only the explicit
+  // SAME_STATE_EXCEPTIONS map in validate.js (shell.nav.* active tab).
+  {
+    const ss = V.validateSameStateConsistency(contract);
+    for (const e of ss.errs.slice(0, 20)) fail(e);
+    if (ss.errs.length > 20) fail(`... +${ss.errs.length - 20} more same-state errors`);
+    else ok(`same-state consistency - ${ss.checked.ids} multi-page ids, ${ss.checked.pairs} pairs identical`);
   }
 
   // ---------- R04: token bindings vs values captured in screenshot state --
@@ -549,16 +649,19 @@ else ok("light/dark geometry identical");
       }
       return false;
     };
-    for (const r of el.box.border_radius) {
-      const rv = r >= 9999 ? 9999 : r; // rounded-full = calc(infinity * 1px)
-      if (rv > 0 && !map("radius", rv, 0.51)) unmapped.push(`${el.automation_id}: radius ${r}px`);
-    }
-    for (const w of el.box.border_width) {
-      if (!map("border", w, 0.01)) unmapped.push(`${el.automation_id}: border ${w}px`);
-    }
-    if (el.text) {
-      if (!map("fontSize", el.text.font_size, 0.31)) unmapped.push(`${el.automation_id}: font-size ${el.text.font_size}px`);
-      if (!contractSets.fontWeight.has(el.text.font_weight)) unmapped.push(`${el.automation_id}: font-weight ${el.text.font_weight}`);
+    for (const [capKey, cap] of Object.entries(el.captures || {})) {
+      const where = `${el.automation_id} @ ${capKey}`;
+      for (const r of cap.box.border_radius) {
+        const rv = r >= 9999 ? 9999 : r; // rounded-full = calc(infinity * 1px)
+        if (rv > 0 && !map("radius", rv, 0.51)) unmapped.push(`${where}: radius ${r}px`);
+      }
+      for (const w of cap.box.border_width) {
+        if (!map("border", w, 0.01)) unmapped.push(`${where}: border ${w}px`);
+      }
+      if (cap.text) {
+        if (!map("fontSize", cap.text.font_size, 0.31)) unmapped.push(`${where}: font-size ${cap.text.font_size}px`);
+        if (!contractSets.fontWeight.has(cap.text.font_weight)) unmapped.push(`${where}: font-weight ${cap.text.font_weight}`);
+      }
     }
   }
   if (unmapped.length) fail(`unmapped contract values (${unmapped.length}): ${unmapped.slice(0, 12).join("; ")}${unmapped.length > 12 ? " ..." : ""}`);
@@ -569,7 +672,7 @@ else ok("light/dark geometry identical");
     const st = spawnSync(process.execPath, [path.join(ROOT, "scripts", "selftest.js")], { cwd: ROOT, stdio: "pipe" });
     const out = (st.stdout || "") + (st.stderr || "");
     if (st.status !== 0) fail(`reference:selftest failed:\n${out}`);
-    else ok(`selftest - ${(out.match(/ok   selftest/g) || []).length} fault injections all detected`);
+    else ok(`selftest - ${(out.match(/ok   selftest positive control/g) || []).length} positive controls + ${(out.match(/ok   selftest negative mutation/g) || []).length} negative mutations behaved`);
   }
 
   if (failures) {

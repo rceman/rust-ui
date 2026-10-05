@@ -1,7 +1,7 @@
 {
   "$schema": "rust-ui.shadcn-reference.reference/0.1",
   "reference_version": "0.1",
-  "candidate_revision": 2,
+  "candidate_revision": 3,
   "status": "candidate - pre-freeze review revision; freeze policy applies after split review approval",
   "authority": {
     "site": "https://ui.shadcn.com/",
@@ -89,7 +89,7 @@
       "sans": "vendor/geist/Geist-Variable.woff2",
       "mono": "vendor/geist/GeistMono-Variable.woff2"
     },
-    "proof": "EXHAUSTIVE fail-closed: CSS.getPlatformFontsForNode on every element with a non-whitespace direct text node + every input/textarea value/placeholder; empty/error/non-Geist/non-custom result fails capture. marked=1209 proven=1209 resolved sans=[Geist] mono=[Geist Mono]"
+    "proof": "EXHAUSTIVE fail-closed: CSS.getPlatformFontsForNode on every element with a non-whitespace direct text node + every input/textarea value/placeholder; empty/error/non-Geist/non-custom result fails capture. marked=1213 proven=1213 resolved sans=[Geist] mono=[Geist Mono]"
   },
   "viewport": {
     "width": 1440,

@@ -1,13 +1,19 @@
-// Generates coverage.json - for every CORE family, the bounded
-// upstream-selector-to-specimen table. Each entry maps a recipe/wrapper
-// state or size selector to:
+// The ONE handwritten coverage authority. Generates coverage.json AND is
+// imported by check.js/selftest.js as the validation authority (C04).
+//
+// For every CORE family, `states` maps a bounded upstream-selector rule to:
 //   specimen: <automation_id>            - a specimen exists
 //   specimens: [ids]                     - a matrix column/row covers it
 //   equivalent_to: <automation_id>       - identical computed output (proof
 //     = same element subtree produces same computed styles; documented)
 //   n/a: "<reason>"                      - no desktop-relevant visual output
-// reference:check fails if a mapping references a missing contract id, or a
-// core family lacks bindings.
+// Every rule carries `selectors: [...]` - the bounded state-variant prefixes
+// (from the vocabulary in validate.js) that rule claims to cover. check.js
+// derives the actual prefixes used in each family's upstream hook classes
+// (`hooks`, regex sources matched against style-nova.css rule class names)
+// and fails if a derived prefix is unclaimed.
+// reference:check fails if a mapping references a missing contract id, a
+// family/rule is missing or unknown, or a core family lacks bindings.
 const fs = require("node:fs");
 const path = require("node:path");
 
@@ -18,145 +24,175 @@ const matrix = (comp, variants, states) =>
 
 const families = {
   button: {
+    hooks: ["^cn-button$", "^cn-button-variant-", "^cn-button-size-"],
     states: {
-      "cn-button-variant-{default,secondary,outline,ghost,destructive,link}": { specimens: V.map((v) => `button.${v}`) },
-      "hover:": { specimens: V.map((v) => iv(v, "hover")) },
-      "active:not-aria-[haspopup]:translate-y-px (pressed)": { specimens: V.map((v) => iv(v, "pressed")) },
-      "focus-visible:": { specimens: V.map((v) => iv(v, "focus-visible")) },
-      "disabled:": { specimens: V.map((v) => iv(v, "disabled")) },
-      "aria-invalid:": { specimens: V.map((v) => iv(v, "invalid")) },
-      "data-icon=inline-start": { specimen: "button.default.icon-inline-start" },
-      "data-icon=inline-end": { specimen: "button.default.icon-inline-end" },
-      "cn-button-size-{xs,sm,default,lg}": { specimens: ["button.default.size-xs", "button.default.size-sm", "button.default", "button.default.size-lg"] },
-      "aria-expanded / data-popup-open (menu-trigger output)": { equivalent_to: "dropdown-menu.default", reason: "the open trigger is the dropdown-menu specimen's trigger part (aria-expanded recorded); button recipe carries no distinct open variant beyond translate suppression" },
-      "cn-button-size-icon-*": { equivalent_to: "icon-button.default.size-icon", reason: "icon sizes are the icon-button family's specimens (component split)" },
+      "cn-button-variant-{default,secondary,outline,ghost,destructive,link}": { specimens: V.map((v) => `button.${v}`), selectors: [] },
+      "hover:": { specimens: V.map((v) => iv(v, "hover")), selectors: ["hover"] },
+      "active:not-aria-[haspopup]:translate-y-px (pressed)": { specimens: V.map((v) => iv(v, "pressed")), selectors: ["active"] },
+      "focus-visible:": { specimens: V.map((v) => iv(v, "focus-visible")), selectors: ["focus-visible"] },
+      "disabled:": { specimens: V.map((v) => iv(v, "disabled")), selectors: ["disabled"] },
+      "aria-invalid:": { specimens: V.map((v) => iv(v, "invalid")), selectors: ["aria-invalid"] },
+      "data-icon=inline-start": { specimen: "button.default.icon-inline-start", selectors: [] },
+      "data-icon=inline-end": { specimen: "button.default.icon-inline-end", selectors: [] },
+      "cn-button-size-{xs,sm,default,lg}": { specimens: ["button.default.size-xs", "button.default.size-sm", "button.default", "button.default.size-lg"], selectors: [] },
+      "aria-expanded / data-popup-open (menu-trigger output)": { equivalent_to: "dropdown-menu.default", reason: "the open trigger is the dropdown-menu specimen's trigger part (aria-expanded recorded); button recipe carries no distinct open variant beyond translate suppression", selectors: ["aria-expanded", "data-popup-open"] },
+      "cn-button-size-icon-*": { equivalent_to: "icon-button.default.size-icon", reason: "icon sizes are the icon-button family's specimens (component split)", selectors: [] },
     },
   },
   "icon-button": {
+    hooks: ["^cn-button-size-icon"],
     states: {
-      "variant x {normal,hover,pressed,focus-visible,disabled}": { specimens: matrix("icon-button", ["default", "secondary", "outline", "ghost", "destructive"], ["", "hover", "pressed", "focus-visible", "disabled"]).map((x) => x.replace(/\.$/, "")) },
-      "cn-button-size-icon-{xs,sm,icon,lg}": { specimens: ["icon-button.default.size-icon-xs", "icon-button.default.size-icon-sm", "icon-button.default.size-icon", "icon-button.default.size-icon-lg"] },
+      "variant x {normal,hover,pressed,focus-visible,disabled}": { specimens: matrix("icon-button", ["default", "secondary", "outline", "ghost", "destructive"], ["", "hover", "pressed", "focus-visible", "disabled"]).map((x) => x.replace(/\.$/, "")), selectors: ["hover", "active", "focus-visible", "disabled"] },
+      "cn-button-size-icon-{xs,sm,icon,lg}": { specimens: ["icon-button.default.size-icon-xs", "icon-button.default.size-icon-sm", "icon-button.default.size-icon", "icon-button.default.size-icon-lg"], selectors: [] },
     },
   },
   input: {
+    hooks: ["^cn-input$"],
     states: {
-      "placeholder": { specimen: "input.default.placeholder" },
-      "filled": { specimen: "input.default.filled" },
-      "focus-visible (border-ring + ring-ring/50)": { specimen: "input.default.focus-visible" },
-      "disabled (bg-input/50)": { specimen: "input.default.disabled" },
-      "aria-invalid (border-destructive + ring-destructive/20)": { specimen: "input.default.invalid" },
-      "aria-invalid + focus-visible combined": { specimen: "input.default.invalid-focus-visible", note: "measured distinct (rev 2): invalid paints outline-width 3px, invalid+focus-visible 1px, both themes" },
-      "readonly": { equivalent_to: "input.default.filled", reason: "upstream recipe has no readonly styling - visually identical to filled" },
-      "file: (file input styling)": { "n/a": "file picker chrome is not a desktop rust-ui contract surface" },
+      "placeholder": { specimen: "input.default.placeholder", selectors: ["placeholder"] },
+      "filled": { specimen: "input.default.filled", selectors: [] },
+      "focus-visible (border-ring + ring-ring/50)": { specimen: "input.default.focus-visible", selectors: ["focus-visible"] },
+      "disabled (bg-input/50)": { specimen: "input.default.disabled", selectors: ["disabled", "data-disabled"] },
+      "aria-invalid (border-destructive + ring-destructive/20)": { specimen: "input.default.invalid", selectors: ["aria-invalid"] },
+      "aria-invalid + focus-visible combined": { specimen: "input.default.invalid-focus-visible", note: "measured distinct (rev 2): invalid paints outline-width 3px, invalid+focus-visible 1px, both themes", selectors: ["aria-invalid", "focus-visible"] },
+      "readonly": { equivalent_to: "input.default.filled", reason: "upstream recipe has no readonly styling - visually identical to filled", selectors: [] },
+      "file: (file input styling)": { "n/a": "file picker chrome is not a desktop rust-ui contract surface", selectors: [] },
     },
   },
   textarea: {
+    hooks: ["^cn-textarea$"],
     states: {
-      "placeholder": { specimen: "textarea.default.placeholder" },
-      "filled": { specimen: "textarea.default.filled" },
-      "focus-visible": { specimen: "textarea.default.focus-visible" },
-      "disabled": { specimen: "textarea.default.disabled" },
-      "aria-invalid": { specimen: "textarea.default.invalid" },
-      "aria-invalid + focus-visible combined": { specimen: "textarea.default.invalid-focus-visible", note: "measured distinct (rev 2): outline-width 3px -> 1px, both themes" },
-      "readonly": { equivalent_to: "textarea.default.filled", reason: "no upstream readonly styling" },
+      "placeholder": { specimen: "textarea.default.placeholder", selectors: ["placeholder"] },
+      "filled": { specimen: "textarea.default.filled", selectors: [] },
+      "focus-visible": { specimen: "textarea.default.focus-visible", selectors: ["focus-visible"] },
+      "disabled": { specimen: "textarea.default.disabled", selectors: ["disabled", "data-disabled"] },
+      "aria-invalid": { specimen: "textarea.default.invalid", selectors: ["aria-invalid"] },
+      "aria-invalid + focus-visible combined": { specimen: "textarea.default.invalid-focus-visible", note: "measured distinct (rev 2): outline-width 3px -> 1px, both themes", selectors: ["aria-invalid", "focus-visible"] },
+      "readonly": { equivalent_to: "textarea.default.filled", reason: "no upstream readonly styling", selectors: [] },
     },
   },
   "native-text": {
+    hooks: ["^cn-input$", "^cn-textarea$"],
     states: {
-      "single-line placeholder/filled/focused/selection/disabled/readonly/invalid": { specimens: ["native-text.single-line.placeholder", "native-text.single-line.filled", "native-text.single-line.focused", "native-text.single-line.selection", "native-text.single-line.disabled", "native-text.single-line.readonly", "native-text.single-line.invalid"] },
-      "multiline same set incl. invalid": { specimens: ["native-text.multiline.placeholder", "native-text.multiline.filled", "native-text.multiline.focused", "native-text.multiline.selection", "native-text.multiline.disabled", "native-text.multiline.readonly", "native-text.multiline.invalid"] },
+      "single-line placeholder/filled/focused/selection/disabled/readonly/invalid": { specimens: ["native-text.single-line.placeholder", "native-text.single-line.filled", "native-text.single-line.focused", "native-text.single-line.selection", "native-text.single-line.disabled", "native-text.single-line.readonly", "native-text.single-line.invalid"], selectors: ["placeholder", "focus-visible", "disabled", "data-disabled", "aria-invalid"] },
+      "multiline same set incl. invalid": { specimens: ["native-text.multiline.placeholder", "native-text.multiline.filled", "native-text.multiline.focused", "native-text.multiline.selection", "native-text.multiline.disabled", "native-text.multiline.readonly", "native-text.multiline.invalid"], selectors: ["placeholder", "focus-visible", "disabled", "data-disabled", "aria-invalid"] },
     },
     note: "native-text uses the upstream input/textarea recipes but documents the future RichEdit contract; resize grip suppressed (UA artifact)",
   },
   checkbox: {
+    hooks: ["^cn-checkbox"],
     states: {
-      "unchecked / checked / focus-visible / disabled": { specimens: ["checkbox.default.unchecked", "checkbox.default.checked", "checkbox.default.focus-visible", "checkbox.default.disabled"] },
-      "disabled-checked": { specimen: "checkbox.default.disabled-checked" },
-      "aria-invalid (border-destructive)": { specimen: "checkbox.default.invalid" },
-      "aria-invalid + checked (aria-invalid:aria-checked:border-primary)": { specimen: "checkbox.default.invalid-checked" },
-      "data-indeterminate": { "n/a": "upstream Nova recipe has no indeterminate styling; Base UI exposes data-indeterminate unstyled - deferred" },
+      "unchecked / checked / focus-visible / disabled": { specimens: ["checkbox.default.unchecked", "checkbox.default.checked", "checkbox.default.focus-visible", "checkbox.default.disabled"], selectors: ["data-checked", "focus-visible", "disabled"] },
+      "disabled-checked": { specimen: "checkbox.default.disabled-checked", selectors: ["data-checked", "disabled"] },
+      "aria-invalid (border-destructive)": { specimen: "checkbox.default.invalid", selectors: ["aria-invalid", "data-invalid"] },
+      "aria-invalid + checked (aria-invalid:aria-checked:border-primary)": { specimen: "checkbox.default.invalid-checked", selectors: ["aria-invalid", "aria-checked", "data-checked"] },
+      "data-indeterminate": { "n/a": "upstream Nova recipe has no indeterminate styling; Base UI exposes data-indeterminate unstyled - deferred", selectors: [] },
     },
   },
   "radio-group": {
+    hooks: ["^cn-radio"],
     states: {
-      "checked + unchecked items": { specimens: ["radio-group.default.selected", "radio-group.default.unselected"] },
-      "focus-visible": { specimen: "radio-group.default.focus-visible" },
-      "disabled": { specimen: "radio-group.default.disabled" },
-      "aria-invalid": { specimen: "radio-group.default.invalid" },
+      "checked + unchecked items": { specimens: ["radio-group.default.selected", "radio-group.default.unselected"], selectors: ["data-checked", "aria-checked"] },
+      "focus-visible": { specimen: "radio-group.default.focus-visible", selectors: ["focus-visible"] },
+      "disabled": { specimen: "radio-group.default.disabled", selectors: ["disabled"] },
+      "aria-invalid": { specimen: "radio-group.default.invalid", selectors: ["aria-invalid", "data-invalid"] },
     },
     parts: "both items keyed item[option-a]/item[option-b]; checked indicator item[option-a].indicator (the dot)",
   },
   switch: {
+    hooks: ["^cn-switch"],
     states: {
-      "checked / unchecked / focus-visible / disabled": { specimens: ["switch.default.unchecked", "switch.default.checked", "switch.default.focus-visible", "switch.default.disabled"] },
-      "disabled-checked": { specimen: "switch.default.disabled-checked" },
-      "aria-invalid": { specimen: "switch.default.invalid" },
-      "size sm + default": { specimens: ["switch.default.size-sm", "switch.default.size-sm-unchecked", "switch.default.checked"] },
+      "checked / unchecked / focus-visible / disabled": { specimens: ["switch.default.unchecked", "switch.default.checked", "switch.default.focus-visible", "switch.default.disabled"], selectors: ["data-checked", "data-unchecked", "focus-visible", "disabled"] },
+      "disabled-checked": { specimen: "switch.default.disabled-checked", selectors: ["data-checked", "disabled"] },
+      "aria-invalid": { specimen: "switch.default.invalid", selectors: ["aria-invalid", "data-invalid"] },
+      "size sm + default": { specimens: ["switch.default.size-sm", "switch.default.size-sm-unchecked", "switch.default.checked"], selectors: [] },
     },
   },
   select: {
+    hooks: ["^cn-select"],
     states: {
-      "trigger placeholder/filled/focus-visible/disabled/invalid": { specimens: ["select.default.placeholder", "select.default.filled", "select.default.focus-visible", "select.default.disabled", "select.default.invalid"] },
-      "trigger size sm": { specimen: "select.default.size-sm" },
-      "trigger open (data-popup-open + aria-expanded)": { specimen: "select.default.open.trigger" },
-      "content: label + items (normal, highlighted, selected+indicator, disabled) + separator": { specimens: ["select.default.open.content", "select.default.open.item-highlighted"], parts: ["label[env]", "item[development]", "item[production]", "item[deprecated]", "item[eu-west]", "separator"], parts_on: "select.default.open.content" },
-      "alignItemWithTrigger=true item-aligned mode": { "n/a": "frozen in alignItemWithTrigger=false (side=bottom) as in upstream select-example; deferred to a later reference version" },
+      "trigger placeholder/filled/focus-visible/disabled/invalid": { specimens: ["select.default.placeholder", "select.default.filled", "select.default.focus-visible", "select.default.disabled", "select.default.invalid"], selectors: ["data-placeholder", "focus-visible", "disabled", "aria-invalid", "hover"] },
+      "trigger size sm": { specimen: "select.default.size-sm", selectors: [] },
+      "trigger open (data-popup-open + aria-expanded)": { specimen: "select.default.open.trigger", selectors: ["data-popup-open", "data-open", "aria-expanded"] },
+      "content: label + items (normal, highlighted, selected+indicator, disabled) + separator": { specimens: ["select.default.open.content", "select.default.open.item-highlighted"], parts: ["label[env]", "item[development]", "item[production]", "item[deprecated]", "item[eu-west]", "separator"], parts_on: "select.default.open.content", selectors: ["data-open", "data-highlighted", "data-disabled", "hover"] },
+      "alignItemWithTrigger=true item-aligned mode": { "n/a": "frozen in alignItemWithTrigger=false (side=bottom) as in upstream select-example; deferred to a later reference version", selectors: [] },
     },
   },
   tabs: {
+    hooks: ["^cn-tabs"],
     states: {
-      "default + line variants x active/inactive/hover/focus-visible/disabled": { specimens: matrix("tabs", ["default", "line"], ["active", "inactive", "hover", "focus-visible", "disabled"]) },
+      "default + line variants x active/inactive/hover/focus-visible/disabled": { specimens: matrix("tabs", ["default", "line"], ["active", "inactive", "hover", "focus-visible", "disabled"]), selectors: ["data-active", "aria-selected", "hover", "focus-visible", "disabled", "aria-disabled"] },
     },
   },
   "dropdown-menu": {
+    hooks: ["^cn-dropdown-menu"],
     states: {
-      "label + item normal/highlighted/disabled + destructive + destructive-highlighted": { specimens: ["dropdown-menu.default.content", "dropdown-menu.default.item-highlighted", "dropdown-menu.default.item-destructive-highlighted"], parts: ["label", "item[profile]", "item[settings]", "item[billing]", "item[delete]"], parts_on: "dropdown-menu.default.content" },
-      "checkbox item checked + unchecked": { specimen: "dropdown-menu.default.content", parts: ["item[toolbar]", "item[word-wrap]"] },
-      "radio items checked + unchecked": { specimen: "dropdown-menu.default.content", parts: ["item[panel-left]", "item[panel-right]"] },
-      "separator": { specimen: "dropdown-menu.default.content", parts: ["separator[1]", "separator[2]"] },
-      "trigger aria-expanded + data-popup-open": { specimen: "dropdown-menu.default.trigger" },
-      "submenu (SubTrigger/SubContent)": { "n/a": "single bounded stage; sub-menu surface reuses the same content recipe - no distinct visuals beyond slide-in direction" },
+      "label + item normal/highlighted/disabled + destructive + destructive-highlighted": { specimens: ["dropdown-menu.default.content", "dropdown-menu.default.item-highlighted", "dropdown-menu.default.item-destructive-highlighted"], parts: ["group[account].label[account]", "group[account].item[profile]", "group[account].item[settings]", "group[account].item[billing]", "item[delete]"], parts_on: "dropdown-menu.default.content", selectors: ["data-open", "data-highlighted", "data-disabled", "hover"] },
+      "group labels (upstream Group+Label sections)": { specimen: "dropdown-menu.default.content", parts: ["group[appearance].label[appearance]", "group[panel-position].label[panel-position]"], selectors: [] },
+      "checkbox item checked + unchecked": { specimen: "dropdown-menu.default.content", parts: ["group[appearance].item[toolbar]", "group[appearance].item[word-wrap]"], selectors: ["aria-checked", "data-checked", "data-unchecked"] },
+      "radio items checked + unchecked": { specimen: "dropdown-menu.default.content", parts: ["group[panel-position].item[panel-left]", "group[panel-position].item[panel-right]"], selectors: ["aria-checked", "data-checked", "data-unchecked"] },
+      "separator": { specimen: "dropdown-menu.default.content", parts: ["separator[1]", "separator[2]", "separator[3]"], selectors: [] },
+      "trigger aria-expanded + data-popup-open": { specimen: "dropdown-menu.default.trigger", selectors: ["aria-expanded", "data-popup-open", "data-open"] },
+      "submenu (SubTrigger/SubContent)": { "n/a": "single bounded stage; sub-menu surface reuses the same content recipe - no distinct visuals beyond slide-in direction", selectors: [] },
     },
   },
   "settings-nav": {
+    hooks: ["^cn-sidebar"],
     states: {
-      "expanded (collapsible=none, w=16rem)": { specimen: "settings-nav.default" },
-      "collapsed rail (collapsible=icon, w=3rem)": { specimen: "settings-nav.default", capture_state: "settings-nav-collapsed" },
-      "item states: default/hover/focus-visible/active/disabled": { specimens: ["settings-nav-item.default", "settings-nav-item.default.hover", "settings-nav-item.default.focus-visible", "settings-nav-item.default.active", "settings-nav-item.default.disabled"] },
-      "mobile Sheet/offcanvas/useIsMobile": { "n/a": "rust-ui is desktop-only; upstream mobile path vendored verbatim, never transcribed" },
+      "expanded (collapsible=none, w=16rem)": { specimen: "settings-nav.default", selectors: [] },
+      "collapsed rail (collapsible=icon, w=3rem)": { specimen: "settings-nav.default", capture_state: "settings-nav-collapsed", selectors: [] },
+      "item states: default/hover/focus-visible/active/disabled": { specimens: ["settings-nav-item.default", "settings-nav-item.default.hover", "settings-nav-item.default.focus-visible", "settings-nav-item.default.active", "settings-nav-item.default.disabled"], selectors: ["data-active", "hover", "focus-visible", "disabled", "active"] },
+      "mobile Sheet/offcanvas/useIsMobile": { "n/a": "rust-ui is desktop-only; upstream mobile path vendored verbatim, never transcribed", selectors: ["data-open", "aria-expanded"] },
     },
     note: "uses --sidebar/--sidebar-accent neutral tokens only; upstream dark --sidebar-primary (blue) is never referenced",
   },
-  tooltip: { states: { "open top + arrow": { specimens: ["tooltip.default.trigger", "tooltip.default.content"] } } },
-  popover: { states: { "open anchored content": { specimens: ["popover.default.trigger", "popover.default.content"] } } },
+  tooltip: {
+    hooks: ["^cn-tooltip"],
+    states: { "open top + arrow": { specimens: ["tooltip.default.trigger", "tooltip.default.content"], selectors: ["data-open"] } },
+  },
+  popover: {
+    hooks: ["^cn-popover"],
+    states: { "open anchored content": { specimens: ["popover.default.trigger", "popover.default.content"], selectors: ["data-open"] } },
+  },
   dialog: {
+    hooks: ["^cn-dialog"],
     states: {
-      "open surface: title/description/body/footer/close + backdrop": { specimen: "dialog.default.content", parts: ["header.title", "header.description", "close", "footer"] },
-      "close-button hover/pressed": { equivalent_to: "icon-button.ghost", reason: "close is a ghost icon-button at its own 24px size; colors identical, size recorded via part rect" },
+      "open surface: title/description/body/footer/close + backdrop": { specimen: "dialog.default.content", parts: ["header.title", "header.description", "close", "footer"], selectors: ["data-open"] },
+      "close-button hover/pressed": { equivalent_to: "icon-button.ghost", reason: "close is a ghost icon-button at its own 24px size; colors identical, size recorded via part rect", selectors: ["hover", "active"] },
     },
   },
   field: {
+    hooks: ["^cn-field(-|$)"],
     states: {
-      "vertical default / invalid / disabled": { specimens: ["field.default", "field.default.invalid", "field.default.disabled"] },
-      "orientation=horizontal (label+description beside control)": { specimen: "field.horizontal" },
+      "vertical default / invalid / disabled": { specimens: ["field.default", "field.default.invalid", "field.default.disabled"], selectors: ["data-invalid", "data-disabled", "disabled"] },
+      "orientation=horizontal (label+description beside control)": { specimen: "field.horizontal", selectors: [] },
+      "choice-card label styling (has-data-checked / bordered hover / focus ring)": { "n/a": "gallery renders plain label+control fields, not the bordered choice-card label variant upstream provides", selectors: ["data-checked", "hover", "focus-visible"] },
     },
   },
-  kbd: { states: { "default + group": { specimens: ["kbd.default", "kbd.group"] } } },
-  card: { states: { "default + size-sm": { specimens: ["card.default", "card.default.size-sm"] } } },
-  separator: { states: { "horizontal + vertical": { specimens: ["separator.horizontal", "separator.vertical"] } } },
-  badge: { states: { "all 6 variants": { specimens: ["badge.default", "badge.secondary", "badge.outline", "badge.destructive", "badge.ghost", "badge.link"] } } },
-  alert: { states: { "default + destructive": { specimens: ["alert.default", "alert.destructive"] } } },
-  skeleton: { states: { "default (avatar + lines)": { specimen: "skeleton.default" } } },
-  label: { states: { "default": { specimen: "label.default" } } },
-  typography: {
+  kbd: { hooks: ["^cn-kbd"], states: { "default + group": { specimens: ["kbd.default", "kbd.group"], selectors: [] } } },
+  card: { hooks: ["^cn-card"], states: { "default + size-sm": { specimens: ["card.default", "card.default.size-sm"], selectors: [] } } },
+  separator: { hooks: ["^cn-separator"], states: { "horizontal + vertical": { specimens: ["separator.horizontal", "separator.vertical"], selectors: [] } } },
+  badge: { hooks: ["^cn-badge"], states: { "all 6 variants": { specimens: ["badge.default", "badge.secondary", "badge.outline", "badge.destructive", "badge.ghost", "badge.link"], selectors: ["hover", "focus-visible"] } } },
+  alert: {
+    hooks: ["^cn-alert(-|$)"],
     states: {
-      "h1/h2/h3/h4/p/lead/small/muted/inline-code": { specimens: ["typography.h1", "typography.h2", "typography.h3", "typography.h4", "typography.p", "typography.lead", "typography.small", "typography.muted", "typography.inline-code"] },
-      "code-block (docs surface, Geist Mono, no highlighting)": { specimen: "typography.code-block" },
+      "default + destructive": { specimens: ["alert.default", "alert.destructive"], selectors: [] },
+      "action/trigger interactive states (cn-alert-action hover/data-open)": { "n/a": "v0.1 renders only the static alert surface; interactive alert actions have no specimen", selectors: ["hover", "data-open"] },
+    },
+  },
+  skeleton: { hooks: ["^cn-skeleton"], states: { "default (avatar + lines)": { specimen: "skeleton.default", selectors: [] } } },
+  label: { hooks: ["^cn-label$"], states: { "default": { specimen: "label.default", selectors: ["disabled", "data-disabled"] } } },
+  typography: {
+    hooks: [],
+    states: {
+      "h1/h2/h3/h4/p/lead/small/muted/inline-code": { specimens: ["typography.h1", "typography.h2", "typography.h3", "typography.h4", "typography.p", "typography.lead", "typography.small", "typography.muted", "typography.inline-code"], selectors: [] },
+      "code-block (docs surface, Geist Mono, no highlighting)": { specimen: "typography.code-block", selectors: [] },
     },
   },
   "gallery-shell": {
+    hooks: [],
     states: {
-      "tabs nav + theme switch (system/light/dark)": { specimens: ["shell.nav.all", "shell.nav.components", "shell.theme.light", "shell.theme.dark", "shell.theme.system"] },
+      "tabs nav + theme switch (system/light/dark)": { specimens: ["shell.nav.all", "shell.nav.components", "shell.theme.light", "shell.theme.dark", "shell.theme.system"], selectors: [] },
     },
   },
 };
@@ -164,9 +200,14 @@ const families = {
 const coverage = {
   "$schema": "rust-ui.shadcn-reference.coverage/0.1",
   reference_version: "0.1",
-  candidate_revision: 2,
+  candidate_revision: 3,
   rule: "core = complete visually material desktop state/size coverage (every upstream recipe/wrapper state selector maps to a specimen, a measured equivalence, or an n/a reason); later = representative; reference-only = no completeness commitment",
   families,
 };
-fs.writeFileSync(path.join(__dirname, "..", "coverage.json"), JSON.stringify(coverage, null, 2));
-console.log("coverage.json written:", Object.keys(families).length, "core families");
+
+module.exports = { families };
+
+if (require.main === module) {
+  fs.writeFileSync(path.join(__dirname, "..", "coverage.json"), JSON.stringify(coverage, null, 2));
+  console.log("coverage.json written:", Object.keys(families).length, "core families");
+}

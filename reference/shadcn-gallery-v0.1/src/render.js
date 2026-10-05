@@ -109,12 +109,14 @@
   const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
 
   // specimen cell: framed specimen + mono caption below (uniform section height)
+  // captions/headings are gallery chrome - exempt from specimen text ownership
+  const CAPTION = { class: "specimen-caption", "data-text-exempt": "gallery-caption" };
   function cell(entry, cellH) {
     const spec = entry.category === "overlays" || entry.component === "settings-nav"
       ? entry.render() // stage surfaces are already framed
       : h("div", { class: `specimen-frame flex flex-1 items-center justify-center p-5 ${cellH || "min-h-24"}` }, entry.render());
     return h("div", { class: "flex flex-col" },
-      spec + h("div", { class: "specimen-caption" }, esc(entry.automation_id)));
+      spec + h("div", CAPTION, esc(entry.automation_id)));
   }
 
   // variantxstate matrix: row headers (variant) + column headers (state),
@@ -122,33 +124,34 @@
   function matrixSection(list, cfg, cellH) {
     const byId = {};
     for (const e2 of list) byId[e2.automation_id] = e2;
-    const caption = (t) => h("div", { class: "text-muted-foreground text-xs" }, t);
+    const colCap = { class: "text-muted-foreground pb-1 text-center text-xs font-medium", "data-text-exempt": "gallery-heading" };
+    const rowCap = { class: "text-muted-foreground flex items-center text-xs font-medium", "data-text-exempt": "gallery-heading" };
+    const sizeCap = { class: "text-muted-foreground w-20 shrink-0 pb-6 text-xs font-medium", "data-text-exempt": "gallery-heading" };
     const rowsHtml = cfg.rows.map((v) =>
-      h("div", { class: "text-muted-foreground flex items-center text-xs font-medium" }, v) +
+      h("div", rowCap, v) +
       cfg.cols.map((st) => {
         const id = cfg.idOf(v, st);
         const ent = byId[id];
         const cellHCls = cellH || "min-h-20";
         return h("div", { class: `flex flex-col items-center justify-center gap-1.5 ${cellHCls}` },
-          (ent ? ent.render() : "") + h("div", { class: "specimen-caption" }, esc(id)));
+          (ent ? ent.render() : "") + h("div", CAPTION, esc(id)));
       }).join(""),
     ).join("");
     const sizeRow = (label, ids) =>
       h("div", { class: "mt-6 flex items-end gap-2" },
-        h("div", { class: "text-muted-foreground w-20 shrink-0 pb-6 text-xs font-medium" }, label) +
+        h("div", sizeCap, label) +
         h("div", { class: "flex items-end gap-x-6" },
           ids.map((id) => {
             const ent = byId[id];
             return h("div", { class: "flex flex-col items-center gap-1.5" },
-              (ent ? ent.render() : "") + h("div", { class: "specimen-caption" }, esc(id)));
+              (ent ? ent.render() : "") + h("div", CAPTION, esc(id)));
           }).join("")));
     const sizeRows = cfg.sizeIds
       ? cfg.comp === "button"
         ? sizeRow("Sizes", cfg.sizeIds)
         : sizeRow("Icon sizes", cfg.sizeIds)
       : "";
-    const headRow = h("div", {}) + cfg.cols.map((st) =>
-      h("div", { class: "text-muted-foreground pb-1 text-center text-xs font-medium" }, st)).join("");
+    const headRow = h("div", {}) + cfg.cols.map((st) => h("div", colCap, st)).join("");
     return h("div", { class: "specimen-frame p-5" },
       h("div", {
         style: `display:grid;grid-template-columns:88px repeat(${cfg.cols.length},minmax(130px,1fr));column-gap:8px;row-gap:8px;align-items:center`,
@@ -306,7 +309,7 @@
             list.map((e2) =>
               h("div", { class: "flex flex-col" },
                 h("div", { class: "specimen-frame p-6" }, e2.render()) +
-                h("div", { class: "specimen-caption self-start" }, esc(e2.automation_id) + tierBadgeFor(e2))),
+                h("div", { ...CAPTION, class: CAPTION.class + " self-start" }, esc(e2.automation_id) + tierBadgeFor(e2))),
             ).join(""));
         } else {
           const minW = SECTION_MINW[g.comp] || 180;
@@ -318,8 +321,8 @@
         return h(
           "section",
           { class: "mt-10" },
-          h("h2", { class: "text-base font-semibold tracking-tight" }, title + sectionBadge) +
-            h("p", { class: "text-muted-foreground mb-4 text-sm" }, desc) +
+          h("h2", { class: "text-base font-semibold tracking-tight", "data-text-exempt": "gallery-heading" }, title + sectionBadge) +
+            h("p", { class: "text-muted-foreground mb-4 text-sm", "data-text-exempt": "gallery-heading" }, desc) +
             body,
         );
       })
@@ -346,9 +349,9 @@
         h(
           "div",
           {},
-          h("h1", { class: "text-xl font-semibold tracking-tight" },
+          h("h1", { class: "text-xl font-semibold tracking-tight", "data-text-exempt": "gallery-heading" },
             window.PAGES.find((p) => p.id === page)?.label || "All") +
-            h("p", { class: "text-muted-foreground mt-1 text-sm" },
+            h("p", { class: "text-muted-foreground mt-1 text-sm", "data-text-exempt": "gallery-heading" },
               `Frozen shadcn base-nova reference - ${entries.length} specimens`),
         ) + sections,
       );
@@ -370,17 +373,23 @@
       });
     });
 
-    // capture states: real focus + fixed selection on native-text
-    if (page === "native-text") {
-      const selId =
-        state === "multiline-selection"
-          ? "native-text.multiline.selection"
-          : "native-text.single-line.selection";
-      const el = document.querySelector(`[data-automation-id='${selId}']`);
-      if (el && (state === "" || state === "multiline-selection")) {
-        el.focus();
-        if (state === "multiline-selection") el.setSelectionRange(22, 33);
-        else el.setSelectionRange(0, 6);
+    // V04: capture-state application - one table keyed by capture state,
+    // applied whenever the specimen is present on the page (the `all` page
+    // renders the same native-text.*.selection specimens and must receive
+    // the same focus+selection as the native-text page).
+    // Exposed for the capture harness's state assertions.
+    const CAPTURE_STATE_TABLE = {
+      default: { focused: "native-text.single-line.selection", range: [0, 6] },
+      "multiline-selection": { focused: "native-text.multiline.selection", range: [22, 33] },
+    };
+    window.__captureStateApplied = null;
+    const apply = CAPTURE_STATE_TABLE[state || "default"];
+    if (apply) {
+      const el = document.querySelector(`[data-automation-id='${apply.focused}']`);
+      if (el && typeof el.focus === "function") {
+        el.focus({ preventScroll: true });
+        if (apply.range) el.setSelectionRange(apply.range[0], apply.range[1]);
+        window.__captureStateApplied = apply;
       }
     }
     document.body.setAttribute("data-render-done", "");

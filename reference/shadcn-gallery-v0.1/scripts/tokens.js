@@ -137,6 +137,8 @@ const mix = (base, alpha) => ({
 });
 const tokens = {
   "$schema": "rust-ui.shadcn-reference.tokens/0.1",
+  reference_version: "0.1",
+  candidate_revision: 3,
   header:
     "FROZEN VISUAL REFERENCE tokens - derived from upstream shadcn base-nova/neutral at commit 295a1f1. This is NOT the rust-ui runtime style authority: rust-ui's typed theme API stays canonical; these tokens exist only to compare the native implementation against this reference.",
   derivation:
@@ -218,10 +220,33 @@ const tokens = {
     full: { px: 9999, source: "rounded-full (switch, radio, skeleton avatar)" },
   },
   border_widths_px: [0, 1, 2],
+  // structured shadow tokens (C03): effect layers only (blur>0 or nonzero
+  // offset) - Tailwind ring layers ("0 0 0 Npx") are tracked separately via
+  // the focus-ring bindings and are never effect layers. Layers are in
+  // computed order; color is the resolved #rrggbb + alpha.
   shadows: {
-    "shadow-sm": "0 1px 2px 0 rgb(0 0 0 / 0.05) - tabs trigger active",
-    "shadow-md": "0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1) - dropdown/popover/select content",
-    "shadow-lg": "0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1) - menu sub-content",
+    "shadow-sm": {
+      status: "used",
+      used_by: ["tabs.default.active part list.tab[account] (active tab trigger)", "shell.nav.* (active nav tab)"],
+      layers: [
+        { x: 0, y: 1, blur: 3, spread: 0, color: "#000000", alpha: 0.1 },
+        { x: 0, y: 1, blur: 2, spread: -1, color: "#000000", alpha: 0.1 },
+      ],
+      source: "Tailwind shadow-sm recipe on the active tabs trigger (cn-tabs-trigger data-active)",
+    },
+    "shadow-md": {
+      status: "used",
+      used_by: ["popover.default.content", "dropdown-menu.default.content", "select.default.open.content"],
+      layers: [
+        { x: 0, y: 4, blur: 6, spread: -1, color: "#000000", alpha: 0.1 },
+        { x: 0, y: 2, blur: 4, spread: -2, color: "#000000", alpha: 0.1 },
+      ],
+      source: "Tailwind shadow-md on cn-popover-content / cn-dropdown-menu-content / cn-select-content",
+    },
+    "shadow-lg": {
+      status: "unused",
+      reason: "upstream applies it only to menu sub-content stages, which v0.1 does not render",
+    },
   },
   control_heights_px: {
     "button.xs": 24, "button.sm": 28, "button.default": 32, "button.lg": 36,

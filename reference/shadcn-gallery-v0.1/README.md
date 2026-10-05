@@ -157,17 +157,22 @@ are exactly what a future rust-ui `.automation_id(...)` (UIA
   `reducedMotion:'reduce'`; no timestamps, no randomness, no network.
 - Canonical viewport 1440x1000 CSS px, `deviceScaleFactor 1`, zoom 100%;
   1 CSS px = 1 rust-ui logical `Dp`. Full-page screenshots.
-- **Measurement order (R01):** font proof first (it mutates the DOM -
-  `data-fontproof` marks + mirror nodes - and CDP-forced pseudo states do not
-  survive DOM mutation; all marks are removed before forcing) -> forced
-  pseudo states + real focus/selection -> settle (3x `requestAnimationFrame`
-  + `document.fonts.ready`) -> measure geometry/text/parts/styles -> evaluate
-  token bindings and pressed parity **in the same session/state** ->
-  screenshot. The contract records the *painted* post-force state (pressed
-  buttons really are 1px lower via `active:translate-y-px`); the recorded
-  `bindings_live` / `proofs.pressed_pairs` in `contract.json` are read
-  immediately before each PNG - they cannot describe a different state than
-  the screenshot.
+- **Capture pipeline order (per page/state/theme, exactly as implemented):**
+  `goto` (`?page&theme&capture=1[&state]`) -> `[data-render-done]` ->
+  `document.fonts.ready` -> font proof (light+default only: it mutates the
+  DOM - `data-fontproof` marks + mirror nodes - and CDP-forced pseudo states
+  do not survive DOM mutation; every mutation is fully reverted before
+  forcing) -> capture-state application assertions -> `CSS.forcePseudoState`
+  on every `[data-force-state]` -> settle (3x `requestAnimationFrame` +
+  `document.fonts.ready`) -> measure geometry/text/parts/styles ->
+  evaluate token bindings and pressed parity **in the same session/state**
+  -> capture-state assertions again -> screenshot -> pixel guard + ink
+  validation -> store under `captures[<page>/<state>]` -> CDP session
+  detach -> next `goto`. The contract records the *painted* post-force state
+  (pressed buttons really are 1px lower via `active:translate-y-px`); the
+  recorded `bindings_live` / `proofs.pressed_pairs` in `contract.json` are
+  read immediately before each PNG - they cannot describe a different state
+  than the screenshot.
 - **Pixel guard:** for every forced-state specimen (`hover`, `pressed`,
   `focus-visible`, `focused`, `invalid-focus-visible`) that has a same-size
   unforced twin, capture requires the screenshot crops (4px pad, absorbing
@@ -177,22 +182,59 @@ are exactly what a future rust-ui `.automation_id(...)` (UIA
   be unstyled - and now fails the guard.
 - Forced-state cells carry `data-force-state`; capture applies
   `CSS.forcePseudoState` via CDP so upstream CSS remains authoritative.
-- Real focus+selection: `native-text` default state focuses
-  `native-text.single-line.selection` (`setSelectionRange(0, 6)`);
-  `multiline-selection` focuses `native-text.multiline.selection`
-  (`setSelectionRange(22, 33)`). `settings-nav-collapsed` renders the
-  sidebar icon rail (`--sidebar-width-icon: 3rem`, same automation ids).
+- **Capture states** are a single table keyed by state
+  (`window.__captureStateApplied`), applied whenever the specimen is present
+  on the page - `default` focuses `native-text.single-line.selection`
+  (`setSelectionRange(0, 6)`, `focus({preventScroll:true})`), including on
+  the `all` page; `multiline-selection` focuses
+  `native-text.multiline.selection` (`setSelectionRange(22, 33)`).
+  `settings-nav-collapsed` renders the sidebar icon rail
+  (`--sidebar-width-icon: 3rem`, same automation ids). Capture asserts at
+  measure time and again immediately before the screenshot: `scrollX/Y === 0`,
+  `document.activeElement` matches the applied target (or `body`), and the
+  selection range matches.
+- **Single-focus model (V04):** a document has exactly one focus/selection.
+  The `default` capture state - on every page where the specimen appears
+  (`all`, `native-text`) - focuses `native-text.single-line.selection` with
+  range [0,6]. `native-text.multiline.selection`'s focused/selected
+  appearance is therefore captured under `native-text/multiline-selection`;
+  in `default` captures it is recorded with
+  `interaction {focused:false, selection:null}` - identically on every
+  page, enforced by `validateSameStateConsistency` (same automation id +
+  same capture state on different pages => identical box, interaction,
+  part paint + element-relative rects, text_runs, element size; exceptions
+  only the explicit `shell.nav.*` active-tab map in `validate.js`).
+  Editable elements record `interaction {focused, selection|null}` per
+  capture; `validateCaptureAuthority` compares it live alongside box paint
+  fields and every visible part's paint fields.
+- **Per-capture records (C01):** each element carries
+  `captures["<page>/<capture_state>"]` with its own `rect`, `box`, `text`,
+  `text_runs` and `parts` (sorted keys, `"default"` for the default state)
+  - the same automation id rendered on several pages or states keeps every
+  record (`settings-nav.default` wide + collapsed, `native-text.*.selection`
+  on `all` + `native-text` + `multiline-selection`, ...). `data_slot`/`tag`
+  must be identical across captures or generation fails; parts with no
+  client rects/`display:none`/zero size record
+  `{visible:false, reason:"not-rendered"}`.
+- **Text ownership (C02):** every visible non-whitespace text node must
+  resolve to an owner - the nearest `[data-automation-id]` or
+  `[data-part-owner]` ancestor - or to a `data-text-exempt` ancestor from
+  the closed vocabulary (`gallery-caption`, `gallery-heading`,
+  `gallery-shell`). `data-part-owner` attributes parts outside the owner's
+  DOM subtree (checkbox labels) to the owner's `parts` (with
+  `label_gap = label.left - control.right`) and `text_runs`.
 - **Text measurement (R02):** `text_runs` are per meaningful leaf text run -
   one record per text node (rect, per-line rects, `baseline_y`, effective
-  font family/size/weight/line-height, color). `input`/`textarea` values and
-  placeholders have no DOM text nodes, so they are measured via a mirror
-  element with identical computed box/font styles (browser editing behavior
-  is not authority). Baseline definition:
-  `baseline_y = line_top + (line_height - (fontBoundingBoxAscent +
-  fontBoundingBoxDescent)) / 2 + fontBoundingBoxAscent`, with ascent/descent
-  from canvas `measureText` on the run's effective Geist font. Every run is
-  validated against the rendered pixels: ink inside the run rect (±1px) and
-  the baseline inside the line's ink band. Limitations: ink validation is
+  font family/size/weight/line-height, color, `part` key). `input`/`textarea`
+  values and placeholders have no DOM text nodes, so they are measured via
+  a mirror `div` at the control's position with the same
+  font/letter-spacing/text-indent/whitespace and padding, but the border
+  width suppressed (the control's border would shift the text origin);
+  browser editing behavior is not authority. Baseline definition:
+  `baseline_y = line rect top + fontBoundingBoxAscent of the run's effective
+  font` (canvas `measureText` on that font). Every run is validated against
+  the rendered pixels: ink inside the run rect (±1px) and the baseline
+  inside the line's ink band. Limitations: ink validation is
   luminance-based (no OCR); ligatures/measurement of sub-1px ink may differ
   ±1px; Chromium font rasterization is the reference renderer, not the
   future native rasterizer.
@@ -202,9 +244,17 @@ are exactly what a future rust-ui `.automation_id(...)` (UIA
   OS changes; System re-selects following. `reference:check` exercises the
   full sequence in one live document (emulated OS flips, clicks, navigation)
   and asserts the listener count stays exactly 1.
-- Browser: bundled Chromium via `channel:'chromium'` (new headless mode).
-  Deterministic rasterization flags: `--disable-gpu --force-color-profile=srgb
-  --disable-lcd-text`.
+- Browser: bundled Chromium via `channel:'chromium'` (new headless mode),
+  launched only through `scripts/browser.js`
+  (`launchCanonical`). Deterministic rasterization flags:
+  `--disable-gpu --force-color-profile=srgb --disable-lcd-text
+  --disable-partial-raster`. The last flag is required: after paint
+  invalidation (CDP `forcePseudoState` + measurement work) Chromium's
+  partial rasterizer can reraster only the invalidated rect into the
+  existing tile, and fractional rounded corners (the SettingsNav
+  `cn-select-trigger` at x=925.96875) received different anti-alias
+  coverage than a full-tile raster - `reference:check` self-guards that the
+  canonical args still carry it.
 - Layout: matrix sections render variants x forced states as framed grids;
   other sections use equal-width grid cells. `reference:check` enforces the
   class guard (every DOM class token must have a rule in
@@ -243,9 +293,11 @@ are exactly what a future rust-ui `.automation_id(...)` (UIA
 ## Artifacts
 
 - `static/gallery.css` - committed compiled Tailwind output.
-- `contract.json` - `rust-ui.shadcn-reference.contract/0.1`: coordinate
-  space, id vocabulary, pages, and per-element placements/box/text/
-  `text_runs`/keyed `parts`. Light and dark geometry asserted identical.
+- `contract.json` - `rust-ui.shadcn-reference.contract/0.2`: coordinate
+  space, id vocabulary, pages, and per-element `captures[page/state]` records
+  (`rect`/`box`/`text`/`text_runs`/keyed `parts`, incl. hidden + owner-attributed
+  parts), `bindings_live`, `proofs`, `text_inventory`. Light and dark
+  geometry asserted identical per capture.
 - `tokens.json` - `rust-ui.shadcn-reference.tokens/0.1`: **frozen visual
   reference** - NOT the rust-ui runtime style authority (rust-ui's typed
   theme API stays canonical). Semantic colors as upstream oklch + derived
@@ -277,21 +329,32 @@ npm run reference:selftest # fault-injection: proves validators fail on wrong va
 ```
 
 `reference:check` runs: version/schema validation (reference_version +
-candidate_revision consistent across all committed JSON), theme derivation
+candidate_revision consistent across all committed JSON, plus a
+fail-closed domain walk of every tokens.json leaf), theme derivation
 byte-exactness, CSS rebuild identity, full re-capture byte-identity
 (screenshots + contract), light/dark geometry parity, the R07 live
 theme-listener sequence, exhaustive Geist font re-proof, R05 inline-start
-icon branch proof, coverage resolution, token-binding live comparisons,
-R01 pressed parity, R03 live part-key enumeration, attribution/vendor hash
-checks, hygiene scans (no developer absolute paths, `.tmp-*`/debug files,
-or http(s) URLs in render-time assets - SVG `xmlns` excepted), the legacy
-token-closure map, and `reference:selftest` fault injection (backdrop alpha,
-control height, padding, line-height, version, duplicate part key, missing
-core state mapping). Non-zero exit on any failure.
+icon branch proof, the three-way coverage audit (contract / coverage.json /
+the `scripts/coverage.js` authority, with upstream state-prefix anchoring
+derived from `vendor/shadcn/.../style-nova.css`), token-binding live
+comparisons (fail-closed token + live parsing, structured
+`box-shadow-layers` effect-layer checks), the live capture-authority audit
+(every page/state's rendered id set equals the contract's capture keys and
+every multi-capture id's rect/parts match within 0.01px), the live
+text-ownership audit, R01 pressed parity, R03 live part-key enumeration
+(per page/state, incl. hidden + owner-attributed parts), attribution/vendor
+hash checks, hygiene scans (no developer absolute paths, `.tmp-*`/debug
+files, or http(s) URLs in render-time assets - SVG `xmlns` excepted), the
+legacy token-closure map, and `reference:selftest` - labeled positive
+controls plus negative mutations (wrong token values, invalid/NaN/Infinity
+tokens, wrong tokens $schema, mutated shadow layers, deleted coverage
+family/rules, wrong-state capture copies, deleted label text_runs, skipped
+forcing). Non-zero exit on any failure.
 
 ## Future native comparison path
 
 The native Gallery sets the same `data-automation-id` semantics through
 rust-ui `.automation_id(...)`; `rust-ui-devctl` (`rect` / `hover` / `click` /
 `focus` / `type` / `snapshot-layout` / `compare`) consumes `contract.json`
-to compare native geometry/text/parts against these frozen placements.
+to compare native geometry/text/parts against these frozen per-capture
+records.
