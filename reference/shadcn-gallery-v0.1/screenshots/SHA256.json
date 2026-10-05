@@ -1,0 +1,18 @@
+{
+  "screenshots/light/all.png": "ba4e7e34e72a6c789fc04fa08ba8228f9f7ea883733e4c09215c16995f0abfa9",
+  "screenshots/light/components.png": "1670fee595a074192f8c0c1622f387b62ef7819931bfe6e2ba5ad4aea55d1c7b",
+  "screenshots/light/forms.png": "30c442b2d1963c70fac3a4907540b21628eb7bece63e0ea144e268c7e9a67ab8",
+  "screenshots/light/native-text--multiline-selection.png": "13b9a03bd29b6cd8b6f9b2f7b34c889d825a097f1b190e9d9f8d37073d51b6a2",
+  "screenshots/light/native-text.png": "f0ef2a3c187d1a05e13a88d7430b8899daf692508ef38607f5657f5bed4efd23",
+  "screenshots/light/navigation.png": "ed89a49e10d73e22a143d27c309052f9372487cd016aa2ce9ab969afbbf01c3b",
+  "screenshots/light/overlays.png": "49efb6fc6a2f4adb47e470b49e706087766bc369e5072c8d84937a462b2e566b",
+  "screenshots/light/typography.png": "a3ce697026861c8203f048d498603105b1830dd68ff91509ac2a24bf1a98694c",
+  "screenshots/dark/all.png": "449d45e536df528bb3feed90c9ebb0f10662834c6ef12abd04128bb1c37931b3",
+  "screenshots/dark/components.png": "c77f784a2692a9ce842fb01aab8f90ebe3827352b0b059a796b442857c9ce122",
+  "screenshots/dark/forms.png": "30a46f764498756125b6f9c38f8f55fe2b81f4ea2b1c67daa05c2a4cbae9f77d",
+  "screenshots/dark/native-text--multiline-selection.png": "adb6ddf4febaca7dbbabf0b62352e412f66386fadc126850bae36b696006219f",
+  "screenshots/dark/native-text.png": "96b76866d93fff1823f4e65c2a219a98d4b8d40a631824c16ac44dadedaa3579",
+  "screenshots/dark/navigation.png": "3bb50f8fc8ce35031d8df89971d0630d7fbbc46f2f0807ebfcdaa6fa91fedb3d",
+  "screenshots/dark/overlays.png": "d3eb868943619e615166ab816834ab927e73bc523dc152f4c3582b6af03929e6",
+  "screenshots/dark/typography.png": "2157e6aa4d8f943710605f3343cc670767cc142bd8e1cde8fbdeb9d3e80a1abb"
+}

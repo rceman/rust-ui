@@ -1,0 +1,139 @@
+{
+  "$schema": "rust-ui.shadcn-reference.reference/0.1",
+  "reference_version": "0.1",
+  "authority": {
+    "site": "https://ui.shadcn.com/",
+    "urls_reviewed": [
+      "/docs/theming",
+      "/docs/components",
+      "/docs/changelog/2025-12-shadcn-create",
+      "/docs/components/base/button",
+      "/docs/components/base/badge",
+      "/docs/components/base/separator",
+      "/docs/components/base/card",
+      "/docs/components/base/alert",
+      "/docs/components/base/skeleton",
+      "/docs/components/base/kbd",
+      "/docs/components/base/label",
+      "/docs/components/base/input",
+      "/docs/components/base/textarea",
+      "/docs/components/base/checkbox",
+      "/docs/components/base/radio-group",
+      "/docs/components/base/switch",
+      "/docs/components/base/slider",
+      "/docs/components/base/select",
+      "/docs/components/base/field",
+      "/docs/components/base/tabs",
+      "/docs/components/base/breadcrumb",
+      "/docs/components/base/pagination",
+      "/docs/components/base/toggle",
+      "/docs/components/base/toggle-group",
+      "/docs/components/base/button-group",
+      "/docs/components/base/dialog",
+      "/docs/components/base/alert-dialog",
+      "/docs/components/base/popover",
+      "/docs/components/base/tooltip",
+      "/docs/components/base/dropdown-menu",
+      "/docs/components/base/typography"
+    ],
+    "upstream_repo": "github.com/shadcn-ui/ui",
+    "upstream_commit": "295a1f114a138f23b5dfee0e0c6812394dfeb90c",
+    "upstream_files": [
+      "apps/v4/registry/styles/style-nova.css",
+      "packages/shadcn/src/tailwind.css",
+      "apps/v4/registry/themes.ts (theme neutral)",
+      "apps/v4/registry/bases/base/ui/*.tsx",
+      "apps/v4/registry/bases/base/examples/*-example.tsx"
+    ]
+  },
+  "authority_review_date": "2026-10-05",
+  "style": {
+    "library": "base",
+    "style": "nova",
+    "base_color": "neutral",
+    "icon_library": "lucide",
+    "icon_package": "lucide-static@1.21.0",
+    "radius": "default",
+    "menu_accent": "subtle",
+    "menu_color": "default"
+  },
+  "install_transforms": {
+    "note": "emulated upstream install-time transformers for this config (packages/registry/src/utils/transformers)",
+    "menu": "transform-menu.ts - menuColor=default removes cn-menu-target AND cn-menu-translucent (they are placeholders; only *-translucent inline the translucent classes, inverted* swaps cn-menu-target->'dark')",
+    "rtl": "transform-rtl.ts - rtl=false -> skipped (no direction/logical-side transform, cn-rtl-flip markers absent)",
+    "font": "transform-font.ts - cn-font-heading kept; --font-heading: var(--font-sans) present in gallery.css -> resolves to sans (no distinct heading font; Geist->Segoe deviation)",
+    "icons": "transform-icons.ts - iconLibrary=lucide -> no-op (source paths already lucide)",
+    "cleanup": "transform-cleanup.ts - strips transient cn-* markers only (cn-rtl-flip, cn-logical-sides); recipe cn-* classes retained",
+    "tw_prefix": "none configured -> no-op"
+  },
+  "font": {
+    "canonical": "Segoe UI Variable (deviation from upstream Geist - deliberate rust-ui substitution)",
+    "css_stack": "\"Segoe UI Variable Text\", \"Segoe UI Variable\", \"Segoe UI\", system-ui, sans-serif",
+    "mono_stack": "\"Cascadia Mono\", Consolas, monospace",
+    "font_optical_sizing": "auto (DirectWrite must apply opsz by size)",
+    "resolved_platform_families": {
+      "sans": [
+        "Segoe UI Variable"
+      ],
+      "mono": [
+        "Cascadia Mono"
+      ]
+    },
+    "proof": "CDP CSS.getPlatformFontsForNode on every text-bearing contract element"
+  },
+  "viewport": {
+    "width": 1440,
+    "height": 1000
+  },
+  "device_scale_factor": 1,
+  "zoom": 1,
+  "capture_platform": {
+    "os": "win32",
+    "chromium": "153.0.8010.12",
+    "playwright": "1.63.0",
+    "deterministic": "fixed viewport/dpr/zoom; animations+transitions disabled; caret hidden; no timestamps/randomness/network"
+  },
+  "theme_modes": [
+    "light",
+    "dark",
+    "system"
+  ],
+  "canonical_pages": [
+    "all",
+    "components",
+    "forms",
+    "navigation",
+    "typography",
+    "overlays",
+    "native-text"
+  ],
+  "capture_states": {
+    "all": [
+      "default"
+    ],
+    "components": [
+      "default"
+    ],
+    "forms": [
+      "default"
+    ],
+    "navigation": [
+      "default"
+    ],
+    "typography": [
+      "default"
+    ],
+    "overlays": [
+      "default"
+    ],
+    "native-text": [
+      "default",
+      "multiline-selection"
+    ]
+  },
+  "git_base": {
+    "foundation_review": "e827f3dfb5d29e50bcc64f90e5d735624641d878",
+    "frozen_foundation_production": "00dc29acfeb686d6a190d91624de7ab9a48e1e92"
+  },
+  "devctl_bridge": "automation ids == future rust-ui .automation_id(...) == UIA AutomationId; future rust-ui-devctl rect/hover/click/focus/type/snapshot-layout/compare consume contract.json"
+}
