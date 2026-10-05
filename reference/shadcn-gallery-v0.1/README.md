@@ -159,6 +159,7 @@ rust-ui `.automation_id(...)` (UIA `AutomationId`) will expose.
 
 ```bash
 npm ci                     # dev tooling only (node_modules is gitignored)
+npx playwright install chromium  # once per machine: bundled Chromium for capture/check
 npm run reference:capture  # build CSS + icons, capture screenshots, emit contract.json/reference.json
 npm run reference:check    # validate: rebuild identical, re-capture byte-identical,
                            # light/dark geometry identity, system-mode, fonts, token closure
