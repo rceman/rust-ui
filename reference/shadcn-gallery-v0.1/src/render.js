@@ -16,7 +16,7 @@
     label: ["Label", "Form label paired with a control."],
     input: ["Input", "Single-line text field states."],
     textarea: ["Textarea", "Multi-line text field states."],
-    checkbox: ["Checkbox", "Tri-state check control."],
+    checkbox: ["Checkbox", "Binary check control."],
     "radio-group": ["Radio Group", "Single-selection control set."],
     switch: ["Switch", "Binary toggle control."],
     slider: ["Slider", "Value scrubber - single and range thumbs."],
@@ -28,6 +28,10 @@
     toggle: ["Toggle", "Pressed-state control."],
     "toggle-group": ["Toggle Group", "Grouped toggles, outline variant."],
     "button-group": ["Button Group", "Toolbar pattern."],
+    "icon-button": ["Icon Button", "Icon-only buttons at size icon-*; upstream ArrowRightIcon."],
+    "settings-nav": ["Settings Nav", "Desktop settings sidebar (sidebar-13 subset) - collapsible=none / icon rail."],
+    "settings-nav-item": ["Settings Nav Item", "Sidebar menu button states."],
+    "code-block": ["Code Block", "Docs code surface (no highlighting)."],
     h1: ["Typography", "Upstream typography scale."],
     dialog: ["Dialog", "Modal surface over a backdrop."],
     "alert-dialog": ["Alert Dialog", "Confirmational modal."],
@@ -36,16 +40,16 @@
     "dropdown-menu": ["Dropdown Menu", "Anchored menu surface."],
     "native-text": ["Native Text", "Upstream input/textarea recipes - visual contract for the future native RichEdit text. `readonly` is a semantic state; visually = filled per upstream."],
   };
-  const ORDER = [
-    "button", "badge", "separator", "card", "alert", "skeleton", "kbd",
-    "label", "input", "textarea", "checkbox", "radio-group", "switch",
-    "slider", "select", "field",
-    "tabs", "breadcrumb", "pagination", "toggle", "toggle-group", "button-group",
-    "h1", "h2", "h3", "h4", "p", "blockquote", "lead", "large", "small",
-    "muted", "inline-code", "list", "table",
-    "dialog", "alert-dialog", "popover", "tooltip", "dropdown-menu",
-    "native-text",
-  ];
+  // core-first section order per page (all page uses the same per-section order)
+  const ORDER = {
+    components: ["button", "icon-button", "badge", "separator", "card", "alert", "skeleton", "kbd"],
+    forms: ["label", "input", "textarea", "checkbox", "radio-group", "switch", "select", "field", "slider"],
+    navigation: ["tabs", "settings-nav", "settings-nav-item", "breadcrumb", "pagination", "toggle", "toggle-group", "button-group"],
+    overlays: ["dialog", "popover", "tooltip", "dropdown-menu", "select", "alert-dialog"],
+    "native-text": ["native-text"],
+  };
+  // typography is one merged section - entries sort inside by this order
+  const TYPO_ORDER = ["h1", "h2", "h3", "h4", "p", "lead", "small", "muted", "inline-code", "code-block", "large", "blockquote", "list", "table"];
   const CATEGORY_ORDER = { components: 0, forms: 1, navigation: 2, typography: 3, overlays: 4, "native-text": 5 };
   // per-category description overrides (e.g. the open select list lives on
   // the Overlays page, while trigger states live under Forms)
@@ -55,10 +59,18 @@
   // Matrix sections: variants x forced states
   const MATRIX = {
     button: {
+      comp: "button",
       rows: ["default", "secondary", "outline", "ghost", "destructive", "link"],
-      cols: ["normal", "hover", "pressed", "focus-visible", "disabled"],
+      cols: ["normal", "hover", "pressed", "focus-visible", "disabled", "invalid"],
       idOf: (v, st) => `button.${v}${st === "normal" ? "" : "." + st}`,
-      sizeIds: ["size-xs", "size-sm", "size-lg", "icon-inline-start", "size-icon-xs", "size-icon-sm", "size-icon", "size-icon-lg"].map((s) => `button.default.${s}`),
+      sizeIds: ["size-xs", "size-sm", "size-lg", "icon-inline-start", "icon-inline-end"].map((s) => `button.default.${s}`),
+    },
+    "icon-button": {
+      comp: "icon-button",
+      rows: ["default", "secondary", "outline", "ghost", "destructive"],
+      cols: ["normal", "hover", "pressed", "focus-visible", "disabled"],
+      idOf: (v, st) => `icon-button.${v}${st === "normal" ? "" : "." + st}`,
+      sizeIds: ["size-icon-xs", "size-icon-sm", "size-icon", "size-icon-lg"].map((s) => `icon-button.default.${s}`),
     },
     toggle: {
       rows: ["default", "outline"],
@@ -73,6 +85,7 @@
     textarea: 340, "radio-group": 300, select: 280, slider: 280,
     label: 300, breadcrumb: 440, pagination: 540, tabs: 420,
     "toggle-group": 300, "button-group": 300, "native-text": 340,
+    "settings-nav-item": 300,
     checkbox: 240, switch: 240, badge: 200, separator: 220,
   };
   // uniform frame height per section (static class names only)
@@ -97,8 +110,8 @@
 
   // specimen cell: framed specimen + mono caption below (uniform section height)
   function cell(entry, cellH) {
-    const spec = entry.category === "overlays"
-      ? entry.render() // overlay stages are already framed surfaces
+    const spec = entry.category === "overlays" || entry.component === "settings-nav"
+      ? entry.render() // stage surfaces are already framed
       : h("div", { class: `specimen-frame flex flex-1 items-center justify-center p-5 ${cellH || "min-h-24"}` }, entry.render());
     return h("div", { class: "flex flex-col" },
       spec + h("div", { class: "specimen-caption" }, esc(entry.automation_id)));
@@ -130,7 +143,9 @@
               (ent ? ent.render() : "") + h("div", { class: "specimen-caption" }, esc(id)));
           }).join("")));
     const sizeRows = cfg.sizeIds
-      ? sizeRow("Sizes", cfg.sizeIds.slice(0, 4)) + sizeRow("Icon sizes", cfg.sizeIds.slice(4))
+      ? cfg.comp === "button"
+        ? sizeRow("Sizes", cfg.sizeIds)
+        : sizeRow("Icon sizes", cfg.sizeIds)
       : "";
     const headRow = h("div", {}) + cfg.cols.map((st) =>
       h("div", { class: "text-muted-foreground pb-1 text-center text-xs font-medium" }, st)).join("");
@@ -140,18 +155,24 @@
       }, headRow + rowsHtml) + sizeRows);
   }
 
+  // R07: a single matchMedia listener, bound once for the document's life,
+  // reading the CURRENT mode - explicit light/dark never re-darken on an OS
+  // preference change; switching back to system resumes following.
+  let currentMode = "system";
+  window.__themeListenerCount = 0;
+  const mq = window.matchMedia("(prefers-color-scheme: dark)");
   function applyTheme(mode) {
-    const root = document.documentElement;
-    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    currentMode = mode;
     const set = () =>
-      root.classList.toggle(
+      document.documentElement.classList.toggle(
         "dark",
-        mode === "dark" || (mode === "system" && mq.matches),
+        currentMode === "dark" || (currentMode === "system" && mq.matches),
       );
     set();
-    if (mode === "system" && !window.__systemThemeBound) {
+    if (!window.__systemThemeBound) {
       mq.addEventListener("change", set);
       window.__systemThemeBound = true;
+      window.__themeListenerCount = 1; // stays 1 for all later mode changes
     }
   }
 
@@ -233,20 +254,42 @@
       if (!groups.has(key)) groups.set(key, { cat: e.category, comp: e.component, list: [] });
       groups.get(key).list.push(e);
     }
+    const compRank = (g) => {
+      const o = ORDER[g.cat];
+      if (!o) return 99;
+      const i = o.indexOf(g.comp);
+      return i === -1 ? 99 : i;
+    };
     const ordered = [...groups.entries()].sort(
       (a, b) =>
         (CATEGORY_ORDER[a[1].cat] ?? 9) - (CATEGORY_ORDER[b[1].cat] ?? 9) ||
-        ORDER.indexOf(a[1].comp) - ORDER.indexOf(b[1].comp),
+        compRank(a[1]) - compRank(b[1]),
     );
+
+    // outline tier badge (non-core only): section header for homogeneous
+    // sections; the merged Typography section mixes tiers so its non-core
+    // specimens carry the badge in their caption instead
+    const tierBadge = (tier) =>
+      tier && tier !== "core"
+        ? " " + h("span", { class: "cn-badge cn-badge-variant-outline inline-flex items-center align-middle" }, tier)
+        : "";
+    const tierBadgeFor = (e2) =>
+      e2.tier && e2.tier !== "core"
+        ? " " + h("span", { class: "cn-badge cn-badge-variant-outline inline-flex items-center align-middle" }, e2.tier)
+        : "";
 
     const sections = ordered
       .map(([key, g]) => {
-        const list = g.list;
+        const list = g.cat === "typography"
+          ? [...g.list].sort((a, b) => TYPO_ORDER.indexOf(a.component) - TYPO_ORDER.indexOf(b.component))
+          : g.list;
         const metaKey = `${g.cat}:${g.comp}`;
         const [title, desc] =
           SECTION_META_BY_CATEGORY[metaKey] ||
           SECTION_META[g.comp] ||
           [g.comp[0].toUpperCase() + g.comp.slice(1), ""];
+        const tiers = new Set(list.map((e2) => e2.tier || "core"));
+        const sectionBadge = tiers.size === 1 ? tierBadge([...tiers][0]) : "";
         const isOverlay = g.cat === "overlays";
         const isTypo = g.cat === "typography";
         const isNt = g.cat === "native-text";
@@ -254,7 +297,7 @@
         let body;
         if (MATRIX[g.comp] && !isOverlay) {
           body = matrixSection(list, MATRIX[g.comp], cellH);
-        } else if (isOverlay) {
+        } else if (isOverlay || g.comp === "settings-nav") {
           body = h("div", { class: "flex flex-col gap-6" }, list.map((e2) => cell(e2)).join(""));
         } else if (isTypo) {
           // left-aligned typography specimens with inner padding; the contract
@@ -263,7 +306,7 @@
             list.map((e2) =>
               h("div", { class: "flex flex-col" },
                 h("div", { class: "specimen-frame p-6" }, e2.render()) +
-                h("div", { class: "specimen-caption self-start" }, esc(e2.automation_id))),
+                h("div", { class: "specimen-caption self-start" }, esc(e2.automation_id) + tierBadgeFor(e2))),
             ).join(""));
         } else {
           const minW = SECTION_MINW[g.comp] || 180;
@@ -275,7 +318,7 @@
         return h(
           "section",
           { class: "mt-10" },
-          h("h2", { class: "text-base font-semibold tracking-tight" }, title) +
+          h("h2", { class: "text-base font-semibold tracking-tight" }, title + sectionBadge) +
             h("p", { class: "text-muted-foreground mb-4 text-sm" }, desc) +
             body,
         );

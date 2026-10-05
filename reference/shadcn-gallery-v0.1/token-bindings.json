@@ -1,0 +1,3747 @@
+{
+  "$schema": "rust-ui.shadcn-reference.token-bindings/0.1",
+  "reference_version": "0.1",
+  "candidate_revision": 2,
+  "rule": "each binding compares the LIVE computed value (after forced state) against the tokens.json value; colors to sRGB+alpha (tol <=1/255 per channel, alpha <=0.005), lengths exact to 0.01px; box-shadow-width/-color/-alpha inspect the focus ring shadow",
+  "bindings": [
+    {
+      "automation_id": "button.default",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.primary.srgb"
+    },
+    {
+      "automation_id": "button.default",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.primary.srgb"
+    },
+    {
+      "automation_id": "button.default",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.primary.alpha"
+    },
+    {
+      "automation_id": "button.default",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.primary.alpha"
+    },
+    {
+      "automation_id": "button.default",
+      "theme": "light",
+      "css_property": "color",
+      "token_path": "colors.{theme}.primary-foreground.srgb"
+    },
+    {
+      "automation_id": "button.default",
+      "theme": "dark",
+      "css_property": "color",
+      "token_path": "colors.{theme}.primary-foreground.srgb"
+    },
+    {
+      "automation_id": "button.default",
+      "theme": "light",
+      "css_property": "color",
+      "token_path": "colors.{theme}.primary-foreground.alpha"
+    },
+    {
+      "automation_id": "button.default",
+      "theme": "dark",
+      "css_property": "color",
+      "token_path": "colors.{theme}.primary-foreground.alpha"
+    },
+    {
+      "automation_id": "button.secondary",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.secondary.srgb"
+    },
+    {
+      "automation_id": "button.secondary",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.secondary.srgb"
+    },
+    {
+      "automation_id": "button.secondary",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.secondary.alpha"
+    },
+    {
+      "automation_id": "button.secondary",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.secondary.alpha"
+    },
+    {
+      "automation_id": "button.secondary",
+      "theme": "light",
+      "css_property": "color",
+      "token_path": "colors.{theme}.secondary-foreground.srgb"
+    },
+    {
+      "automation_id": "button.secondary",
+      "theme": "dark",
+      "css_property": "color",
+      "token_path": "colors.{theme}.secondary-foreground.srgb"
+    },
+    {
+      "automation_id": "button.secondary",
+      "theme": "light",
+      "css_property": "color",
+      "token_path": "colors.{theme}.secondary-foreground.alpha"
+    },
+    {
+      "automation_id": "button.secondary",
+      "theme": "dark",
+      "css_property": "color",
+      "token_path": "colors.{theme}.secondary-foreground.alpha"
+    },
+    {
+      "automation_id": "button.outline",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "colors.light.background.srgb"
+    },
+    {
+      "automation_id": "button.outline",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "translucent.input-30-dark.dark.srgb"
+    },
+    {
+      "automation_id": "button.outline",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "translucent.input-30-dark.dark.alpha"
+    },
+    {
+      "automation_id": "button.outline",
+      "theme": "light",
+      "css_property": "color",
+      "token_path": "colors.{theme}.foreground.srgb"
+    },
+    {
+      "automation_id": "button.outline",
+      "theme": "dark",
+      "css_property": "color",
+      "token_path": "colors.{theme}.foreground.srgb"
+    },
+    {
+      "automation_id": "button.outline",
+      "theme": "light",
+      "css_property": "color",
+      "token_path": "colors.{theme}.foreground.alpha"
+    },
+    {
+      "automation_id": "button.outline",
+      "theme": "dark",
+      "css_property": "color",
+      "token_path": "colors.{theme}.foreground.alpha"
+    },
+    {
+      "automation_id": "button.ghost",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "special.transparent.srgb"
+    },
+    {
+      "automation_id": "button.ghost",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "special.transparent.srgb"
+    },
+    {
+      "automation_id": "button.ghost",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "special.transparent.alpha"
+    },
+    {
+      "automation_id": "button.ghost",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "special.transparent.alpha"
+    },
+    {
+      "automation_id": "button.ghost",
+      "theme": "light",
+      "css_property": "color",
+      "token_path": "colors.{theme}.foreground.srgb"
+    },
+    {
+      "automation_id": "button.ghost",
+      "theme": "dark",
+      "css_property": "color",
+      "token_path": "colors.{theme}.foreground.srgb"
+    },
+    {
+      "automation_id": "button.ghost",
+      "theme": "light",
+      "css_property": "color",
+      "token_path": "colors.{theme}.foreground.alpha"
+    },
+    {
+      "automation_id": "button.ghost",
+      "theme": "dark",
+      "css_property": "color",
+      "token_path": "colors.{theme}.foreground.alpha"
+    },
+    {
+      "automation_id": "button.destructive",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "translucent.destructive-10-20.{theme}.srgb"
+    },
+    {
+      "automation_id": "button.destructive",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "translucent.destructive-10-20.{theme}.srgb"
+    },
+    {
+      "automation_id": "button.destructive",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "translucent.destructive-10-20.{theme}.alpha"
+    },
+    {
+      "automation_id": "button.destructive",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "translucent.destructive-10-20.{theme}.alpha"
+    },
+    {
+      "automation_id": "button.destructive",
+      "theme": "light",
+      "css_property": "color",
+      "token_path": "colors.{theme}.destructive.srgb"
+    },
+    {
+      "automation_id": "button.destructive",
+      "theme": "dark",
+      "css_property": "color",
+      "token_path": "colors.{theme}.destructive.srgb"
+    },
+    {
+      "automation_id": "button.destructive",
+      "theme": "light",
+      "css_property": "color",
+      "token_path": "colors.{theme}.destructive.alpha"
+    },
+    {
+      "automation_id": "button.destructive",
+      "theme": "dark",
+      "css_property": "color",
+      "token_path": "colors.{theme}.destructive.alpha"
+    },
+    {
+      "automation_id": "button.link",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "special.transparent.srgb"
+    },
+    {
+      "automation_id": "button.link",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "special.transparent.srgb"
+    },
+    {
+      "automation_id": "button.link",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "special.transparent.alpha"
+    },
+    {
+      "automation_id": "button.link",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "special.transparent.alpha"
+    },
+    {
+      "automation_id": "button.link",
+      "theme": "light",
+      "css_property": "color",
+      "token_path": "colors.{theme}.primary.srgb"
+    },
+    {
+      "automation_id": "button.link",
+      "theme": "dark",
+      "css_property": "color",
+      "token_path": "colors.{theme}.primary.srgb"
+    },
+    {
+      "automation_id": "button.link",
+      "theme": "light",
+      "css_property": "color",
+      "token_path": "colors.{theme}.primary.alpha"
+    },
+    {
+      "automation_id": "button.link",
+      "theme": "dark",
+      "css_property": "color",
+      "token_path": "colors.{theme}.primary.alpha"
+    },
+    {
+      "automation_id": "button.default.hover",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "translucent.primary-80.{theme}.srgb"
+    },
+    {
+      "automation_id": "button.default.hover",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "translucent.primary-80.{theme}.srgb"
+    },
+    {
+      "automation_id": "button.default.hover",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "translucent.primary-80.{theme}.alpha"
+    },
+    {
+      "automation_id": "button.default.hover",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "translucent.primary-80.{theme}.alpha"
+    },
+    {
+      "automation_id": "button.secondary.hover",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "translucent.secondary-hover.{theme}.srgb"
+    },
+    {
+      "automation_id": "button.secondary.hover",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "translucent.secondary-hover.{theme}.srgb"
+    },
+    {
+      "automation_id": "button.secondary.hover",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "translucent.secondary-hover.{theme}.alpha"
+    },
+    {
+      "automation_id": "button.secondary.hover",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "translucent.secondary-hover.{theme}.alpha"
+    },
+    {
+      "automation_id": "button.outline.hover",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "colors.light.muted.srgb"
+    },
+    {
+      "automation_id": "button.outline.hover",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "translucent.input-50-dark.dark.srgb"
+    },
+    {
+      "automation_id": "button.outline.hover",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "translucent.input-50-dark.dark.alpha"
+    },
+    {
+      "automation_id": "button.outline.hover",
+      "theme": "light",
+      "css_property": "color",
+      "token_path": "colors.{theme}.foreground.srgb"
+    },
+    {
+      "automation_id": "button.outline.hover",
+      "theme": "dark",
+      "css_property": "color",
+      "token_path": "colors.{theme}.foreground.srgb"
+    },
+    {
+      "automation_id": "button.outline.hover",
+      "theme": "light",
+      "css_property": "color",
+      "token_path": "colors.{theme}.foreground.alpha"
+    },
+    {
+      "automation_id": "button.outline.hover",
+      "theme": "dark",
+      "css_property": "color",
+      "token_path": "colors.{theme}.foreground.alpha"
+    },
+    {
+      "automation_id": "button.ghost.hover",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "colors.light.muted.srgb"
+    },
+    {
+      "automation_id": "button.ghost.hover",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "translucent.muted-50.dark.srgb"
+    },
+    {
+      "automation_id": "button.ghost.hover",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "translucent.muted-50.dark.alpha"
+    },
+    {
+      "automation_id": "button.destructive.hover",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "translucent.destructive-20-30.{theme}.srgb"
+    },
+    {
+      "automation_id": "button.destructive.hover",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "translucent.destructive-20-30.{theme}.srgb"
+    },
+    {
+      "automation_id": "button.destructive.hover",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "translucent.destructive-20-30.{theme}.alpha"
+    },
+    {
+      "automation_id": "button.destructive.hover",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "translucent.destructive-20-30.{theme}.alpha"
+    },
+    {
+      "automation_id": "button.default.pressed",
+      "theme": "light",
+      "css_property": "translate-y",
+      "token_path": "pressed.translate_y_px"
+    },
+    {
+      "automation_id": "button.default.pressed",
+      "theme": "dark",
+      "css_property": "translate-y",
+      "token_path": "pressed.translate_y_px"
+    },
+    {
+      "automation_id": "button.default.focus-visible",
+      "theme": "light",
+      "css_property": "box-shadow-width",
+      "token_path": "focus_ring.width_px"
+    },
+    {
+      "automation_id": "button.default.focus-visible",
+      "theme": "dark",
+      "css_property": "box-shadow-width",
+      "token_path": "focus_ring.width_px"
+    },
+    {
+      "automation_id": "button.default.focus-visible",
+      "theme": "light",
+      "css_property": "box-shadow-color",
+      "token_path": "translucent.ring-50.{theme}.srgb"
+    },
+    {
+      "automation_id": "button.default.focus-visible",
+      "theme": "dark",
+      "css_property": "box-shadow-color",
+      "token_path": "translucent.ring-50.{theme}.srgb"
+    },
+    {
+      "automation_id": "button.default.focus-visible",
+      "theme": "light",
+      "css_property": "box-shadow-alpha",
+      "token_path": "translucent.ring-50.{theme}.alpha"
+    },
+    {
+      "automation_id": "button.default.focus-visible",
+      "theme": "dark",
+      "css_property": "box-shadow-alpha",
+      "token_path": "translucent.ring-50.{theme}.alpha"
+    },
+    {
+      "automation_id": "button.default.focus-visible",
+      "theme": "light",
+      "css_property": "border-color",
+      "token_path": "colors.{theme}.ring.srgb"
+    },
+    {
+      "automation_id": "button.default.focus-visible",
+      "theme": "dark",
+      "css_property": "border-color",
+      "token_path": "colors.{theme}.ring.srgb"
+    },
+    {
+      "automation_id": "button.default.disabled",
+      "theme": "light",
+      "css_property": "opacity",
+      "token_path": "disabled.opacity"
+    },
+    {
+      "automation_id": "button.default.disabled",
+      "theme": "dark",
+      "css_property": "opacity",
+      "token_path": "disabled.opacity"
+    },
+    {
+      "automation_id": "button.default.invalid",
+      "theme": "light",
+      "css_property": "border-color",
+      "token_path": "colors.light.destructive.srgb"
+    },
+    {
+      "automation_id": "button.default.invalid",
+      "theme": "dark",
+      "css_property": "border-color",
+      "token_path": "translucent.destructive-50-dark.dark.srgb"
+    },
+    {
+      "automation_id": "button.default.invalid",
+      "theme": "dark",
+      "css_property": "border-color",
+      "token_path": "translucent.destructive-50-dark.dark.alpha"
+    },
+    {
+      "automation_id": "button.default.invalid",
+      "theme": "light",
+      "css_property": "box-shadow-alpha",
+      "token_path": "translucent.destructive-ring-20-40.{theme}.alpha"
+    },
+    {
+      "automation_id": "button.default.invalid",
+      "theme": "dark",
+      "css_property": "box-shadow-alpha",
+      "token_path": "translucent.destructive-ring-20-40.{theme}.alpha"
+    },
+    {
+      "automation_id": "button.default",
+      "theme": "light",
+      "css_property": "height",
+      "token_path": "control_heights_px.button.default"
+    },
+    {
+      "automation_id": "button.default",
+      "theme": "dark",
+      "css_property": "height",
+      "token_path": "control_heights_px.button.default"
+    },
+    {
+      "automation_id": "button.default",
+      "theme": "light",
+      "css_property": "padding-left",
+      "token_path": "horizontal_padding_px.button.default.px"
+    },
+    {
+      "automation_id": "button.default",
+      "theme": "dark",
+      "css_property": "padding-left",
+      "token_path": "horizontal_padding_px.button.default.px"
+    },
+    {
+      "automation_id": "button.default",
+      "theme": "light",
+      "css_property": "padding-right",
+      "token_path": "horizontal_padding_px.button.default.px"
+    },
+    {
+      "automation_id": "button.default",
+      "theme": "dark",
+      "css_property": "padding-right",
+      "token_path": "horizontal_padding_px.button.default.px"
+    },
+    {
+      "automation_id": "button.default",
+      "theme": "light",
+      "css_property": "font-size",
+      "token_path": "typography.sizes_px.14.px"
+    },
+    {
+      "automation_id": "button.default",
+      "theme": "dark",
+      "css_property": "font-size",
+      "token_path": "typography.sizes_px.14.px"
+    },
+    {
+      "automation_id": "button.default",
+      "theme": "light",
+      "css_property": "font-weight",
+      "token_path": "typography.weight_values.medium"
+    },
+    {
+      "automation_id": "button.default",
+      "theme": "dark",
+      "css_property": "font-weight",
+      "token_path": "typography.weight_values.medium"
+    },
+    {
+      "automation_id": "button.default",
+      "theme": "light",
+      "css_property": "line-height",
+      "token_path": "typography.sizes_px.14.line_height"
+    },
+    {
+      "automation_id": "button.default",
+      "theme": "dark",
+      "css_property": "line-height",
+      "token_path": "typography.sizes_px.14.line_height"
+    },
+    {
+      "automation_id": "button.default",
+      "theme": "light",
+      "css_property": "border-top-width",
+      "token_path": "border_widths_px.1"
+    },
+    {
+      "automation_id": "button.default",
+      "theme": "dark",
+      "css_property": "border-top-width",
+      "token_path": "border_widths_px.1"
+    },
+    {
+      "automation_id": "button.default",
+      "theme": "light",
+      "css_property": "border-top-left-radius",
+      "token_path": "radii_px.lg.px"
+    },
+    {
+      "automation_id": "button.default",
+      "theme": "dark",
+      "css_property": "border-top-left-radius",
+      "token_path": "radii_px.lg.px"
+    },
+    {
+      "automation_id": "button.default.icon-inline-start",
+      "theme": "light",
+      "css_property": "padding-left",
+      "token_path": "horizontal_padding_px.button.icon-with-label-default.px"
+    },
+    {
+      "automation_id": "button.default.icon-inline-start",
+      "theme": "dark",
+      "css_property": "padding-left",
+      "token_path": "horizontal_padding_px.button.icon-with-label-default.px"
+    },
+    {
+      "automation_id": "button.default.icon-inline-end",
+      "theme": "light",
+      "css_property": "padding-right",
+      "token_path": "horizontal_padding_px.button.icon-with-label-default.px"
+    },
+    {
+      "automation_id": "button.default.icon-inline-end",
+      "theme": "dark",
+      "css_property": "padding-right",
+      "token_path": "horizontal_padding_px.button.icon-with-label-default.px"
+    },
+    {
+      "automation_id": "button.default.size-xs",
+      "theme": "light",
+      "css_property": "height",
+      "token_path": "control_heights_px.button.xs"
+    },
+    {
+      "automation_id": "button.default.size-xs",
+      "theme": "dark",
+      "css_property": "height",
+      "token_path": "control_heights_px.button.xs"
+    },
+    {
+      "automation_id": "button.default.size-sm",
+      "theme": "light",
+      "css_property": "height",
+      "token_path": "control_heights_px.button.sm"
+    },
+    {
+      "automation_id": "button.default.size-sm",
+      "theme": "dark",
+      "css_property": "height",
+      "token_path": "control_heights_px.button.sm"
+    },
+    {
+      "automation_id": "button.default.size-lg",
+      "theme": "light",
+      "css_property": "height",
+      "token_path": "control_heights_px.button.lg"
+    },
+    {
+      "automation_id": "button.default.size-lg",
+      "theme": "dark",
+      "css_property": "height",
+      "token_path": "control_heights_px.button.lg"
+    },
+    {
+      "automation_id": "icon-button.default",
+      "theme": "light",
+      "css_property": "width",
+      "token_path": "control_heights_px.button.icon"
+    },
+    {
+      "automation_id": "icon-button.default",
+      "theme": "dark",
+      "css_property": "width",
+      "token_path": "control_heights_px.button.icon"
+    },
+    {
+      "automation_id": "icon-button.default",
+      "theme": "light",
+      "css_property": "height",
+      "token_path": "control_heights_px.button.icon"
+    },
+    {
+      "automation_id": "icon-button.default",
+      "theme": "dark",
+      "css_property": "height",
+      "token_path": "control_heights_px.button.icon"
+    },
+    {
+      "automation_id": "icon-button.default.size-icon-xs",
+      "theme": "light",
+      "css_property": "width",
+      "token_path": "control_heights_px.button.icon-xs"
+    },
+    {
+      "automation_id": "icon-button.default.size-icon-xs",
+      "theme": "dark",
+      "css_property": "width",
+      "token_path": "control_heights_px.button.icon-xs"
+    },
+    {
+      "automation_id": "icon-button.default.size-icon-sm",
+      "theme": "light",
+      "css_property": "width",
+      "token_path": "control_heights_px.button.icon-sm"
+    },
+    {
+      "automation_id": "icon-button.default.size-icon-sm",
+      "theme": "dark",
+      "css_property": "width",
+      "token_path": "control_heights_px.button.icon-sm"
+    },
+    {
+      "automation_id": "icon-button.default.size-icon",
+      "theme": "light",
+      "css_property": "width",
+      "token_path": "control_heights_px.button.icon"
+    },
+    {
+      "automation_id": "icon-button.default.size-icon",
+      "theme": "dark",
+      "css_property": "width",
+      "token_path": "control_heights_px.button.icon"
+    },
+    {
+      "automation_id": "icon-button.default.size-icon-lg",
+      "theme": "light",
+      "css_property": "width",
+      "token_path": "control_heights_px.button.icon-lg"
+    },
+    {
+      "automation_id": "icon-button.default.size-icon-lg",
+      "theme": "dark",
+      "css_property": "width",
+      "token_path": "control_heights_px.button.icon-lg"
+    },
+    {
+      "automation_id": "icon-button.default",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.primary.srgb"
+    },
+    {
+      "automation_id": "icon-button.default",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.primary.srgb"
+    },
+    {
+      "automation_id": "icon-button.default",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.primary.alpha"
+    },
+    {
+      "automation_id": "icon-button.default",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.primary.alpha"
+    },
+    {
+      "automation_id": "icon-button.default.hover",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "translucent.primary-80.{theme}.srgb"
+    },
+    {
+      "automation_id": "icon-button.default.hover",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "translucent.primary-80.{theme}.srgb"
+    },
+    {
+      "automation_id": "icon-button.default.hover",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "translucent.primary-80.{theme}.alpha"
+    },
+    {
+      "automation_id": "icon-button.default.hover",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "translucent.primary-80.{theme}.alpha"
+    },
+    {
+      "automation_id": "icon-button.default.focus-visible",
+      "theme": "light",
+      "css_property": "box-shadow-width",
+      "token_path": "focus_ring.width_px"
+    },
+    {
+      "automation_id": "icon-button.default.focus-visible",
+      "theme": "dark",
+      "css_property": "box-shadow-width",
+      "token_path": "focus_ring.width_px"
+    },
+    {
+      "automation_id": "icon-button.default.focus-visible",
+      "theme": "light",
+      "css_property": "box-shadow-color",
+      "token_path": "translucent.ring-50.{theme}.srgb"
+    },
+    {
+      "automation_id": "icon-button.default.focus-visible",
+      "theme": "dark",
+      "css_property": "box-shadow-color",
+      "token_path": "translucent.ring-50.{theme}.srgb"
+    },
+    {
+      "automation_id": "icon-button.default.focus-visible",
+      "theme": "light",
+      "css_property": "box-shadow-alpha",
+      "token_path": "translucent.ring-50.{theme}.alpha"
+    },
+    {
+      "automation_id": "icon-button.default.focus-visible",
+      "theme": "dark",
+      "css_property": "box-shadow-alpha",
+      "token_path": "translucent.ring-50.{theme}.alpha"
+    },
+    {
+      "automation_id": "icon-button.default.disabled",
+      "theme": "light",
+      "css_property": "opacity",
+      "token_path": "disabled.opacity"
+    },
+    {
+      "automation_id": "icon-button.default.disabled",
+      "theme": "dark",
+      "css_property": "opacity",
+      "token_path": "disabled.opacity"
+    },
+    {
+      "automation_id": "icon-button.default.pressed",
+      "theme": "light",
+      "css_property": "translate-y",
+      "token_path": "pressed.translate_y_px"
+    },
+    {
+      "automation_id": "icon-button.default.pressed",
+      "theme": "dark",
+      "css_property": "translate-y",
+      "token_path": "pressed.translate_y_px"
+    },
+    {
+      "automation_id": "input.default.placeholder",
+      "theme": "light",
+      "css_property": "border-top-width",
+      "token_path": "border_widths_px.1"
+    },
+    {
+      "automation_id": "input.default.placeholder",
+      "theme": "dark",
+      "css_property": "border-top-width",
+      "token_path": "border_widths_px.1"
+    },
+    {
+      "automation_id": "input.default.placeholder",
+      "theme": "light",
+      "css_property": "border-color",
+      "token_path": "colors.{theme}.input.srgb"
+    },
+    {
+      "automation_id": "input.default.placeholder",
+      "theme": "dark",
+      "css_property": "border-color",
+      "token_path": "colors.{theme}.input.srgb"
+    },
+    {
+      "automation_id": "input.default.placeholder",
+      "theme": "light",
+      "css_property": "padding-left",
+      "token_path": "horizontal_padding_px.input.px"
+    },
+    {
+      "automation_id": "input.default.placeholder",
+      "theme": "dark",
+      "css_property": "padding-left",
+      "token_path": "horizontal_padding_px.input.px"
+    },
+    {
+      "automation_id": "input.default.placeholder",
+      "theme": "light",
+      "css_property": "border-top-left-radius",
+      "token_path": "radii_px.lg.px"
+    },
+    {
+      "automation_id": "input.default.placeholder",
+      "theme": "dark",
+      "css_property": "border-top-left-radius",
+      "token_path": "radii_px.lg.px"
+    },
+    {
+      "automation_id": "input.default.filled",
+      "theme": "light",
+      "css_property": "color",
+      "token_path": "colors.{theme}.foreground.srgb"
+    },
+    {
+      "automation_id": "input.default.filled",
+      "theme": "dark",
+      "css_property": "color",
+      "token_path": "colors.{theme}.foreground.srgb"
+    },
+    {
+      "automation_id": "input.default.focus-visible",
+      "theme": "light",
+      "css_property": "box-shadow-width",
+      "token_path": "focus_ring.width_px"
+    },
+    {
+      "automation_id": "input.default.focus-visible",
+      "theme": "dark",
+      "css_property": "box-shadow-width",
+      "token_path": "focus_ring.width_px"
+    },
+    {
+      "automation_id": "input.default.focus-visible",
+      "theme": "light",
+      "css_property": "box-shadow-color",
+      "token_path": "translucent.ring-50.{theme}.srgb"
+    },
+    {
+      "automation_id": "input.default.focus-visible",
+      "theme": "dark",
+      "css_property": "box-shadow-color",
+      "token_path": "translucent.ring-50.{theme}.srgb"
+    },
+    {
+      "automation_id": "input.default.focus-visible",
+      "theme": "light",
+      "css_property": "box-shadow-alpha",
+      "token_path": "translucent.ring-50.{theme}.alpha"
+    },
+    {
+      "automation_id": "input.default.focus-visible",
+      "theme": "dark",
+      "css_property": "box-shadow-alpha",
+      "token_path": "translucent.ring-50.{theme}.alpha"
+    },
+    {
+      "automation_id": "input.default.focus-visible",
+      "theme": "light",
+      "css_property": "border-color",
+      "token_path": "colors.{theme}.ring.srgb"
+    },
+    {
+      "automation_id": "input.default.focus-visible",
+      "theme": "dark",
+      "css_property": "border-color",
+      "token_path": "colors.{theme}.ring.srgb"
+    },
+    {
+      "automation_id": "input.default.disabled",
+      "theme": "light",
+      "css_property": "opacity",
+      "token_path": "disabled.opacity"
+    },
+    {
+      "automation_id": "input.default.disabled",
+      "theme": "dark",
+      "css_property": "opacity",
+      "token_path": "disabled.opacity"
+    },
+    {
+      "automation_id": "input.default.invalid",
+      "theme": "light",
+      "css_property": "border-color",
+      "token_path": "colors.light.destructive.srgb"
+    },
+    {
+      "automation_id": "input.default.invalid",
+      "theme": "dark",
+      "css_property": "border-color",
+      "token_path": "translucent.destructive-50-dark.dark.srgb"
+    },
+    {
+      "automation_id": "input.default.invalid",
+      "theme": "dark",
+      "css_property": "border-color",
+      "token_path": "translucent.destructive-50-dark.dark.alpha"
+    },
+    {
+      "automation_id": "input.default.invalid",
+      "theme": "light",
+      "css_property": "box-shadow-alpha",
+      "token_path": "translucent.destructive-ring-20-40.{theme}.alpha"
+    },
+    {
+      "automation_id": "input.default.invalid",
+      "theme": "dark",
+      "css_property": "box-shadow-alpha",
+      "token_path": "translucent.destructive-ring-20-40.{theme}.alpha"
+    },
+    {
+      "automation_id": "input.default.filled",
+      "theme": "light",
+      "css_property": "font-size",
+      "token_path": "typography.sizes_px.14.px"
+    },
+    {
+      "automation_id": "input.default.filled",
+      "theme": "dark",
+      "css_property": "font-size",
+      "token_path": "typography.sizes_px.14.px"
+    },
+    {
+      "automation_id": "textarea.default.placeholder",
+      "theme": "light",
+      "css_property": "border-top-width",
+      "token_path": "border_widths_px.1"
+    },
+    {
+      "automation_id": "textarea.default.placeholder",
+      "theme": "dark",
+      "css_property": "border-top-width",
+      "token_path": "border_widths_px.1"
+    },
+    {
+      "automation_id": "textarea.default.placeholder",
+      "theme": "light",
+      "css_property": "border-color",
+      "token_path": "colors.{theme}.input.srgb"
+    },
+    {
+      "automation_id": "textarea.default.placeholder",
+      "theme": "dark",
+      "css_property": "border-color",
+      "token_path": "colors.{theme}.input.srgb"
+    },
+    {
+      "automation_id": "textarea.default.placeholder",
+      "theme": "light",
+      "css_property": "padding-left",
+      "token_path": "horizontal_padding_px.input.px"
+    },
+    {
+      "automation_id": "textarea.default.placeholder",
+      "theme": "dark",
+      "css_property": "padding-left",
+      "token_path": "horizontal_padding_px.input.px"
+    },
+    {
+      "automation_id": "textarea.default.placeholder",
+      "theme": "light",
+      "css_property": "border-top-left-radius",
+      "token_path": "radii_px.lg.px"
+    },
+    {
+      "automation_id": "textarea.default.placeholder",
+      "theme": "dark",
+      "css_property": "border-top-left-radius",
+      "token_path": "radii_px.lg.px"
+    },
+    {
+      "automation_id": "textarea.default.filled",
+      "theme": "light",
+      "css_property": "color",
+      "token_path": "colors.{theme}.foreground.srgb"
+    },
+    {
+      "automation_id": "textarea.default.filled",
+      "theme": "dark",
+      "css_property": "color",
+      "token_path": "colors.{theme}.foreground.srgb"
+    },
+    {
+      "automation_id": "textarea.default.focus-visible",
+      "theme": "light",
+      "css_property": "box-shadow-width",
+      "token_path": "focus_ring.width_px"
+    },
+    {
+      "automation_id": "textarea.default.focus-visible",
+      "theme": "dark",
+      "css_property": "box-shadow-width",
+      "token_path": "focus_ring.width_px"
+    },
+    {
+      "automation_id": "textarea.default.focus-visible",
+      "theme": "light",
+      "css_property": "box-shadow-color",
+      "token_path": "translucent.ring-50.{theme}.srgb"
+    },
+    {
+      "automation_id": "textarea.default.focus-visible",
+      "theme": "dark",
+      "css_property": "box-shadow-color",
+      "token_path": "translucent.ring-50.{theme}.srgb"
+    },
+    {
+      "automation_id": "textarea.default.focus-visible",
+      "theme": "light",
+      "css_property": "box-shadow-alpha",
+      "token_path": "translucent.ring-50.{theme}.alpha"
+    },
+    {
+      "automation_id": "textarea.default.focus-visible",
+      "theme": "dark",
+      "css_property": "box-shadow-alpha",
+      "token_path": "translucent.ring-50.{theme}.alpha"
+    },
+    {
+      "automation_id": "textarea.default.focus-visible",
+      "theme": "light",
+      "css_property": "border-color",
+      "token_path": "colors.{theme}.ring.srgb"
+    },
+    {
+      "automation_id": "textarea.default.focus-visible",
+      "theme": "dark",
+      "css_property": "border-color",
+      "token_path": "colors.{theme}.ring.srgb"
+    },
+    {
+      "automation_id": "textarea.default.disabled",
+      "theme": "light",
+      "css_property": "opacity",
+      "token_path": "disabled.opacity"
+    },
+    {
+      "automation_id": "textarea.default.disabled",
+      "theme": "dark",
+      "css_property": "opacity",
+      "token_path": "disabled.opacity"
+    },
+    {
+      "automation_id": "textarea.default.invalid",
+      "theme": "light",
+      "css_property": "border-color",
+      "token_path": "colors.light.destructive.srgb"
+    },
+    {
+      "automation_id": "textarea.default.invalid",
+      "theme": "dark",
+      "css_property": "border-color",
+      "token_path": "translucent.destructive-50-dark.dark.srgb"
+    },
+    {
+      "automation_id": "textarea.default.invalid",
+      "theme": "dark",
+      "css_property": "border-color",
+      "token_path": "translucent.destructive-50-dark.dark.alpha"
+    },
+    {
+      "automation_id": "textarea.default.invalid",
+      "theme": "light",
+      "css_property": "box-shadow-alpha",
+      "token_path": "translucent.destructive-ring-20-40.{theme}.alpha"
+    },
+    {
+      "automation_id": "textarea.default.invalid",
+      "theme": "dark",
+      "css_property": "box-shadow-alpha",
+      "token_path": "translucent.destructive-ring-20-40.{theme}.alpha"
+    },
+    {
+      "automation_id": "textarea.default.filled",
+      "theme": "light",
+      "css_property": "font-size",
+      "token_path": "typography.sizes_px.14.px"
+    },
+    {
+      "automation_id": "textarea.default.filled",
+      "theme": "dark",
+      "css_property": "font-size",
+      "token_path": "typography.sizes_px.14.px"
+    },
+    {
+      "automation_id": "input.default.placeholder",
+      "theme": "light",
+      "css_property": "height",
+      "token_path": "control_heights_px.input"
+    },
+    {
+      "automation_id": "input.default.placeholder",
+      "theme": "dark",
+      "css_property": "height",
+      "token_path": "control_heights_px.input"
+    },
+    {
+      "automation_id": "input.default.placeholder",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "translucent.input-30-dark.dark.srgb"
+    },
+    {
+      "automation_id": "input.default.placeholder",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "translucent.input-30-dark.dark.alpha"
+    },
+    {
+      "automation_id": "checkbox.default.unchecked",
+      "theme": "light",
+      "css_property": "width",
+      "token_path": "control_heights_px.checkbox"
+    },
+    {
+      "automation_id": "checkbox.default.unchecked",
+      "theme": "dark",
+      "css_property": "width",
+      "token_path": "control_heights_px.checkbox"
+    },
+    {
+      "automation_id": "checkbox.default.unchecked",
+      "theme": "light",
+      "css_property": "height",
+      "token_path": "control_heights_px.checkbox"
+    },
+    {
+      "automation_id": "checkbox.default.unchecked",
+      "theme": "dark",
+      "css_property": "height",
+      "token_path": "control_heights_px.checkbox"
+    },
+    {
+      "automation_id": "checkbox.default.unchecked",
+      "theme": "light",
+      "css_property": "border-top-left-radius",
+      "token_path": "radii_px.checkbox-4px.px"
+    },
+    {
+      "automation_id": "checkbox.default.unchecked",
+      "theme": "dark",
+      "css_property": "border-top-left-radius",
+      "token_path": "radii_px.checkbox-4px.px"
+    },
+    {
+      "automation_id": "checkbox.default.checked",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.primary.srgb"
+    },
+    {
+      "automation_id": "checkbox.default.checked",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.primary.srgb"
+    },
+    {
+      "automation_id": "checkbox.default.checked",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.primary.alpha"
+    },
+    {
+      "automation_id": "checkbox.default.checked",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.primary.alpha"
+    },
+    {
+      "automation_id": "checkbox.default.checked",
+      "theme": "light",
+      "css_property": "border-color",
+      "token_path": "colors.{theme}.primary.srgb"
+    },
+    {
+      "automation_id": "checkbox.default.checked",
+      "theme": "dark",
+      "css_property": "border-color",
+      "token_path": "colors.{theme}.primary.srgb"
+    },
+    {
+      "automation_id": "checkbox.default.checked",
+      "theme": "light",
+      "css_property": "border-color",
+      "token_path": "colors.{theme}.primary.alpha"
+    },
+    {
+      "automation_id": "checkbox.default.checked",
+      "theme": "dark",
+      "css_property": "border-color",
+      "token_path": "colors.{theme}.primary.alpha"
+    },
+    {
+      "automation_id": "checkbox.default.focus-visible",
+      "theme": "light",
+      "css_property": "box-shadow-width",
+      "token_path": "focus_ring.width_px"
+    },
+    {
+      "automation_id": "checkbox.default.focus-visible",
+      "theme": "dark",
+      "css_property": "box-shadow-width",
+      "token_path": "focus_ring.width_px"
+    },
+    {
+      "automation_id": "checkbox.default.focus-visible",
+      "theme": "light",
+      "css_property": "box-shadow-color",
+      "token_path": "translucent.ring-50.{theme}.srgb"
+    },
+    {
+      "automation_id": "checkbox.default.focus-visible",
+      "theme": "dark",
+      "css_property": "box-shadow-color",
+      "token_path": "translucent.ring-50.{theme}.srgb"
+    },
+    {
+      "automation_id": "checkbox.default.focus-visible",
+      "theme": "light",
+      "css_property": "box-shadow-alpha",
+      "token_path": "translucent.ring-50.{theme}.alpha"
+    },
+    {
+      "automation_id": "checkbox.default.focus-visible",
+      "theme": "dark",
+      "css_property": "box-shadow-alpha",
+      "token_path": "translucent.ring-50.{theme}.alpha"
+    },
+    {
+      "automation_id": "checkbox.default.disabled",
+      "theme": "light",
+      "css_property": "opacity",
+      "token_path": "disabled.opacity"
+    },
+    {
+      "automation_id": "checkbox.default.disabled",
+      "theme": "dark",
+      "css_property": "opacity",
+      "token_path": "disabled.opacity"
+    },
+    {
+      "automation_id": "checkbox.default.invalid",
+      "theme": "light",
+      "css_property": "border-color",
+      "token_path": "colors.light.destructive.srgb"
+    },
+    {
+      "automation_id": "checkbox.default.invalid",
+      "theme": "dark",
+      "css_property": "border-color",
+      "token_path": "translucent.destructive-50-dark.dark.srgb"
+    },
+    {
+      "automation_id": "checkbox.default.invalid",
+      "theme": "dark",
+      "css_property": "border-color",
+      "token_path": "translucent.destructive-50-dark.dark.alpha"
+    },
+    {
+      "automation_id": "radio-group.default.selected",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.primary.srgb",
+      "part": "item[option-a]"
+    },
+    {
+      "automation_id": "radio-group.default.selected",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.primary.srgb",
+      "part": "item[option-a]"
+    },
+    {
+      "automation_id": "radio-group.default.selected",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.primary.alpha",
+      "part": "item[option-a]"
+    },
+    {
+      "automation_id": "radio-group.default.selected",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.primary.alpha",
+      "part": "item[option-a]"
+    },
+    {
+      "automation_id": "radio-group.default.selected",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.primary-foreground.srgb",
+      "part": "item[option-a].indicator.icon"
+    },
+    {
+      "automation_id": "radio-group.default.selected",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.primary-foreground.srgb",
+      "part": "item[option-a].indicator.icon"
+    },
+    {
+      "automation_id": "radio-group.default.selected",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.primary-foreground.alpha",
+      "part": "item[option-a].indicator.icon"
+    },
+    {
+      "automation_id": "radio-group.default.selected",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.primary-foreground.alpha",
+      "part": "item[option-a].indicator.icon"
+    },
+    {
+      "automation_id": "radio-group.default.selected",
+      "theme": "light",
+      "css_property": "border-top-left-radius",
+      "token_path": "radii_px.full.px",
+      "part": "item[option-a]"
+    },
+    {
+      "automation_id": "radio-group.default.selected",
+      "theme": "dark",
+      "css_property": "border-top-left-radius",
+      "token_path": "radii_px.full.px",
+      "part": "item[option-a]"
+    },
+    {
+      "automation_id": "radio-group.default.focus-visible",
+      "theme": "light",
+      "css_property": "box-shadow-width",
+      "token_path": "focus_ring.width_px",
+      "part": "item[option-b]"
+    },
+    {
+      "automation_id": "radio-group.default.focus-visible",
+      "theme": "dark",
+      "css_property": "box-shadow-width",
+      "token_path": "focus_ring.width_px",
+      "part": "item[option-b]"
+    },
+    {
+      "automation_id": "radio-group.default.focus-visible",
+      "theme": "light",
+      "css_property": "box-shadow-color",
+      "token_path": "translucent.ring-50.{theme}.srgb",
+      "part": "item[option-b]"
+    },
+    {
+      "automation_id": "radio-group.default.focus-visible",
+      "theme": "dark",
+      "css_property": "box-shadow-color",
+      "token_path": "translucent.ring-50.{theme}.srgb",
+      "part": "item[option-b]"
+    },
+    {
+      "automation_id": "radio-group.default.focus-visible",
+      "theme": "light",
+      "css_property": "box-shadow-alpha",
+      "token_path": "translucent.ring-50.{theme}.alpha",
+      "part": "item[option-b]"
+    },
+    {
+      "automation_id": "radio-group.default.focus-visible",
+      "theme": "dark",
+      "css_property": "box-shadow-alpha",
+      "token_path": "translucent.ring-50.{theme}.alpha",
+      "part": "item[option-b]"
+    },
+    {
+      "automation_id": "radio-group.default.disabled",
+      "theme": "light",
+      "css_property": "opacity",
+      "token_path": "disabled.opacity",
+      "part": "item[option-a]"
+    },
+    {
+      "automation_id": "radio-group.default.disabled",
+      "theme": "dark",
+      "css_property": "opacity",
+      "token_path": "disabled.opacity",
+      "part": "item[option-a]"
+    },
+    {
+      "automation_id": "radio-group.default.invalid",
+      "theme": "light",
+      "css_property": "border-color",
+      "token_path": "colors.light.primary.srgb",
+      "part": "item[option-a]"
+    },
+    {
+      "automation_id": "radio-group.default.invalid",
+      "theme": "light",
+      "css_property": "border-color",
+      "token_path": "colors.light.destructive.srgb",
+      "part": "item[option-b]"
+    },
+    {
+      "automation_id": "radio-group.default.invalid",
+      "theme": "dark",
+      "css_property": "border-color",
+      "token_path": "translucent.destructive-50-dark.dark.srgb",
+      "part": "item[option-a]"
+    },
+    {
+      "automation_id": "radio-group.default.invalid",
+      "theme": "dark",
+      "css_property": "border-color",
+      "token_path": "translucent.destructive-50-dark.dark.alpha",
+      "part": "item[option-a]"
+    },
+    {
+      "automation_id": "radio-group.default.invalid",
+      "theme": "dark",
+      "css_property": "border-color",
+      "token_path": "translucent.destructive-50-dark.dark.srgb",
+      "part": "item[option-b]"
+    },
+    {
+      "automation_id": "radio-group.default.invalid",
+      "theme": "dark",
+      "css_property": "border-color",
+      "token_path": "translucent.destructive-50-dark.dark.alpha",
+      "part": "item[option-b]"
+    },
+    {
+      "automation_id": "switch.default.checked",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.primary.srgb"
+    },
+    {
+      "automation_id": "switch.default.checked",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.primary.srgb"
+    },
+    {
+      "automation_id": "switch.default.checked",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.primary.alpha"
+    },
+    {
+      "automation_id": "switch.default.checked",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.primary.alpha"
+    },
+    {
+      "automation_id": "switch.default.checked",
+      "theme": "light",
+      "css_property": "width",
+      "token_path": "control_heights_px.switch.default.width"
+    },
+    {
+      "automation_id": "switch.default.checked",
+      "theme": "dark",
+      "css_property": "width",
+      "token_path": "control_heights_px.switch.default.width"
+    },
+    {
+      "automation_id": "switch.default.checked",
+      "theme": "light",
+      "css_property": "height",
+      "token_path": "control_heights_px.switch.default.height"
+    },
+    {
+      "automation_id": "switch.default.checked",
+      "theme": "dark",
+      "css_property": "height",
+      "token_path": "control_heights_px.switch.default.height"
+    },
+    {
+      "automation_id": "switch.default.size-sm",
+      "theme": "light",
+      "css_property": "width",
+      "token_path": "control_heights_px.switch.sm.width"
+    },
+    {
+      "automation_id": "switch.default.size-sm",
+      "theme": "dark",
+      "css_property": "width",
+      "token_path": "control_heights_px.switch.sm.width"
+    },
+    {
+      "automation_id": "switch.default.size-sm",
+      "theme": "light",
+      "css_property": "height",
+      "token_path": "control_heights_px.switch.sm.height"
+    },
+    {
+      "automation_id": "switch.default.size-sm",
+      "theme": "dark",
+      "css_property": "height",
+      "token_path": "control_heights_px.switch.sm.height"
+    },
+    {
+      "automation_id": "switch.default.unchecked",
+      "theme": "light",
+      "css_property": "border-top-left-radius",
+      "token_path": "radii_px.full.px"
+    },
+    {
+      "automation_id": "switch.default.unchecked",
+      "theme": "dark",
+      "css_property": "border-top-left-radius",
+      "token_path": "radii_px.full.px"
+    },
+    {
+      "automation_id": "switch.default.focus-visible",
+      "theme": "light",
+      "css_property": "box-shadow-width",
+      "token_path": "focus_ring.width_px"
+    },
+    {
+      "automation_id": "switch.default.focus-visible",
+      "theme": "dark",
+      "css_property": "box-shadow-width",
+      "token_path": "focus_ring.width_px"
+    },
+    {
+      "automation_id": "switch.default.focus-visible",
+      "theme": "light",
+      "css_property": "box-shadow-color",
+      "token_path": "translucent.ring-50.{theme}.srgb"
+    },
+    {
+      "automation_id": "switch.default.focus-visible",
+      "theme": "dark",
+      "css_property": "box-shadow-color",
+      "token_path": "translucent.ring-50.{theme}.srgb"
+    },
+    {
+      "automation_id": "switch.default.focus-visible",
+      "theme": "light",
+      "css_property": "box-shadow-alpha",
+      "token_path": "translucent.ring-50.{theme}.alpha"
+    },
+    {
+      "automation_id": "switch.default.focus-visible",
+      "theme": "dark",
+      "css_property": "box-shadow-alpha",
+      "token_path": "translucent.ring-50.{theme}.alpha"
+    },
+    {
+      "automation_id": "switch.default.disabled",
+      "theme": "light",
+      "css_property": "opacity",
+      "token_path": "disabled.opacity"
+    },
+    {
+      "automation_id": "switch.default.disabled",
+      "theme": "dark",
+      "css_property": "opacity",
+      "token_path": "disabled.opacity"
+    },
+    {
+      "automation_id": "switch.default.invalid",
+      "theme": "light",
+      "css_property": "border-color",
+      "token_path": "colors.light.destructive.srgb"
+    },
+    {
+      "automation_id": "switch.default.invalid",
+      "theme": "dark",
+      "css_property": "border-color",
+      "token_path": "translucent.destructive-50-dark.dark.srgb"
+    },
+    {
+      "automation_id": "switch.default.invalid",
+      "theme": "dark",
+      "css_property": "border-color",
+      "token_path": "translucent.destructive-50-dark.dark.alpha"
+    },
+    {
+      "automation_id": "switch.default.checked",
+      "theme": "light",
+      "css_property": "translate-x",
+      "token_path": "switch_thumb_px.default.translate_checked",
+      "part": "thumb"
+    },
+    {
+      "automation_id": "switch.default.checked",
+      "theme": "dark",
+      "css_property": "translate-x",
+      "token_path": "switch_thumb_px.default.translate_checked",
+      "part": "thumb"
+    },
+    {
+      "automation_id": "switch.default.unchecked",
+      "theme": "light",
+      "css_property": "translate-x",
+      "token_path": "switch_thumb_px.default.translate_unchecked",
+      "part": "thumb"
+    },
+    {
+      "automation_id": "switch.default.unchecked",
+      "theme": "dark",
+      "css_property": "translate-x",
+      "token_path": "switch_thumb_px.default.translate_unchecked",
+      "part": "thumb"
+    },
+    {
+      "automation_id": "switch.default.size-sm",
+      "theme": "light",
+      "css_property": "translate-x",
+      "token_path": "switch_thumb_px.sm.translate_checked",
+      "part": "thumb"
+    },
+    {
+      "automation_id": "switch.default.size-sm",
+      "theme": "dark",
+      "css_property": "translate-x",
+      "token_path": "switch_thumb_px.sm.translate_checked",
+      "part": "thumb"
+    },
+    {
+      "automation_id": "switch.default.size-sm-unchecked",
+      "theme": "light",
+      "css_property": "translate-x",
+      "token_path": "switch_thumb_px.sm.translate_unchecked",
+      "part": "thumb"
+    },
+    {
+      "automation_id": "switch.default.size-sm-unchecked",
+      "theme": "dark",
+      "css_property": "translate-x",
+      "token_path": "switch_thumb_px.sm.translate_unchecked",
+      "part": "thumb"
+    },
+    {
+      "automation_id": "switch.default.checked",
+      "theme": "light",
+      "css_property": "width",
+      "token_path": "switch_thumb_px.default.size",
+      "part": "thumb"
+    },
+    {
+      "automation_id": "switch.default.checked",
+      "theme": "dark",
+      "css_property": "width",
+      "token_path": "switch_thumb_px.default.size",
+      "part": "thumb"
+    },
+    {
+      "automation_id": "switch.default.size-sm",
+      "theme": "light",
+      "css_property": "width",
+      "token_path": "switch_thumb_px.sm.size",
+      "part": "thumb"
+    },
+    {
+      "automation_id": "switch.default.size-sm",
+      "theme": "dark",
+      "css_property": "width",
+      "token_path": "switch_thumb_px.sm.size",
+      "part": "thumb"
+    },
+    {
+      "automation_id": "switch.default.disabled",
+      "theme": "light",
+      "css_property": "translate-x",
+      "token_path": "switch_thumb_px.default.translate_unchecked",
+      "part": "thumb"
+    },
+    {
+      "automation_id": "switch.default.disabled",
+      "theme": "dark",
+      "css_property": "translate-x",
+      "token_path": "switch_thumb_px.default.translate_unchecked",
+      "part": "thumb"
+    },
+    {
+      "automation_id": "switch.default.disabled-checked",
+      "theme": "light",
+      "css_property": "translate-x",
+      "token_path": "switch_thumb_px.default.translate_checked",
+      "part": "thumb"
+    },
+    {
+      "automation_id": "switch.default.disabled-checked",
+      "theme": "dark",
+      "css_property": "translate-x",
+      "token_path": "switch_thumb_px.default.translate_checked",
+      "part": "thumb"
+    },
+    {
+      "automation_id": "switch.default.checked",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "colors.light.background.srgb",
+      "part": "thumb"
+    },
+    {
+      "automation_id": "switch.default.checked",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "colors.light.background.alpha",
+      "part": "thumb"
+    },
+    {
+      "automation_id": "switch.default.checked",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "colors.dark.primary-foreground.srgb",
+      "part": "thumb"
+    },
+    {
+      "automation_id": "switch.default.checked",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "colors.dark.primary-foreground.alpha",
+      "part": "thumb"
+    },
+    {
+      "automation_id": "switch.default.unchecked",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "colors.light.background.srgb",
+      "part": "thumb"
+    },
+    {
+      "automation_id": "switch.default.unchecked",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "colors.light.background.alpha",
+      "part": "thumb"
+    },
+    {
+      "automation_id": "switch.default.unchecked",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "colors.dark.foreground.srgb",
+      "part": "thumb"
+    },
+    {
+      "automation_id": "switch.default.unchecked",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "colors.dark.foreground.alpha",
+      "part": "thumb"
+    },
+    {
+      "automation_id": "switch.default.size-sm",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "colors.light.background.srgb",
+      "part": "thumb"
+    },
+    {
+      "automation_id": "switch.default.size-sm",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "colors.light.background.alpha",
+      "part": "thumb"
+    },
+    {
+      "automation_id": "switch.default.size-sm",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "colors.dark.primary-foreground.srgb",
+      "part": "thumb"
+    },
+    {
+      "automation_id": "switch.default.size-sm",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "colors.dark.primary-foreground.alpha",
+      "part": "thumb"
+    },
+    {
+      "automation_id": "switch.default.size-sm-unchecked",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "colors.light.background.srgb",
+      "part": "thumb"
+    },
+    {
+      "automation_id": "switch.default.size-sm-unchecked",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "colors.light.background.alpha",
+      "part": "thumb"
+    },
+    {
+      "automation_id": "switch.default.size-sm-unchecked",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "colors.dark.foreground.srgb",
+      "part": "thumb"
+    },
+    {
+      "automation_id": "switch.default.size-sm-unchecked",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "colors.dark.foreground.alpha",
+      "part": "thumb"
+    },
+    {
+      "automation_id": "switch.default.disabled",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "colors.light.background.srgb",
+      "part": "thumb"
+    },
+    {
+      "automation_id": "switch.default.disabled",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "colors.light.background.alpha",
+      "part": "thumb"
+    },
+    {
+      "automation_id": "switch.default.disabled",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "colors.dark.foreground.srgb",
+      "part": "thumb"
+    },
+    {
+      "automation_id": "switch.default.disabled",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "colors.dark.foreground.alpha",
+      "part": "thumb"
+    },
+    {
+      "automation_id": "switch.default.disabled-checked",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "colors.light.background.srgb",
+      "part": "thumb"
+    },
+    {
+      "automation_id": "switch.default.disabled-checked",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "colors.light.background.alpha",
+      "part": "thumb"
+    },
+    {
+      "automation_id": "switch.default.disabled-checked",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "colors.dark.primary-foreground.srgb",
+      "part": "thumb"
+    },
+    {
+      "automation_id": "switch.default.disabled-checked",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "colors.dark.primary-foreground.alpha",
+      "part": "thumb"
+    },
+    {
+      "automation_id": "field.horizontal",
+      "theme": "light",
+      "css_property": "translate-x",
+      "token_path": "switch_thumb_px.default.translate_checked",
+      "part": "thumb"
+    },
+    {
+      "automation_id": "field.horizontal",
+      "theme": "dark",
+      "css_property": "translate-x",
+      "token_path": "switch_thumb_px.default.translate_checked",
+      "part": "thumb"
+    },
+    {
+      "automation_id": "field.horizontal",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "colors.light.background.srgb",
+      "part": "thumb"
+    },
+    {
+      "automation_id": "field.horizontal",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "colors.light.background.alpha",
+      "part": "thumb"
+    },
+    {
+      "automation_id": "field.horizontal",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "colors.dark.primary-foreground.srgb",
+      "part": "thumb"
+    },
+    {
+      "automation_id": "field.horizontal",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "colors.dark.primary-foreground.alpha",
+      "part": "thumb"
+    },
+    {
+      "automation_id": "settings-nav.default",
+      "theme": "light",
+      "css_property": "translate-x",
+      "token_path": "switch_thumb_px.default.translate_checked",
+      "part": "content.field[animations].thumb"
+    },
+    {
+      "automation_id": "settings-nav.default",
+      "theme": "dark",
+      "css_property": "translate-x",
+      "token_path": "switch_thumb_px.default.translate_checked",
+      "part": "content.field[animations].thumb"
+    },
+    {
+      "automation_id": "settings-nav.default",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "colors.light.background.srgb",
+      "part": "content.field[animations].thumb"
+    },
+    {
+      "automation_id": "settings-nav.default",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "colors.light.background.alpha",
+      "part": "content.field[animations].thumb"
+    },
+    {
+      "automation_id": "settings-nav.default",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "colors.dark.primary-foreground.srgb",
+      "part": "content.field[animations].thumb"
+    },
+    {
+      "automation_id": "settings-nav.default",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "colors.dark.primary-foreground.alpha",
+      "part": "content.field[animations].thumb"
+    },
+    {
+      "automation_id": "settings-nav.default",
+      "theme": "light",
+      "css_property": "translate-x",
+      "token_path": "switch_thumb_px.default.translate_unchecked",
+      "part": "content.field[compact].thumb"
+    },
+    {
+      "automation_id": "settings-nav.default",
+      "theme": "dark",
+      "css_property": "translate-x",
+      "token_path": "switch_thumb_px.default.translate_unchecked",
+      "part": "content.field[compact].thumb"
+    },
+    {
+      "automation_id": "settings-nav.default",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "colors.light.background.srgb",
+      "part": "content.field[compact].thumb"
+    },
+    {
+      "automation_id": "settings-nav.default",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "colors.light.background.alpha",
+      "part": "content.field[compact].thumb"
+    },
+    {
+      "automation_id": "settings-nav.default",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "colors.dark.foreground.srgb",
+      "part": "content.field[compact].thumb"
+    },
+    {
+      "automation_id": "settings-nav.default",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "colors.dark.foreground.alpha",
+      "part": "content.field[compact].thumb"
+    },
+    {
+      "automation_id": "select.default.placeholder",
+      "theme": "light",
+      "css_property": "height",
+      "token_path": "control_heights_px.select-trigger.default"
+    },
+    {
+      "automation_id": "select.default.placeholder",
+      "theme": "dark",
+      "css_property": "height",
+      "token_path": "control_heights_px.select-trigger.default"
+    },
+    {
+      "automation_id": "select.default.size-sm",
+      "theme": "light",
+      "css_property": "height",
+      "token_path": "control_heights_px.select-trigger.sm"
+    },
+    {
+      "automation_id": "select.default.size-sm",
+      "theme": "dark",
+      "css_property": "height",
+      "token_path": "control_heights_px.select-trigger.sm"
+    },
+    {
+      "automation_id": "select.default.placeholder",
+      "theme": "light",
+      "css_property": "padding-left",
+      "token_path": "horizontal_padding_px.select-trigger.left"
+    },
+    {
+      "automation_id": "select.default.placeholder",
+      "theme": "dark",
+      "css_property": "padding-left",
+      "token_path": "horizontal_padding_px.select-trigger.left"
+    },
+    {
+      "automation_id": "select.default.placeholder",
+      "theme": "light",
+      "css_property": "padding-right",
+      "token_path": "horizontal_padding_px.select-trigger.right"
+    },
+    {
+      "automation_id": "select.default.placeholder",
+      "theme": "dark",
+      "css_property": "padding-right",
+      "token_path": "horizontal_padding_px.select-trigger.right"
+    },
+    {
+      "automation_id": "select.default.placeholder",
+      "theme": "light",
+      "css_property": "border-top-left-radius",
+      "token_path": "radii_px.lg.px"
+    },
+    {
+      "automation_id": "select.default.placeholder",
+      "theme": "dark",
+      "css_property": "border-top-left-radius",
+      "token_path": "radii_px.lg.px"
+    },
+    {
+      "automation_id": "select.default.focus-visible",
+      "theme": "light",
+      "css_property": "box-shadow-width",
+      "token_path": "focus_ring.width_px"
+    },
+    {
+      "automation_id": "select.default.focus-visible",
+      "theme": "dark",
+      "css_property": "box-shadow-width",
+      "token_path": "focus_ring.width_px"
+    },
+    {
+      "automation_id": "select.default.focus-visible",
+      "theme": "light",
+      "css_property": "box-shadow-color",
+      "token_path": "translucent.ring-50.{theme}.srgb"
+    },
+    {
+      "automation_id": "select.default.focus-visible",
+      "theme": "dark",
+      "css_property": "box-shadow-color",
+      "token_path": "translucent.ring-50.{theme}.srgb"
+    },
+    {
+      "automation_id": "select.default.focus-visible",
+      "theme": "light",
+      "css_property": "box-shadow-alpha",
+      "token_path": "translucent.ring-50.{theme}.alpha"
+    },
+    {
+      "automation_id": "select.default.focus-visible",
+      "theme": "dark",
+      "css_property": "box-shadow-alpha",
+      "token_path": "translucent.ring-50.{theme}.alpha"
+    },
+    {
+      "automation_id": "select.default.disabled",
+      "theme": "light",
+      "css_property": "opacity",
+      "token_path": "disabled.opacity"
+    },
+    {
+      "automation_id": "select.default.disabled",
+      "theme": "dark",
+      "css_property": "opacity",
+      "token_path": "disabled.opacity"
+    },
+    {
+      "automation_id": "select.default.invalid",
+      "theme": "light",
+      "css_property": "border-color",
+      "token_path": "colors.light.destructive.srgb"
+    },
+    {
+      "automation_id": "select.default.invalid",
+      "theme": "dark",
+      "css_property": "border-color",
+      "token_path": "translucent.destructive-50-dark.dark.srgb"
+    },
+    {
+      "automation_id": "select.default.invalid",
+      "theme": "dark",
+      "css_property": "border-color",
+      "token_path": "translucent.destructive-50-dark.dark.alpha"
+    },
+    {
+      "automation_id": "select.default.open.content",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.popover.srgb"
+    },
+    {
+      "automation_id": "select.default.open.content",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.popover.srgb"
+    },
+    {
+      "automation_id": "select.default.open.content",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.popover.alpha"
+    },
+    {
+      "automation_id": "select.default.open.content",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.popover.alpha"
+    },
+    {
+      "automation_id": "select.default.open.content",
+      "theme": "light",
+      "css_property": "border-top-left-radius",
+      "token_path": "radii_px.lg.px"
+    },
+    {
+      "automation_id": "select.default.open.content",
+      "theme": "dark",
+      "css_property": "border-top-left-radius",
+      "token_path": "radii_px.lg.px"
+    },
+    {
+      "automation_id": "select.default.open.content",
+      "theme": "light",
+      "css_property": "padding-left",
+      "token_path": "horizontal_padding_px.menu-item.x",
+      "part": "item[development]"
+    },
+    {
+      "automation_id": "select.default.open.content",
+      "theme": "dark",
+      "css_property": "padding-left",
+      "token_path": "horizontal_padding_px.menu-item.x",
+      "part": "item[development]"
+    },
+    {
+      "automation_id": "select.default.open.content",
+      "theme": "light",
+      "css_property": "padding-top",
+      "token_path": "horizontal_padding_px.menu-item.y",
+      "part": "item[development]"
+    },
+    {
+      "automation_id": "select.default.open.content",
+      "theme": "dark",
+      "css_property": "padding-top",
+      "token_path": "horizontal_padding_px.menu-item.y",
+      "part": "item[development]"
+    },
+    {
+      "automation_id": "select.default.open.content",
+      "theme": "light",
+      "css_property": "font-size",
+      "token_path": "typography.sizes_px.14.px",
+      "part": "item[development]"
+    },
+    {
+      "automation_id": "select.default.open.content",
+      "theme": "dark",
+      "css_property": "font-size",
+      "token_path": "typography.sizes_px.14.px",
+      "part": "item[development]"
+    },
+    {
+      "automation_id": "select.default.open.content",
+      "theme": "light",
+      "css_property": "margin-top",
+      "token_path": "horizontal_padding_px.menu-item.y",
+      "part": "separator"
+    },
+    {
+      "automation_id": "select.default.open.content",
+      "theme": "dark",
+      "css_property": "margin-top",
+      "token_path": "horizontal_padding_px.menu-item.y",
+      "part": "separator"
+    },
+    {
+      "automation_id": "select.default.open.item-highlighted",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.accent.srgb"
+    },
+    {
+      "automation_id": "select.default.open.item-highlighted",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.accent.srgb"
+    },
+    {
+      "automation_id": "select.default.open.item-highlighted",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.accent.alpha"
+    },
+    {
+      "automation_id": "select.default.open.item-highlighted",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.accent.alpha"
+    },
+    {
+      "automation_id": "select.default.open.content",
+      "theme": "light",
+      "css_property": "opacity",
+      "token_path": "disabled.opacity",
+      "part": "item[deprecated]"
+    },
+    {
+      "automation_id": "select.default.open.content",
+      "theme": "dark",
+      "css_property": "opacity",
+      "token_path": "disabled.opacity",
+      "part": "item[deprecated]"
+    },
+    {
+      "automation_id": "select.default.open.trigger",
+      "theme": "light",
+      "css_property": "height",
+      "token_path": "control_heights_px.button.default"
+    },
+    {
+      "automation_id": "select.default.open.trigger",
+      "theme": "dark",
+      "css_property": "height",
+      "token_path": "control_heights_px.button.default"
+    },
+    {
+      "automation_id": "tabs.default.active",
+      "theme": "light",
+      "css_property": "height",
+      "token_path": "control_heights_px.tabs-list",
+      "part": "list"
+    },
+    {
+      "automation_id": "tabs.default.active",
+      "theme": "dark",
+      "css_property": "height",
+      "token_path": "control_heights_px.tabs-list",
+      "part": "list"
+    },
+    {
+      "automation_id": "tabs.default.active",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "colors.light.background.srgb",
+      "part": "list.tab[account]"
+    },
+    {
+      "automation_id": "tabs.default.active",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "translucent.input-30-dark.dark.srgb",
+      "part": "list.tab[account]"
+    },
+    {
+      "automation_id": "tabs.default.active",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "translucent.input-30-dark.dark.alpha",
+      "part": "list.tab[account]"
+    },
+    {
+      "automation_id": "tabs.default.inactive",
+      "theme": "light",
+      "css_property": "font-size",
+      "token_path": "typography.sizes_px.14.px",
+      "part": "list.tab[password]"
+    },
+    {
+      "automation_id": "tabs.default.inactive",
+      "theme": "dark",
+      "css_property": "font-size",
+      "token_path": "typography.sizes_px.14.px",
+      "part": "list.tab[password]"
+    },
+    {
+      "automation_id": "tabs.default.disabled",
+      "theme": "light",
+      "css_property": "opacity",
+      "token_path": "disabled.opacity",
+      "part": "list.tab[password]"
+    },
+    {
+      "automation_id": "tabs.default.disabled",
+      "theme": "dark",
+      "css_property": "opacity",
+      "token_path": "disabled.opacity",
+      "part": "list.tab[password]"
+    },
+    {
+      "automation_id": "tabs.default.focus-visible",
+      "theme": "light",
+      "css_property": "box-shadow-width",
+      "token_path": "focus_ring.width_px",
+      "part": "list.tab[password]"
+    },
+    {
+      "automation_id": "tabs.default.focus-visible",
+      "theme": "dark",
+      "css_property": "box-shadow-width",
+      "token_path": "focus_ring.width_px",
+      "part": "list.tab[password]"
+    },
+    {
+      "automation_id": "tabs.default.focus-visible",
+      "theme": "light",
+      "css_property": "box-shadow-color",
+      "token_path": "translucent.ring-50.{theme}.srgb",
+      "part": "list.tab[password]"
+    },
+    {
+      "automation_id": "tabs.default.focus-visible",
+      "theme": "dark",
+      "css_property": "box-shadow-color",
+      "token_path": "translucent.ring-50.{theme}.srgb",
+      "part": "list.tab[password]"
+    },
+    {
+      "automation_id": "tabs.default.focus-visible",
+      "theme": "light",
+      "css_property": "box-shadow-alpha",
+      "token_path": "translucent.ring-50.{theme}.alpha",
+      "part": "list.tab[password]"
+    },
+    {
+      "automation_id": "tabs.default.focus-visible",
+      "theme": "dark",
+      "css_property": "box-shadow-alpha",
+      "token_path": "translucent.ring-50.{theme}.alpha",
+      "part": "list.tab[password]"
+    },
+    {
+      "automation_id": "dropdown-menu.default.content",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.popover.srgb"
+    },
+    {
+      "automation_id": "dropdown-menu.default.content",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.popover.srgb"
+    },
+    {
+      "automation_id": "dropdown-menu.default.content",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.popover.alpha"
+    },
+    {
+      "automation_id": "dropdown-menu.default.content",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.popover.alpha"
+    },
+    {
+      "automation_id": "dropdown-menu.default.content",
+      "theme": "light",
+      "css_property": "border-top-left-radius",
+      "token_path": "radii_px.lg.px"
+    },
+    {
+      "automation_id": "dropdown-menu.default.content",
+      "theme": "dark",
+      "css_property": "border-top-left-radius",
+      "token_path": "radii_px.lg.px"
+    },
+    {
+      "automation_id": "dropdown-menu.default.content",
+      "theme": "light",
+      "css_property": "padding-left",
+      "token_path": "horizontal_padding_px.menu-item.x",
+      "part": "item[profile]"
+    },
+    {
+      "automation_id": "dropdown-menu.default.content",
+      "theme": "dark",
+      "css_property": "padding-left",
+      "token_path": "horizontal_padding_px.menu-item.x",
+      "part": "item[profile]"
+    },
+    {
+      "automation_id": "dropdown-menu.default.content",
+      "theme": "light",
+      "css_property": "padding-top",
+      "token_path": "horizontal_padding_px.menu-item.y",
+      "part": "item[profile]"
+    },
+    {
+      "automation_id": "dropdown-menu.default.content",
+      "theme": "dark",
+      "css_property": "padding-top",
+      "token_path": "horizontal_padding_px.menu-item.y",
+      "part": "item[profile]"
+    },
+    {
+      "automation_id": "dropdown-menu.default.content",
+      "theme": "light",
+      "css_property": "font-size",
+      "token_path": "typography.sizes_px.14.px",
+      "part": "item[profile]"
+    },
+    {
+      "automation_id": "dropdown-menu.default.content",
+      "theme": "dark",
+      "css_property": "font-size",
+      "token_path": "typography.sizes_px.14.px",
+      "part": "item[profile]"
+    },
+    {
+      "automation_id": "dropdown-menu.default.item-highlighted",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.accent.srgb"
+    },
+    {
+      "automation_id": "dropdown-menu.default.item-highlighted",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.accent.srgb"
+    },
+    {
+      "automation_id": "dropdown-menu.default.item-highlighted",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.accent.alpha"
+    },
+    {
+      "automation_id": "dropdown-menu.default.item-highlighted",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.accent.alpha"
+    },
+    {
+      "automation_id": "dropdown-menu.default.content",
+      "theme": "light",
+      "css_property": "opacity",
+      "token_path": "disabled.opacity",
+      "part": "item[billing]"
+    },
+    {
+      "automation_id": "dropdown-menu.default.content",
+      "theme": "dark",
+      "css_property": "opacity",
+      "token_path": "disabled.opacity",
+      "part": "item[billing]"
+    },
+    {
+      "automation_id": "dropdown-menu.default.content",
+      "theme": "light",
+      "css_property": "color",
+      "token_path": "colors.{theme}.destructive.srgb",
+      "part": "item[delete]"
+    },
+    {
+      "automation_id": "dropdown-menu.default.content",
+      "theme": "dark",
+      "css_property": "color",
+      "token_path": "colors.{theme}.destructive.srgb",
+      "part": "item[delete]"
+    },
+    {
+      "automation_id": "dropdown-menu.default.item-destructive-highlighted",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "translucent.destructive-10-20.{theme}.srgb"
+    },
+    {
+      "automation_id": "dropdown-menu.default.item-destructive-highlighted",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "translucent.destructive-10-20.{theme}.srgb"
+    },
+    {
+      "automation_id": "dropdown-menu.default.item-destructive-highlighted",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "translucent.destructive-10-20.{theme}.alpha"
+    },
+    {
+      "automation_id": "dropdown-menu.default.item-destructive-highlighted",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "translucent.destructive-10-20.{theme}.alpha"
+    },
+    {
+      "automation_id": "dialog.default",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "translucent.backdrop-black-10.{theme}.srgb",
+      "part": "backdrop"
+    },
+    {
+      "automation_id": "dialog.default",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "translucent.backdrop-black-10.{theme}.srgb",
+      "part": "backdrop"
+    },
+    {
+      "automation_id": "dialog.default",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "translucent.backdrop-black-10.{theme}.alpha",
+      "part": "backdrop"
+    },
+    {
+      "automation_id": "dialog.default",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "translucent.backdrop-black-10.{theme}.alpha",
+      "part": "backdrop"
+    },
+    {
+      "automation_id": "dialog.default.content",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.popover.srgb"
+    },
+    {
+      "automation_id": "dialog.default.content",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.popover.srgb"
+    },
+    {
+      "automation_id": "dialog.default.content",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.popover.alpha"
+    },
+    {
+      "automation_id": "dialog.default.content",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.popover.alpha"
+    },
+    {
+      "automation_id": "dialog.default.content",
+      "theme": "light",
+      "css_property": "border-top-left-radius",
+      "token_path": "radii_px.xl.px"
+    },
+    {
+      "automation_id": "dialog.default.content",
+      "theme": "dark",
+      "css_property": "border-top-left-radius",
+      "token_path": "radii_px.xl.px"
+    },
+    {
+      "automation_id": "dialog.default.content",
+      "theme": "light",
+      "css_property": "padding-left",
+      "token_path": "horizontal_padding_px.dialog-content.px"
+    },
+    {
+      "automation_id": "dialog.default.content",
+      "theme": "dark",
+      "css_property": "padding-left",
+      "token_path": "horizontal_padding_px.dialog-content.px"
+    },
+    {
+      "automation_id": "dialog.default.content",
+      "theme": "light",
+      "css_property": "font-weight",
+      "token_path": "typography.weight_values.medium",
+      "part": "header.title"
+    },
+    {
+      "automation_id": "dialog.default.content",
+      "theme": "dark",
+      "css_property": "font-weight",
+      "token_path": "typography.weight_values.medium",
+      "part": "header.title"
+    },
+    {
+      "automation_id": "dialog.default.content",
+      "theme": "light",
+      "css_property": "font-size",
+      "token_path": "typography.sizes_px.14.px",
+      "part": "header.description"
+    },
+    {
+      "automation_id": "dialog.default.content",
+      "theme": "dark",
+      "css_property": "font-size",
+      "token_path": "typography.sizes_px.14.px",
+      "part": "header.description"
+    },
+    {
+      "automation_id": "alert-dialog.default",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "translucent.backdrop-black-10.{theme}.srgb",
+      "part": "backdrop"
+    },
+    {
+      "automation_id": "alert-dialog.default",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "translucent.backdrop-black-10.{theme}.srgb",
+      "part": "backdrop"
+    },
+    {
+      "automation_id": "alert-dialog.default",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "translucent.backdrop-black-10.{theme}.alpha",
+      "part": "backdrop"
+    },
+    {
+      "automation_id": "alert-dialog.default",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "translucent.backdrop-black-10.{theme}.alpha",
+      "part": "backdrop"
+    },
+    {
+      "automation_id": "alert-dialog.default.content",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.popover.srgb"
+    },
+    {
+      "automation_id": "alert-dialog.default.content",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.popover.srgb"
+    },
+    {
+      "automation_id": "alert-dialog.default.content",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.popover.alpha"
+    },
+    {
+      "automation_id": "alert-dialog.default.content",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.popover.alpha"
+    },
+    {
+      "automation_id": "popover.default.content",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.popover.srgb"
+    },
+    {
+      "automation_id": "popover.default.content",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.popover.srgb"
+    },
+    {
+      "automation_id": "popover.default.content",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.popover.alpha"
+    },
+    {
+      "automation_id": "popover.default.content",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.popover.alpha"
+    },
+    {
+      "automation_id": "popover.default.content",
+      "theme": "light",
+      "css_property": "border-top-left-radius",
+      "token_path": "radii_px.lg.px"
+    },
+    {
+      "automation_id": "popover.default.content",
+      "theme": "dark",
+      "css_property": "border-top-left-radius",
+      "token_path": "radii_px.lg.px"
+    },
+    {
+      "automation_id": "tooltip.default.content",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.foreground.srgb"
+    },
+    {
+      "automation_id": "tooltip.default.content",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.foreground.srgb"
+    },
+    {
+      "automation_id": "tooltip.default.content",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.foreground.alpha"
+    },
+    {
+      "automation_id": "tooltip.default.content",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.foreground.alpha"
+    },
+    {
+      "automation_id": "tooltip.default.content",
+      "theme": "light",
+      "css_property": "font-size",
+      "token_path": "typography.sizes_px.12.px"
+    },
+    {
+      "automation_id": "tooltip.default.content",
+      "theme": "dark",
+      "css_property": "font-size",
+      "token_path": "typography.sizes_px.12.px"
+    },
+    {
+      "automation_id": "card.default",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.card.srgb"
+    },
+    {
+      "automation_id": "card.default",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.card.srgb"
+    },
+    {
+      "automation_id": "card.default",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.card.alpha"
+    },
+    {
+      "automation_id": "card.default",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.card.alpha"
+    },
+    {
+      "automation_id": "card.default",
+      "theme": "light",
+      "css_property": "border-top-left-radius",
+      "token_path": "radii_px.xl.px"
+    },
+    {
+      "automation_id": "card.default",
+      "theme": "dark",
+      "css_property": "border-top-left-radius",
+      "token_path": "radii_px.xl.px"
+    },
+    {
+      "automation_id": "card.default",
+      "theme": "light",
+      "css_property": "padding-left",
+      "token_path": "horizontal_padding_px.card.px",
+      "part": "content"
+    },
+    {
+      "automation_id": "card.default",
+      "theme": "dark",
+      "css_property": "padding-left",
+      "token_path": "horizontal_padding_px.card.px",
+      "part": "content"
+    },
+    {
+      "automation_id": "card.default",
+      "theme": "light",
+      "css_property": "font-size",
+      "token_path": "typography.sizes_px.16.px",
+      "part": "header.title"
+    },
+    {
+      "automation_id": "card.default",
+      "theme": "dark",
+      "css_property": "font-size",
+      "token_path": "typography.sizes_px.16.px",
+      "part": "header.title"
+    },
+    {
+      "automation_id": "card.default",
+      "theme": "light",
+      "css_property": "font-weight",
+      "token_path": "typography.weight_values.medium",
+      "part": "header.title"
+    },
+    {
+      "automation_id": "card.default",
+      "theme": "dark",
+      "css_property": "font-weight",
+      "token_path": "typography.weight_values.medium",
+      "part": "header.title"
+    },
+    {
+      "automation_id": "badge.default",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.primary.srgb"
+    },
+    {
+      "automation_id": "badge.default",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.primary.srgb"
+    },
+    {
+      "automation_id": "badge.default",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.primary.alpha"
+    },
+    {
+      "automation_id": "badge.default",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.primary.alpha"
+    },
+    {
+      "automation_id": "badge.default",
+      "theme": "light",
+      "css_property": "border-top-left-radius",
+      "token_path": "radii_px.4xl.px"
+    },
+    {
+      "automation_id": "badge.default",
+      "theme": "dark",
+      "css_property": "border-top-left-radius",
+      "token_path": "radii_px.4xl.px"
+    },
+    {
+      "automation_id": "badge.default",
+      "theme": "light",
+      "css_property": "font-size",
+      "token_path": "typography.sizes_px.12.px"
+    },
+    {
+      "automation_id": "badge.default",
+      "theme": "dark",
+      "css_property": "font-size",
+      "token_path": "typography.sizes_px.12.px"
+    },
+    {
+      "automation_id": "alert.destructive",
+      "theme": "light",
+      "css_property": "color",
+      "token_path": "colors.{theme}.destructive.srgb",
+      "part": "title"
+    },
+    {
+      "automation_id": "alert.destructive",
+      "theme": "dark",
+      "css_property": "color",
+      "token_path": "colors.{theme}.destructive.srgb",
+      "part": "title"
+    },
+    {
+      "automation_id": "alert.destructive",
+      "theme": "light",
+      "css_property": "color",
+      "token_path": "colors.{theme}.destructive.alpha",
+      "part": "title"
+    },
+    {
+      "automation_id": "alert.destructive",
+      "theme": "dark",
+      "css_property": "color",
+      "token_path": "colors.{theme}.destructive.alpha",
+      "part": "title"
+    },
+    {
+      "automation_id": "kbd.default",
+      "theme": "light",
+      "css_property": "font-size",
+      "token_path": "typography.sizes_px.12.px"
+    },
+    {
+      "automation_id": "kbd.default",
+      "theme": "dark",
+      "css_property": "font-size",
+      "token_path": "typography.sizes_px.12.px"
+    },
+    {
+      "automation_id": "kbd.default",
+      "theme": "light",
+      "css_property": "font-weight",
+      "token_path": "typography.weight_values.medium"
+    },
+    {
+      "automation_id": "kbd.default",
+      "theme": "dark",
+      "css_property": "font-weight",
+      "token_path": "typography.weight_values.medium"
+    },
+    {
+      "automation_id": "kbd.default",
+      "theme": "light",
+      "css_property": "padding-left",
+      "token_path": "horizontal_padding_px.kbd.px"
+    },
+    {
+      "automation_id": "kbd.default",
+      "theme": "dark",
+      "css_property": "padding-left",
+      "token_path": "horizontal_padding_px.kbd.px"
+    },
+    {
+      "automation_id": "separator.horizontal",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.border.srgb"
+    },
+    {
+      "automation_id": "separator.horizontal",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.border.srgb"
+    },
+    {
+      "automation_id": "separator.horizontal",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.border.alpha"
+    },
+    {
+      "automation_id": "separator.horizontal",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.border.alpha"
+    },
+    {
+      "automation_id": "separator.horizontal",
+      "theme": "light",
+      "css_property": "height",
+      "token_path": "border_widths_px.1"
+    },
+    {
+      "automation_id": "separator.horizontal",
+      "theme": "dark",
+      "css_property": "height",
+      "token_path": "border_widths_px.1"
+    },
+    {
+      "automation_id": "skeleton.default",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.muted.srgb",
+      "part": "avatar"
+    },
+    {
+      "automation_id": "skeleton.default",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.muted.srgb",
+      "part": "avatar"
+    },
+    {
+      "automation_id": "skeleton.default",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.muted.alpha",
+      "part": "avatar"
+    },
+    {
+      "automation_id": "skeleton.default",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.muted.alpha",
+      "part": "avatar"
+    },
+    {
+      "automation_id": "label.default",
+      "theme": "light",
+      "css_property": "font-size",
+      "token_path": "typography.sizes_px.14.px",
+      "part": "label"
+    },
+    {
+      "automation_id": "label.default",
+      "theme": "dark",
+      "css_property": "font-size",
+      "token_path": "typography.sizes_px.14.px",
+      "part": "label"
+    },
+    {
+      "automation_id": "label.default",
+      "theme": "light",
+      "css_property": "font-weight",
+      "token_path": "typography.weight_values.medium",
+      "part": "label"
+    },
+    {
+      "automation_id": "label.default",
+      "theme": "dark",
+      "css_property": "font-weight",
+      "token_path": "typography.weight_values.medium",
+      "part": "label"
+    },
+    {
+      "automation_id": "field.default",
+      "theme": "light",
+      "css_property": "font-size",
+      "token_path": "typography.sizes_px.14.px",
+      "part": "description"
+    },
+    {
+      "automation_id": "field.default",
+      "theme": "dark",
+      "css_property": "font-size",
+      "token_path": "typography.sizes_px.14.px",
+      "part": "description"
+    },
+    {
+      "automation_id": "field.default.invalid",
+      "theme": "light",
+      "css_property": "color",
+      "token_path": "colors.{theme}.destructive.srgb",
+      "part": "error"
+    },
+    {
+      "automation_id": "field.default.invalid",
+      "theme": "dark",
+      "css_property": "color",
+      "token_path": "colors.{theme}.destructive.srgb",
+      "part": "error"
+    },
+    {
+      "automation_id": "field.default.disabled",
+      "theme": "light",
+      "css_property": "opacity",
+      "token_path": "disabled.opacity",
+      "part": "control"
+    },
+    {
+      "automation_id": "field.default.disabled",
+      "theme": "dark",
+      "css_property": "opacity",
+      "token_path": "disabled.opacity",
+      "part": "control"
+    },
+    {
+      "automation_id": "field.horizontal",
+      "theme": "light",
+      "css_property": "font-weight",
+      "token_path": "typography.weight_values.medium",
+      "part": "content.label"
+    },
+    {
+      "automation_id": "field.horizontal",
+      "theme": "dark",
+      "css_property": "font-weight",
+      "token_path": "typography.weight_values.medium",
+      "part": "content.label"
+    },
+    {
+      "automation_id": "settings-nav.default",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.sidebar.srgb",
+      "part": "sidebar"
+    },
+    {
+      "automation_id": "settings-nav.default",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.sidebar.srgb",
+      "part": "sidebar"
+    },
+    {
+      "automation_id": "settings-nav.default",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.sidebar.alpha",
+      "part": "sidebar"
+    },
+    {
+      "automation_id": "settings-nav.default",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.sidebar.alpha",
+      "part": "sidebar"
+    },
+    {
+      "automation_id": "settings-nav.default",
+      "theme": "light",
+      "css_property": "width",
+      "token_path": "control_heights_px.sidebar-width",
+      "part": "sidebar"
+    },
+    {
+      "automation_id": "settings-nav.default",
+      "theme": "dark",
+      "css_property": "width",
+      "token_path": "control_heights_px.sidebar-width",
+      "part": "sidebar"
+    },
+    {
+      "automation_id": "settings-nav.general",
+      "theme": "light",
+      "css_property": "height",
+      "token_path": "control_heights_px.sidebar-item-height"
+    },
+    {
+      "automation_id": "settings-nav.general",
+      "theme": "dark",
+      "css_property": "height",
+      "token_path": "control_heights_px.sidebar-item-height"
+    },
+    {
+      "automation_id": "settings-nav.appearance",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.sidebar-accent.srgb"
+    },
+    {
+      "automation_id": "settings-nav.appearance",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.sidebar-accent.srgb"
+    },
+    {
+      "automation_id": "settings-nav.appearance",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.sidebar-accent.alpha"
+    },
+    {
+      "automation_id": "settings-nav.appearance",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.sidebar-accent.alpha"
+    },
+    {
+      "automation_id": "settings-nav.appearance",
+      "theme": "light",
+      "css_property": "font-size",
+      "token_path": "typography.sizes_px.14.px",
+      "part": "label"
+    },
+    {
+      "automation_id": "settings-nav.appearance",
+      "theme": "dark",
+      "css_property": "font-size",
+      "token_path": "typography.sizes_px.14.px",
+      "part": "label"
+    },
+    {
+      "automation_id": "settings-nav-item.default.hover",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.sidebar-accent.srgb"
+    },
+    {
+      "automation_id": "settings-nav-item.default.hover",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.sidebar-accent.srgb"
+    },
+    {
+      "automation_id": "settings-nav-item.default.hover",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.sidebar-accent.alpha"
+    },
+    {
+      "automation_id": "settings-nav-item.default.hover",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.sidebar-accent.alpha"
+    },
+    {
+      "automation_id": "settings-nav-item.default.focus-visible",
+      "theme": "light",
+      "css_property": "box-shadow-width",
+      "token_path": "focus_ring.sidebar_width_px"
+    },
+    {
+      "automation_id": "settings-nav-item.default.focus-visible",
+      "theme": "dark",
+      "css_property": "box-shadow-width",
+      "token_path": "focus_ring.sidebar_width_px"
+    },
+    {
+      "automation_id": "settings-nav-item.default.focus-visible",
+      "theme": "light",
+      "css_property": "box-shadow-color",
+      "token_path": "colors.{theme}.sidebar-ring.srgb"
+    },
+    {
+      "automation_id": "settings-nav-item.default.focus-visible",
+      "theme": "dark",
+      "css_property": "box-shadow-color",
+      "token_path": "colors.{theme}.sidebar-ring.srgb"
+    },
+    {
+      "automation_id": "settings-nav-item.default.focus-visible",
+      "theme": "light",
+      "css_property": "box-shadow-alpha",
+      "token_path": "colors.{theme}.sidebar-ring.alpha"
+    },
+    {
+      "automation_id": "settings-nav-item.default.focus-visible",
+      "theme": "dark",
+      "css_property": "box-shadow-alpha",
+      "token_path": "colors.{theme}.sidebar-ring.alpha"
+    },
+    {
+      "automation_id": "settings-nav-item.default.disabled",
+      "theme": "light",
+      "css_property": "opacity",
+      "token_path": "disabled.opacity"
+    },
+    {
+      "automation_id": "settings-nav-item.default.disabled",
+      "theme": "dark",
+      "css_property": "opacity",
+      "token_path": "disabled.opacity"
+    },
+    {
+      "automation_id": "settings-nav-item.default.active",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.sidebar-accent.srgb"
+    },
+    {
+      "automation_id": "settings-nav-item.default.active",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.sidebar-accent.srgb"
+    },
+    {
+      "automation_id": "settings-nav-item.default.active",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.sidebar-accent.alpha"
+    },
+    {
+      "automation_id": "settings-nav-item.default.active",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.sidebar-accent.alpha"
+    },
+    {
+      "automation_id": "settings-nav.default",
+      "theme": "light",
+      "css_property": "width",
+      "token_path": "control_heights_px.sidebar-icon-rail",
+      "part": "sidebar",
+      "capture_state": "settings-nav-collapsed"
+    },
+    {
+      "automation_id": "settings-nav.default",
+      "theme": "dark",
+      "css_property": "width",
+      "token_path": "control_heights_px.sidebar-icon-rail",
+      "part": "sidebar",
+      "capture_state": "settings-nav-collapsed"
+    },
+    {
+      "automation_id": "typography.h1",
+      "theme": "light",
+      "css_property": "font-size",
+      "token_path": "typography.sizes_px.48.px"
+    },
+    {
+      "automation_id": "typography.h1",
+      "theme": "dark",
+      "css_property": "font-size",
+      "token_path": "typography.sizes_px.48.px"
+    },
+    {
+      "automation_id": "typography.h1",
+      "theme": "light",
+      "css_property": "font-weight",
+      "token_path": "typography.weight_values.extrabold"
+    },
+    {
+      "automation_id": "typography.h1",
+      "theme": "dark",
+      "css_property": "font-weight",
+      "token_path": "typography.weight_values.extrabold"
+    },
+    {
+      "automation_id": "typography.h2",
+      "theme": "light",
+      "css_property": "font-size",
+      "token_path": "typography.sizes_px.30.px"
+    },
+    {
+      "automation_id": "typography.h2",
+      "theme": "dark",
+      "css_property": "font-size",
+      "token_path": "typography.sizes_px.30.px"
+    },
+    {
+      "automation_id": "typography.h2",
+      "theme": "light",
+      "css_property": "font-weight",
+      "token_path": "typography.weight_values.semibold"
+    },
+    {
+      "automation_id": "typography.h2",
+      "theme": "dark",
+      "css_property": "font-weight",
+      "token_path": "typography.weight_values.semibold"
+    },
+    {
+      "automation_id": "typography.h3",
+      "theme": "light",
+      "css_property": "font-size",
+      "token_path": "typography.sizes_px.24.px"
+    },
+    {
+      "automation_id": "typography.h3",
+      "theme": "dark",
+      "css_property": "font-size",
+      "token_path": "typography.sizes_px.24.px"
+    },
+    {
+      "automation_id": "typography.h3",
+      "theme": "light",
+      "css_property": "font-weight",
+      "token_path": "typography.weight_values.semibold"
+    },
+    {
+      "automation_id": "typography.h3",
+      "theme": "dark",
+      "css_property": "font-weight",
+      "token_path": "typography.weight_values.semibold"
+    },
+    {
+      "automation_id": "typography.h4",
+      "theme": "light",
+      "css_property": "font-size",
+      "token_path": "typography.sizes_px.20.px"
+    },
+    {
+      "automation_id": "typography.h4",
+      "theme": "dark",
+      "css_property": "font-size",
+      "token_path": "typography.sizes_px.20.px"
+    },
+    {
+      "automation_id": "typography.h4",
+      "theme": "light",
+      "css_property": "font-weight",
+      "token_path": "typography.weight_values.semibold"
+    },
+    {
+      "automation_id": "typography.h4",
+      "theme": "dark",
+      "css_property": "font-weight",
+      "token_path": "typography.weight_values.semibold"
+    },
+    {
+      "automation_id": "typography.lead",
+      "theme": "light",
+      "css_property": "font-size",
+      "token_path": "typography.sizes_px.20.px"
+    },
+    {
+      "automation_id": "typography.lead",
+      "theme": "dark",
+      "css_property": "font-size",
+      "token_path": "typography.sizes_px.20.px"
+    },
+    {
+      "automation_id": "typography.lead",
+      "theme": "light",
+      "css_property": "font-weight",
+      "token_path": "typography.weight_values.normal"
+    },
+    {
+      "automation_id": "typography.lead",
+      "theme": "dark",
+      "css_property": "font-weight",
+      "token_path": "typography.weight_values.normal"
+    },
+    {
+      "automation_id": "typography.p",
+      "theme": "light",
+      "css_property": "font-size",
+      "token_path": "typography.sizes_px.16.px"
+    },
+    {
+      "automation_id": "typography.p",
+      "theme": "dark",
+      "css_property": "font-size",
+      "token_path": "typography.sizes_px.16.px"
+    },
+    {
+      "automation_id": "typography.p",
+      "theme": "light",
+      "css_property": "font-weight",
+      "token_path": "typography.weight_values.normal"
+    },
+    {
+      "automation_id": "typography.p",
+      "theme": "dark",
+      "css_property": "font-weight",
+      "token_path": "typography.weight_values.normal"
+    },
+    {
+      "automation_id": "typography.small",
+      "theme": "light",
+      "css_property": "font-size",
+      "token_path": "typography.sizes_px.14.px"
+    },
+    {
+      "automation_id": "typography.small",
+      "theme": "dark",
+      "css_property": "font-size",
+      "token_path": "typography.sizes_px.14.px"
+    },
+    {
+      "automation_id": "typography.small",
+      "theme": "light",
+      "css_property": "font-weight",
+      "token_path": "typography.weight_values.medium"
+    },
+    {
+      "automation_id": "typography.small",
+      "theme": "dark",
+      "css_property": "font-weight",
+      "token_path": "typography.weight_values.medium"
+    },
+    {
+      "automation_id": "typography.muted",
+      "theme": "light",
+      "css_property": "font-size",
+      "token_path": "typography.sizes_px.14.px"
+    },
+    {
+      "automation_id": "typography.muted",
+      "theme": "dark",
+      "css_property": "font-size",
+      "token_path": "typography.sizes_px.14.px"
+    },
+    {
+      "automation_id": "typography.muted",
+      "theme": "light",
+      "css_property": "font-weight",
+      "token_path": "typography.weight_values.normal"
+    },
+    {
+      "automation_id": "typography.muted",
+      "theme": "dark",
+      "css_property": "font-weight",
+      "token_path": "typography.weight_values.normal"
+    },
+    {
+      "automation_id": "typography.inline-code",
+      "theme": "light",
+      "css_property": "font-size",
+      "token_path": "typography.sizes_px.14.px"
+    },
+    {
+      "automation_id": "typography.inline-code",
+      "theme": "dark",
+      "css_property": "font-size",
+      "token_path": "typography.sizes_px.14.px"
+    },
+    {
+      "automation_id": "typography.inline-code",
+      "theme": "light",
+      "css_property": "font-weight",
+      "token_path": "typography.weight_values.semibold"
+    },
+    {
+      "automation_id": "typography.inline-code",
+      "theme": "dark",
+      "css_property": "font-weight",
+      "token_path": "typography.weight_values.semibold"
+    },
+    {
+      "automation_id": "typography.muted",
+      "theme": "light",
+      "css_property": "color",
+      "token_path": "colors.{theme}.muted-foreground.srgb"
+    },
+    {
+      "automation_id": "typography.muted",
+      "theme": "dark",
+      "css_property": "color",
+      "token_path": "colors.{theme}.muted-foreground.srgb"
+    },
+    {
+      "automation_id": "typography.muted",
+      "theme": "light",
+      "css_property": "color",
+      "token_path": "colors.{theme}.muted-foreground.alpha"
+    },
+    {
+      "automation_id": "typography.muted",
+      "theme": "dark",
+      "css_property": "color",
+      "token_path": "colors.{theme}.muted-foreground.alpha"
+    },
+    {
+      "automation_id": "typography.code-block",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.code.srgb"
+    },
+    {
+      "automation_id": "typography.code-block",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.code.srgb"
+    },
+    {
+      "automation_id": "typography.code-block",
+      "theme": "light",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.code.alpha"
+    },
+    {
+      "automation_id": "typography.code-block",
+      "theme": "dark",
+      "css_property": "background-color",
+      "token_path": "colors.{theme}.code.alpha"
+    },
+    {
+      "automation_id": "typography.code-block",
+      "theme": "light",
+      "css_property": "border-top-left-radius",
+      "token_path": "radii_px.2xl.px"
+    },
+    {
+      "automation_id": "typography.code-block",
+      "theme": "dark",
+      "css_property": "border-top-left-radius",
+      "token_path": "radii_px.2xl.px"
+    },
+    {
+      "automation_id": "typography.code-block",
+      "theme": "light",
+      "css_property": "font-size",
+      "token_path": "typography.sizes_px.14.px"
+    },
+    {
+      "automation_id": "typography.code-block",
+      "theme": "dark",
+      "css_property": "font-size",
+      "token_path": "typography.sizes_px.14.px"
+    },
+    {
+      "automation_id": "typography.code-block",
+      "theme": "light",
+      "css_property": "padding-left",
+      "token_path": "horizontal_padding_px.code-block-pre.x",
+      "part": "pre"
+    },
+    {
+      "automation_id": "typography.code-block",
+      "theme": "dark",
+      "css_property": "padding-left",
+      "token_path": "horizontal_padding_px.code-block-pre.x",
+      "part": "pre"
+    },
+    {
+      "automation_id": "typography.code-block",
+      "theme": "light",
+      "css_property": "padding-right",
+      "token_path": "horizontal_padding_px.code-block-pre.x",
+      "part": "pre"
+    },
+    {
+      "automation_id": "typography.code-block",
+      "theme": "dark",
+      "css_property": "padding-right",
+      "token_path": "horizontal_padding_px.code-block-pre.x",
+      "part": "pre"
+    },
+    {
+      "automation_id": "typography.code-block",
+      "theme": "light",
+      "css_property": "padding-top",
+      "token_path": "horizontal_padding_px.code-block-pre.y",
+      "part": "pre"
+    },
+    {
+      "automation_id": "typography.code-block",
+      "theme": "dark",
+      "css_property": "padding-top",
+      "token_path": "horizontal_padding_px.code-block-pre.y",
+      "part": "pre"
+    },
+    {
+      "automation_id": "typography.code-block",
+      "theme": "light",
+      "css_property": "padding-bottom",
+      "token_path": "horizontal_padding_px.code-block-pre.y",
+      "part": "pre"
+    },
+    {
+      "automation_id": "typography.code-block",
+      "theme": "dark",
+      "css_property": "padding-bottom",
+      "token_path": "horizontal_padding_px.code-block-pre.y",
+      "part": "pre"
+    },
+    {
+      "automation_id": "shell.title",
+      "theme": "light",
+      "css_property": "font-size",
+      "token_path": "typography.sizes_px.14.px"
+    },
+    {
+      "automation_id": "shell.title",
+      "theme": "dark",
+      "css_property": "font-size",
+      "token_path": "typography.sizes_px.14.px"
+    },
+    {
+      "automation_id": "shell.title",
+      "theme": "light",
+      "css_property": "font-weight",
+      "token_path": "typography.weight_values.semibold"
+    },
+    {
+      "automation_id": "shell.title",
+      "theme": "dark",
+      "css_property": "font-weight",
+      "token_path": "typography.weight_values.semibold"
+    }
+  ]
+}

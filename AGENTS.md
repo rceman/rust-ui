@@ -2,6 +2,8 @@
 
 ## Architecture and scope
 
+Product scope is canonical in `docs/PRODUCT_SCOPE.md`: rust-ui is desktop-only and fully desktop-responsive; mobile is out of scope (responsive != mobile). `docs/COMPONENT_SUPPORT.md` is the durable component support ledger and must be updated in every component milestone. UI milestones use the split review in `docs/REVIEW_AUTHORITY.md`.
+
 The approved architecture baseline for the Windows spike is `29c67025dc88221899a8ab1b381f08491d44b85b` (the Astra documents define the provisional architecture; later baselines documented in task handoffs supersede older SHAs as authority). The current implementation/rework candidate is the branch HEAD. The owner approved a Windows implementation spike, not a final framework or a Mascot migration.
 
 The current spike is Windows-only. Do not add other-platform backends or stubs, a custom editor, a browser runtime, compatibility shims, a mandatory async runtime, or CI. Native editable text must remain windowless RichEdit through `ITextHost` / `ITextServices`, with `TxDrawD2D`; HWND editor substitution is not an approved fallback.

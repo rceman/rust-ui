@@ -1,0 +1,38 @@
+/* theme-local.css - vars that are NOT in the vendored themes.ts neutral
+ * entry. theme-neutral.css is generated verbatim-from-themes.ts; every var
+ * here is labelled with its upstream/local authority.
+ *
+ * Sources:
+ *   destructive-foreground, surface, code, selection vars:
+ *     apps/v4/app/globals.css (:root / .dark blocks) - upstream, vendored.
+ *   sidebar-foreground dark override: NONE - upstream dark value kept
+ *     (previous candidate overrode it; that was a provenance defect, R08).
+ *   Note: upstream dark --sidebar-primary is a blue (oklch(0.488 0.243
+ *   264.376)). The settings-nav specimen deliberately uses the neutral
+ *   sidebar-accent/--sidebar tokens only - never --sidebar-primary.
+ */
+:root {
+  /* globals.css :root */
+  --destructive-foreground: oklch(0.97 0.01 17);
+  --surface: oklch(0.98 0 0);
+  --surface-foreground: var(--foreground);
+  --code: var(--surface);
+  --code-foreground: var(--surface-foreground);
+  --code-highlight: oklch(0.96 0 0);
+  --code-number: oklch(0.56 0 0);
+  --selection: oklch(0 0 0);
+  --selection-foreground: oklch(1 0 0);
+}
+
+.dark {
+  /* globals.css .dark */
+  --destructive-foreground: oklch(0.58 0.22 27);
+  --surface: oklch(0.2 0 0);
+  --surface-foreground: oklch(0.708 0 0);
+  --code: var(--surface);
+  --code-foreground: var(--surface-foreground);
+  --code-highlight: oklch(0.27 0 0);
+  --code-number: oklch(0.72 0 0);
+  --selection: oklch(0.922 0 0);
+  --selection-foreground: oklch(0.205 0 0);
+}

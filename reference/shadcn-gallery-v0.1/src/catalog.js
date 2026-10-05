@@ -15,13 +15,20 @@
     const void_ = tag === "input";
     return `<${tag}${a}${void_ ? ">" : `>${inner || ""}</${tag}>`}`;
   };
-  const ic = (name, cls) => window.icon(name, cls);
+  const ic = (name, cls, dataIcon) => window.icon(name, cls, dataIcon);
 
   // ---------- transcribed component helpers ----------
   const BTN_BASE =
     "cn-button group/button inline-flex shrink-0 items-center justify-center whitespace-nowrap transition-all outline-none select-none disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0";
-  const btn = (variant, size, opts = {}) =>
-    h(
+  const btn = (variant, size, opts = {}) => {
+    // upstream: svg carries data-icon="inline-start|inline-end" which selects
+    // the reduced-side padding recipe branch (R05); icon-only buttons carry
+    // no data-icon and no label text
+    const iconSvg = opts.icon ? ic(opts.icon, opts.iconCls, opts.iconPos) : "";
+    const labelText = opts.label ?? (opts.icon ? "" : "Button");
+    const inner =
+      opts.iconPos === "inline-end" ? labelText + iconSvg : iconSvg + labelText;
+    return h(
       "button",
       {
         "data-slot": opts.dataSlot || "button",
@@ -29,11 +36,14 @@
         type: "button",
         disabled: opts.disabled ? "" : undefined,
         "data-force-state": opts.force,
-        "aria-invalid": opts.invalid || undefined,
+        "aria-invalid": opts.invalid ? "true" : undefined,
+        "data-key": opts.key,
+        "data-part": opts.part,
         "data-automation-id": opts.id,
       },
-      (opts.icon ? ic(opts.icon, opts.iconCls) : "") + (opts.label ?? (opts.icon ? "" : "Button")),
+      inner,
     );
+  };
 
   const BADGE_BASE =
     "cn-badge group/badge inline-flex w-fit shrink-0 items-center justify-center overflow-hidden whitespace-nowrap focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 [&>svg]:pointer-events-none";
@@ -72,6 +82,7 @@
       "aria-invalid": opts.invalid ? "true" : undefined,
       "data-force-state": opts.force,
       "data-automation-id": opts.id,
+      "data-part": opts.part,
     });
   const TA_BASE =
     "cn-textarea flex field-sizing-content min-h-16 w-full outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50";
@@ -145,6 +156,9 @@
         "data-checked": checked || undefined,
         "data-unchecked": checked ? undefined : true,
         "data-force-state": opts.force,
+        "aria-invalid": opts.invalid ? "true" : undefined,
+        "data-part": "item",
+        "data-key": opts.key,
       },
       checked
         ? h(
@@ -154,7 +168,7 @@
               "data-part": "indicator",
               class: "cn-radio-group-indicator",
             },
-            h("span", { class: "cn-radio-group-indicator-icon" }),
+            h("span", { "data-part": "icon", class: "cn-radio-group-indicator-icon" }),
           )
         : "",
     );
@@ -204,12 +218,19 @@
         "data-disabled": opts.disabled || undefined,
         "data-checked": checked || undefined,
         "data-unchecked": checked ? undefined : true,
+        "aria-invalid": opts.invalid ? "true" : undefined,
         "data-force-state": opts.force,
         "data-automation-id": opts.id,
       },
       h("span", {
         "data-slot": "switch-thumb",
         "data-part": "thumb",
+        // Base UI Switch.Thumb carries the state attrs itself - the Nova
+        // translate/color rules key on data-checked/-unchecked on the THUMB
+        "data-checked": checked || undefined,
+        "data-unchecked": checked ? undefined : true,
+        "data-disabled": opts.disabled || undefined,
+        "data-invalid": opts.invalid || undefined,
         class:
           "cn-switch-thumb pointer-events-none block ring-0 transition-transform",
       }),
@@ -288,6 +309,8 @@
       "label",
       {
         "data-slot": "label",
+        "data-part": opts.part,
+        "data-key": opts.key,
         class:
           "cn-label flex items-center select-none group-data-[disabled=true]:pointer-events-none peer-disabled:cursor-not-allowed" +
           (opts.cls || ""),
@@ -355,7 +378,7 @@
       h(
         "div",
         {
-          "data-slot": "tabs-list",
+          "data-slot": "tabs-list", "data-part": "list",
           role: "tablist",
           "data-variant": variant,
           class: `cn-tabs-list cn-tabs-list-variant-${variant} group/tabs-list inline-flex w-fit items-center justify-center text-muted-foreground ${variant === "default" ? "bg-muted" : "gap-1 bg-transparent"}`,
@@ -374,7 +397,8 @@
                 "data-active": t.active || undefined,
                 disabled: t.disabled ? "" : undefined,
                 "data-force-state": t.force,
-                "data-part": `tab-${i}`,
+                "data-part": "tab",
+                "data-key": t.label.toLowerCase(),
               },
               t.label,
             ),
@@ -405,26 +429,68 @@
           },
           opts.description || "",
         );
+    const horizontal = opts.orientation === "horizontal";
+    // upstream field.tsx: orientation=horizontal -> cn-field-orientation-horizontal
+    // + cn-field-content wrapping label+description, control beside it
+    const labelEl = label(opts.label, { cls: " cn-field-label group/field-label peer/field-label flex w-fit", part: "label" });
+    const content = horizontal
+      ? h("div", { "data-slot": "field-content", "data-part": "content", class: "cn-field-content group/field-content flex flex-1 flex-col leading-snug" },
+          labelEl + desc) + (opts.control || "")
+      : labelEl + (opts.control || "") + desc;
     return h(
       "div",
       {
         role: "group",
         "data-slot": "field",
-        "data-orientation": "vertical",
+        "data-part": opts.fieldKey ? "field" : undefined,
+        "data-key": opts.fieldKey,
+        "data-orientation": horizontal ? "horizontal" : "vertical",
         "data-disabled": opts.disabled || undefined,
+        // row: settings-row layout - full width, control right-aligned
         class:
-          "cn-field cn-field-orientation-vertical group/field flex w-72 flex-col *:w-full [&>.sr-only]:w-auto",
+          `cn-field cn-field-orientation-${horizontal ? "horizontal" : "vertical"} group/field flex ${opts.row ? "w-full justify-between" : "w-72"} ${horizontal ? "flex-row items-center" : "flex-col *:w-full [&>.sr-only]:w-auto"}`,
         "data-automation-id": opts.id,
       },
-      label(opts.label, { cls: " cn-field-label group/field-label peer/field-label flex w-fit" }) +
-        (opts.control || "") +
-        desc,
+      content,
     );
   };
 
   // ---------- catalog ----------
   const C = [];
-  const e = (entry) => C.push(entry);
+  // implementation tier (reference.json records the definitions):
+  //   core            - required for the first native rust-ui Gallery milestone
+  //   later           - planned desktop component, not in the first milestone
+  //   reference-only  - retained visual coverage, no native promise
+  const TIER_BY_COMPONENT = {
+    "gallery-shell": "core",
+    card: "core", separator: "core", badge: "core", alert: "core",
+    skeleton: "core", button: "core", "icon-button": "core", field: "core",
+    label: "core", input: "core", textarea: "core", "native-text": "core",
+    checkbox: "core", "radio-group": "core", switch: "core", select: "core",
+    tabs: "core", "dropdown-menu": "core", "settings-nav": "core",
+    "settings-nav-item": "core", tooltip: "core", popover: "core",
+    dialog: "core", kbd: "core",
+    h1: "core", h2: "core", h3: "core", h4: "core", p: "core", lead: "core",
+    small: "core", muted: "core", "inline-code": "core", "code-block": "core",
+    slider: "later", toggle: "later", "toggle-group": "later",
+    "button-group": "later", breadcrumb: "later", pagination: "later",
+    "alert-dialog": "later", blockquote: "later", list: "later",
+    large: "later",
+    table: "reference-only",
+  };
+  const FAMILY_BY_COMPONENT = {
+    h1: "typography", h2: "typography", h3: "typography", h4: "typography",
+    p: "typography", lead: "typography", small: "typography",
+    muted: "typography", "inline-code": "typography",
+    "code-block": "typography", blockquote: "typography", list: "typography",
+    large: "typography", table: "typography",
+    "settings-nav-item": "settings-nav",
+  };
+  const e = (entry) => {
+    entry.tier = entry.tier || TIER_BY_COMPONENT[entry.component] || "later";
+    entry.family = entry.family || FAMILY_BY_COMPONENT[entry.component] || entry.component;
+    C.push(entry);
+  };
 
   // components - Button matrix: variants x states
   for (const v of ["default", "secondary", "outline", "ghost", "destructive", "link"]) {
@@ -433,15 +499,28 @@
       e({ automation_id: `button.${v}.${st}`, component: "button", variant: v, state: st, category: "components", render: () => btn(v, "default", { label: v[0].toUpperCase() + v.slice(1), force, id: `button.${v}.${st}` }) });
     }
     e({ automation_id: `button.${v}.disabled`, component: "button", variant: v, state: "disabled", category: "components", render: () => btn(v, "default", { label: "Disabled", disabled: true, id: `button.${v}.disabled` }) });
+    e({ automation_id: `button.${v}.invalid`, component: "button", variant: v, state: "invalid", category: "components", render: () => btn(v, "default", { label: "Invalid", invalid: true, id: `button.${v}.invalid` }) });
   }
   // Button sizes (default variant)
   for (const s of ["xs", "sm", "lg"]) {
     e({ automation_id: `button.default.size-${s}`, component: "button", variant: "default", state: "normal", size: s, category: "components", render: () => btn("default", s, { label: `Size ${s}`, id: `button.default.size-${s}` }) });
   }
-  for (const s of ["icon-xs", "icon-sm", "icon", "icon-lg"]) {
-    e({ automation_id: `button.default.size-${s}`, component: "button", variant: "default", state: "normal", size: s, category: "components", render: () => btn("default", s, { icon: "arrow-right", id: `button.default.size-${s}` }) });
+  // upstream button-example.tsx: inline-start icon = ArrowLeftCircleIcon +
+  // data-icon="inline-start"; inline-end = ArrowRightIcon + data-icon="inline-end"
+  e({ automation_id: "button.default.icon-inline-start", component: "button", variant: "default", state: "normal", category: "components", render: () => btn("default", "default", { icon: "arrow-left-circle", iconPos: "inline-start", label: "Add item", id: "button.default.icon-inline-start" }) });
+  e({ automation_id: "button.default.icon-inline-end", component: "button", variant: "default", state: "normal", category: "components", render: () => btn("default", "default", { icon: "arrow-right", iconPos: "inline-end", label: "Continue", id: "button.default.icon-inline-end" }) });
+
+  // icon-button - its own component family (icon-only buttons, size icon *)
+  for (const v of ["default", "secondary", "outline", "ghost", "destructive"]) {
+    e({ automation_id: `icon-button.${v}`, component: "icon-button", variant: v, state: "normal", category: "components", render: () => btn(v, "icon", { icon: "arrow-right", id: `icon-button.${v}` }) });
+    for (const [st, force] of [["hover", "hover"], ["pressed", "active"], ["focus-visible", "focus,focus-visible"]]) {
+      e({ automation_id: `icon-button.${v}.${st}`, component: "icon-button", variant: v, state: st, category: "components", render: () => btn(v, "icon", { icon: "arrow-right", force, id: `icon-button.${v}.${st}` }) });
+    }
+    e({ automation_id: `icon-button.${v}.disabled`, component: "icon-button", variant: v, state: "disabled", category: "components", render: () => btn(v, "icon", { icon: "arrow-right", disabled: true, id: `icon-button.${v}.disabled` }) });
   }
-  e({ automation_id: "button.default.icon-inline-start", component: "button", variant: "default", state: "normal", category: "components", render: () => btn("default", "default", { icon: "plus", iconCls: "", label: "Add item", id: "button.default.icon-inline-start" }) });
+  for (const s of ["icon-xs", "icon-sm", "icon", "icon-lg"]) {
+    e({ automation_id: `icon-button.default.size-${s}`, component: "icon-button", variant: "default", state: "normal", size: s, category: "components", render: () => btn("default", s, { icon: "arrow-right", id: `icon-button.default.size-${s}` }) });
+  }
 
   // Badge variants
   for (const v of ["default", "secondary", "outline", "destructive", "ghost", "link"]) {
@@ -494,16 +573,16 @@
       h("div", { "data-automation-id": "skeleton.default", class: "flex w-56 items-center gap-4" },
         h("div", { "data-slot": "skeleton", "data-part": "avatar", class: "cn-skeleton size-10 shrink-0 rounded-full" }) +
         h("div", { class: "flex-1 space-y-2" },
-          h("div", { "data-slot": "skeleton", "data-part": "line", class: "cn-skeleton h-4 w-full" }) +
-          h("div", { "data-slot": "skeleton", "data-part": "line", class: "cn-skeleton h-4 w-2/3" }))),
+          h("div", { "data-slot": "skeleton", "data-part": "line", "data-key": "1", class: "cn-skeleton h-4 w-full" }) +
+          h("div", { "data-slot": "skeleton", "data-part": "line", "data-key": "2", class: "cn-skeleton h-4 w-2/3" }))),
   });
 
   // Kbd
   e({ automation_id: "kbd.default", component: "kbd", variant: "default", state: "normal", category: "components", render: () => h("kbd", { "data-slot": "kbd", "data-automation-id": "kbd.default", class: "cn-kbd pointer-events-none inline-flex items-center justify-center select-none" }, "Ctrl K") });
-  e({ automation_id: "kbd.group", component: "kbd", variant: "group", state: "normal", category: "components", render: () => h("kbd", { "data-slot": "kbd-group", "data-automation-id": "kbd.group", class: "cn-kbd-group inline-flex items-center" }, h("kbd", { "data-slot": "kbd", class: "cn-kbd pointer-events-none inline-flex items-center justify-center select-none" }, "Ctrl") + h("kbd", { "data-slot": "kbd", class: "cn-kbd pointer-events-none inline-flex items-center justify-center select-none" }, "Shift") + h("kbd", { "data-slot": "kbd", class: "cn-kbd pointer-events-none inline-flex items-center justify-center select-none" }, "P")) });
+  e({ automation_id: "kbd.group", component: "kbd", variant: "group", state: "normal", category: "components", render: () => h("kbd", { "data-slot": "kbd-group", "data-automation-id": "kbd.group", class: "cn-kbd-group inline-flex items-center" }, h("kbd", { "data-slot": "kbd", "data-part": "key", "data-key": "ctrl", class: "cn-kbd pointer-events-none inline-flex items-center justify-center select-none" }, "Ctrl") + h("kbd", { "data-slot": "kbd", "data-part": "key", "data-key": "shift", class: "cn-kbd pointer-events-none inline-flex items-center justify-center select-none" }, "Shift") + h("kbd", { "data-slot": "kbd", "data-part": "key", "data-key": "p", class: "cn-kbd pointer-events-none inline-flex items-center justify-center select-none" }, "P")) });
 
   // ---------- forms ----------
-  e({ automation_id: "label.default", component: "label", variant: "default", state: "normal", category: "forms", render: () => h("div", { "data-automation-id": "label.default", class: "flex flex-col gap-2" }, label("Label") + input({ placeholder: "With a label" })) });
+  e({ automation_id: "label.default", component: "label", variant: "default", state: "normal", category: "forms", render: () => h("div", { "data-automation-id": "label.default", class: "flex flex-col gap-2" }, label("Label", { part: "label" }) + input({ placeholder: "With a label" })) });
 
   for (const [st, opts] of [
     ["placeholder", { placeholder: "Placeholder text" }],
@@ -511,6 +590,8 @@
     ["focus-visible", { value: "Focused input", force: "focus,focus-visible" }],
     ["disabled", { placeholder: "Disabled input", disabled: true }],
     ["invalid", { value: "bad@input", invalid: true }],
+    // cn-input combines aria-invalid + focus-visible rings (destructive ring-3)
+    ["invalid-focus-visible", { value: "bad@input", invalid: true, force: "focus,focus-visible" }],
   ]) {
     e({ automation_id: `input.default.${st}`, component: "input", variant: "default", state: st, category: "forms", render: () => input({ ...opts, id: `input.default.${st}` }) });
   }
@@ -520,32 +601,38 @@
     ["focus-visible", { value: "Focused textarea", force: "focus,focus-visible" }],
     ["disabled", { placeholder: "Disabled textarea", disabled: true }],
     ["invalid", { value: "invalid", invalid: true }],
+    ["invalid-focus-visible", { value: "invalid", invalid: true, force: "focus,focus-visible" }],
   ]) {
     e({ automation_id: `textarea.default.${st}`, component: "textarea", variant: "default", state: st, category: "forms", render: () => textarea({ ...opts, id: `textarea.default.${st}` }) });
   }
 
   const cbRow = (cbEl, labelText) =>
     h("div", { class: "flex items-center gap-2" }, cbEl + h("span", { class: "cn-label text-sm font-medium" }, labelText));
-  for (const st of ["unchecked", "checked", "disabled", "invalid"]) {
+  for (const st of ["unchecked", "checked", "disabled", "disabled-checked", "invalid", "invalid-checked"]) {
     const opts = { id: `checkbox.default.${st}` };
-    if (st === "disabled") opts.disabled = true;
-    if (st === "invalid") opts.invalid = true;
-    e({ automation_id: opts.id, component: "checkbox", variant: "default", state: st, category: "forms", render: () => cbRow(checkbox(st === "disabled" || st === "invalid" ? "unchecked" : st, opts), st[0].toUpperCase() + st.slice(1)) });
+    const checked = st === "checked" || st === "disabled-checked" || st === "invalid-checked";
+    if (st.startsWith("disabled")) opts.disabled = true;
+    if (st.startsWith("invalid")) opts.invalid = true;
+    e({ automation_id: opts.id, component: "checkbox", variant: "default", state: st, category: "forms", render: () => cbRow(checkbox(checked ? "checked" : "unchecked", opts), st.replace(/-/g, " ")) });
   }
   e({ automation_id: "checkbox.default.focus-visible", component: "checkbox", variant: "default", state: "focus-visible", category: "forms", render: () => cbRow(checkbox("checked", { force: "focus,focus-visible", id: "checkbox.default.focus-visible" }), "Focus visible") });
 
   // Radio group: one group per state cell
-  e({ automation_id: "radio-group.default.selected", component: "radio-group", variant: "default", state: "selected", category: "forms", render: () => radioGroup({ id: "radio-group.default.selected", items: [{ checked: true, label: "Option A" }, { checked: false, label: "Option B" }] }) });
-  e({ automation_id: "radio-group.default.unselected", component: "radio-group", variant: "default", state: "unselected", category: "forms", render: () => radioGroup({ id: "radio-group.default.unselected", items: [{ checked: false, label: "Option A" }, { checked: false, label: "Option B" }] }) });
-  e({ automation_id: "radio-group.default.focus-visible", component: "radio-group", variant: "default", state: "focus-visible", category: "forms", render: () => radioGroup({ id: "radio-group.default.focus-visible", items: [{ checked: true, label: "Option A" }, { checked: false, label: "Option B", force: "focus,focus-visible" }] }) });
-  e({ automation_id: "radio-group.default.disabled", component: "radio-group", variant: "default", state: "disabled", category: "forms", render: () => radioGroup({ id: "radio-group.default.disabled", items: [{ checked: true, label: "Option A", disabled: true }, { checked: false, label: "Option B", disabled: true }] }) });
+  e({ automation_id: "radio-group.default.selected", component: "radio-group", variant: "default", state: "selected", category: "forms", render: () => radioGroup({ id: "radio-group.default.selected", items: [{ checked: true, label: "Option A", key: "option-a" }, { checked: false, label: "Option B", key: "option-b" }] }) });
+  e({ automation_id: "radio-group.default.unselected", component: "radio-group", variant: "default", state: "unselected", category: "forms", render: () => radioGroup({ id: "radio-group.default.unselected", items: [{ checked: false, label: "Option A", key: "option-a" }, { checked: false, label: "Option B", key: "option-b" }] }) });
+  e({ automation_id: "radio-group.default.focus-visible", component: "radio-group", variant: "default", state: "focus-visible", category: "forms", render: () => radioGroup({ id: "radio-group.default.focus-visible", items: [{ checked: true, label: "Option A", key: "option-a" }, { checked: false, label: "Option B", key: "option-b", force: "focus,focus-visible" }] }) });
+  e({ automation_id: "radio-group.default.disabled", component: "radio-group", variant: "default", state: "disabled", category: "forms", render: () => radioGroup({ id: "radio-group.default.disabled", items: [{ checked: true, label: "Option A", key: "option-a", disabled: true }, { checked: false, label: "Option B", key: "option-b", disabled: true }] }) });
+  e({ automation_id: "radio-group.default.invalid", component: "radio-group", variant: "default", state: "invalid", category: "forms", render: () => radioGroup({ id: "radio-group.default.invalid", items: [{ checked: true, label: "Option A", key: "option-a", invalid: true }, { checked: false, label: "Option B", key: "option-b", invalid: true }] }) });
 
   // Switch
   e({ automation_id: "switch.default.unchecked", component: "switch", variant: "default", state: "unchecked", category: "forms", render: () => switch_(false, { id: "switch.default.unchecked" }) });
   e({ automation_id: "switch.default.checked", component: "switch", variant: "default", state: "checked", category: "forms", render: () => switch_(true, { id: "switch.default.checked" }) });
   e({ automation_id: "switch.default.focus-visible", component: "switch", variant: "default", state: "focus-visible", category: "forms", render: () => switch_(true, { force: "focus,focus-visible", id: "switch.default.focus-visible" }) });
-  e({ automation_id: "switch.default.disabled", component: "switch", variant: "default", state: "disabled", category: "forms", render: () => switch_(true, { disabled: true, id: "switch.default.disabled" }) });
+  e({ automation_id: "switch.default.disabled", component: "switch", variant: "default", state: "disabled", category: "forms", render: () => switch_(false, { disabled: true, id: "switch.default.disabled" }) });
+  e({ automation_id: "switch.default.disabled-checked", component: "switch", variant: "default", state: "disabled-checked", category: "forms", render: () => switch_(true, { disabled: true, id: "switch.default.disabled-checked" }) });
+  e({ automation_id: "switch.default.invalid", component: "switch", variant: "default", state: "invalid", category: "forms", render: () => switch_(false, { invalid: true, id: "switch.default.invalid" }) });
   e({ automation_id: "switch.default.size-sm", component: "switch", variant: "default", state: "checked", size: "sm", category: "forms", render: () => switch_(true, { size: "sm", id: "switch.default.size-sm" }) });
+  e({ automation_id: "switch.default.size-sm-unchecked", component: "switch", variant: "default", state: "unchecked", size: "sm", category: "forms", render: () => switch_(false, { size: "sm", id: "switch.default.size-sm-unchecked" }) });
 
   // Slider
   e({ automation_id: "slider.default", component: "slider", variant: "default", state: "normal", category: "forms", render: () => slider({ id: "slider.default", thumbs: [50] }) });
@@ -563,7 +650,8 @@
   // Field - label + description, error, disabled
   e({ automation_id: "field.default", component: "field", variant: "default", state: "normal", category: "forms", render: () => field({ id: "field.default", label: "Email", description: "We'll only use this for notifications.", control: input({ placeholder: "you@example.com" }) }) });
   e({ automation_id: "field.default.invalid", component: "field", variant: "default", state: "invalid", category: "forms", render: () => field({ id: "field.default.invalid", label: "Email", error: "Enter a valid email address.", control: input({ value: "not-an-email", invalid: true }) }) });
-  e({ automation_id: "field.default.disabled", component: "field", variant: "default", state: "disabled", category: "forms", render: () => field({ id: "field.default.disabled", label: "Email", description: "Locked for this account.", control: input({ placeholder: "you@example.com", disabled: true }), disabled: true }) });
+  e({ automation_id: "field.default.disabled", component: "field", variant: "default", state: "disabled", category: "forms", render: () => field({ id: "field.default.disabled", label: "Email", description: "Locked for this account.", control: input({ placeholder: "you@example.com", disabled: true, part: "control" }), disabled: true }) });
+  e({ automation_id: "field.horizontal", component: "field", variant: "horizontal", state: "normal", category: "forms", render: () => field({ id: "field.horizontal", orientation: "horizontal", label: "Two-factor auth", description: "Require a second factor at sign-in.", control: switch_(true) }) });
 
   // ---------- navigation ----------
   for (const variant of ["default", "line"]) {
@@ -581,14 +669,14 @@
       h("nav", { "aria-label": "breadcrumb", "data-slot": "breadcrumb", "data-automation-id": "breadcrumb.default", class: "cn-breadcrumb" },
         h("ol", { "data-slot": "breadcrumb-list", class: "cn-breadcrumb-list flex flex-wrap items-center wrap-break-word" },
           h("li", { "data-slot": "breadcrumb-item", class: "cn-breadcrumb-item inline-flex items-center" },
-            h("a", { "data-slot": "breadcrumb-link", "data-part": "link", class: "cn-breadcrumb-link", href: "#" }, "Home")) +
-          h("li", { "data-slot": "breadcrumb-separator", "data-part": "separator", role: "presentation", "aria-hidden": "true", class: "cn-breadcrumb-separator" }, ic("chevron-right", "cn-rtl-flip")) +
+            h("a", { "data-slot": "breadcrumb-link", "data-part": "link", "data-key": "home", class: "cn-breadcrumb-link", href: "#" }, "Home")) +
+          h("li", { "data-slot": "breadcrumb-separator", "data-part": "separator", "data-key": "1", role: "presentation", "aria-hidden": "true", class: "cn-breadcrumb-separator" }, ic("chevron-right", "cn-rtl-flip")) +
           h("li", { "data-slot": "breadcrumb-item", class: "cn-breadcrumb-item inline-flex items-center" },
             h("span", { "data-slot": "breadcrumb-ellipsis", "data-part": "ellipsis", role: "presentation", "aria-hidden": "true", class: "cn-breadcrumb-ellipsis flex items-center justify-center" }, ic("ellipsis") + h("span", { class: "sr-only" }, "More"))) +
-          h("li", { "data-slot": "breadcrumb-separator", "data-part": "separator", role: "presentation", "aria-hidden": "true", class: "cn-breadcrumb-separator" }, ic("chevron-right", "cn-rtl-flip")) +
+          h("li", { "data-slot": "breadcrumb-separator", "data-part": "separator", "data-key": "2", role: "presentation", "aria-hidden": "true", class: "cn-breadcrumb-separator" }, ic("chevron-right", "cn-rtl-flip")) +
           h("li", { "data-slot": "breadcrumb-item", class: "cn-breadcrumb-item inline-flex items-center" },
-            h("a", { "data-slot": "breadcrumb-link", "data-part": "link", class: "cn-breadcrumb-link", href: "#" }, "Components")) +
-          h("li", { "data-slot": "breadcrumb-separator", "data-part": "separator", role: "presentation", "aria-hidden": "true", class: "cn-breadcrumb-separator" }, ic("chevron-right", "cn-rtl-flip")) +
+            h("a", { "data-slot": "breadcrumb-link", "data-part": "link", "data-key": "components", class: "cn-breadcrumb-link", href: "#" }, "Components")) +
+          h("li", { "data-slot": "breadcrumb-separator", "data-part": "separator", "data-key": "3", role: "presentation", "aria-hidden": "true", class: "cn-breadcrumb-separator" }, ic("chevron-right", "cn-rtl-flip")) +
           h("li", { "data-slot": "breadcrumb-item", class: "cn-breadcrumb-item inline-flex items-center" },
             h("span", { "data-slot": "breadcrumb-page", "data-part": "current", role: "link", "aria-disabled": "true", "aria-current": "page", class: "cn-breadcrumb-page" }, "Breadcrumb")))),
   });
@@ -603,6 +691,7 @@
         "aria-label": opts.aria,
         href: "#",
         "data-part": opts.part || "link",
+        "data-key": opts.key,
         class: `${BTN_BASE} cn-button-variant-${opts.active ? "outline" : "ghost"} cn-button-size-${opts.size || "icon"} cn-pagination-link` + (opts.cls || ""),
       }, opts.inner));
   e({
@@ -611,9 +700,9 @@
       h("nav", { role: "navigation", "aria-label": "pagination", "data-slot": "pagination", "data-automation-id": "pagination.default", class: "cn-pagination mx-auto flex w-full justify-center" },
         h("ul", { "data-slot": "pagination-content", class: "cn-pagination-content flex items-center" },
           pagLink({ aria: "Go to previous page", size: "default", cls: " cn-pagination-previous pl-1.5!", inner: ic("chevron-left", "cn-rtl-flip") + h("span", { class: "cn-pagination-previous-text hidden sm:block" }, "Previous"), part: "previous" }) +
-          pagLink({ inner: "1" }) +
-          pagLink({ inner: "2", active: true, part: "active" }) +
-          pagLink({ inner: "3" }) +
+          pagLink({ inner: "1", key: "1" }) +
+          pagLink({ inner: "2", active: true, part: "link", key: "2" }) +
+          pagLink({ inner: "3", key: "3" }) +
           h("li", { "data-slot": "pagination-item" }, h("span", { "aria-hidden": "true", "data-slot": "pagination-ellipsis", "data-part": "ellipsis", class: "cn-pagination-ellipsis flex items-center justify-center" }, ic("ellipsis") + h("span", { class: "sr-only" }, "More pages"))) +
           pagLink({ aria: "Go to next page", size: "default", cls: " cn-pagination-next pr-1.5!", inner: h("span", { class: "cn-pagination-next-text hidden sm:block" }, "Next") + ic("chevron-right", "cn-rtl-flip"), part: "next" }))),
   });
@@ -641,7 +730,8 @@
             type: "button", "data-slot": "toggle-group-item", "data-variant": "outline", "data-size": "default", "data-spacing": "2",
             "aria-pressed": i === 0 ? "true" : "false",
             class: `${TOGGLE_BASE} cn-toggle-group-item cn-toggle-variant-outline cn-toggle-size-default shrink-0 focus:z-10 focus-visible:z-10`,
-            "data-part": `item-${i}`,
+            "data-part": "item",
+            "data-key": a,
           }, ic(a)),
         ).join("")),
   });
@@ -654,9 +744,9 @@
         role: "group", "data-slot": "button-group", "data-orientation": "horizontal", "data-automation-id": "button-group.toolbar",
         class: "cn-button-group cn-button-group-orientation-horizontal flex w-fit items-stretch *:focus-visible:relative *:focus-visible:z-10 [&>[data-slot=select-trigger]:not([class*='w-'])]:w-fit [&>input]:flex-1 *:data-slot:rounded-r-none [&>[data-slot]~[data-slot]]:rounded-l-none [&>[data-slot]~[data-slot]]:border-l-0",
       },
-        btn("outline", "default", { icon: "bold" }) +
-        btn("outline", "default", { icon: "italic" }) +
-        btn("outline", "default", { icon: "underline" })),
+        btn("outline", "default", { icon: "bold", part: "button", key: "bold" }) +
+        btn("outline", "default", { icon: "italic", part: "button", key: "italic" }) +
+        btn("outline", "default", { icon: "underline", part: "button", key: "underline" })),
   });
 
   // ---------- typography (upstream docs examples) ----------
@@ -683,21 +773,36 @@
     automation_id: "typography.list", component: "list", variant: "default", state: "normal", category: "typography", kind: "text",
     render: () =>
       h("ul", { class: "my-6 ml-6 list-disc [&>li]:mt-2", "data-automation-id": "typography.list" },
-        h("li", { "data-part": "item" }, "1st level of puns: 5 gold coins") +
-        h("li", { "data-part": "item" }, "2nd level of jokes: 10 gold coins") +
-        h("li", { "data-part": "item" }, "3rd level of one-liners: 20 gold coins")),
+        h("li", { "data-part": "item", "data-key": "1" }, "1st level of puns: 5 gold coins") +
+        h("li", { "data-part": "item", "data-key": "2" }, "2nd level of jokes: 10 gold coins") +
+        h("li", { "data-part": "item", "data-key": "3" }, "3rd level of one-liners: 20 gold coins")),
+  });
+  // code block - shadcn docs surface styling (globals.css
+  // [data-rehype-pretty-code-figure] + mdx-components pre), no syntax
+  // highlighting - a docs-chrome adaptation, mono only
+  e({
+    automation_id: "typography.code-block", component: "code-block", variant: "default", state: "normal", category: "typography", kind: "text",
+    render: () =>
+      h("figure", { "data-automation-id": "typography.code-block", "data-rehype-pretty-code-figure": "" },
+        // pre className verbatim from vendored mdx-components.tsx (the
+        // has-data-* branches stay verbatim but are inert: no such data attrs)
+        h("pre", { class: "no-scrollbar min-w-0 overflow-x-auto overflow-y-auto overscroll-x-contain overscroll-y-auto px-4 py-3.5 outline-none has-data-highlighted-line:px-0 has-data-line-numbers:px-0 has-data-[slot=tabs]:p-0 font-mono text-sm", "data-part": "pre" },
+          h("code", {},
+            h("span", { "data-part": "line", "data-key": "1", class: "block" }, 'fn render_button(rect: Rect) {') +
+            h("span", { "data-part": "line", "data-key": "2", class: "block" }, '    ctx.fill(rect, theme.primary)') +
+            h("span", { "data-part": "line", "data-key": "3", class: "block" }, '}')))),
   });
   e({
     automation_id: "typography.table", component: "table", variant: "default", state: "normal", category: "typography", kind: "text",
     render: () =>
       h("div", { class: "my-6 w-full overflow-y-auto", "data-automation-id": "typography.table" },
         h("table", { class: "w-full" },
-          h("thead", {}, h("tr", { class: "even:bg-muted m-0 border-t p-0", "data-part": "header-row" },
-            h("th", { class: "border px-4 py-2 text-left font-bold [&[align=center]]:text-center [&[align=right]]:text-right", "data-part": "header" }, "King's Treasury") +
-            h("th", { class: "border px-4 py-2 text-left font-bold [&[align=center]]:text-center [&[align=right]]:text-right", "data-part": "header" }, "People's happiness"))) +
+          h("thead", {}, h("tr", { class: "even:bg-muted m-0 border-t p-0", "data-part": "row", "data-key": "head" },
+            h("th", { class: "border px-4 py-2 text-left font-bold [&[align=center]]:text-center [&[align=right]]:text-right", "data-part": "cell", "data-key": "0" }, "King's Treasury") +
+            h("th", { class: "border px-4 py-2 text-left font-bold [&[align=center]]:text-center [&[align=right]]:text-right", "data-part": "cell", "data-key": "1" }, "People's happiness"))) +
           h("tbody", {},
-            h("tr", { class: "even:bg-muted m-0 border-t p-0", "data-part": "row" }, h("td", { class: "border px-4 py-2 text-left [&[align=center]]:text-center [&[align=right]]:text-right", "data-part": "cell" }, "Empty") + h("td", { class: "border px-4 py-2 text-left [&[align=center]]:text-center [&[align=right]]:text-right", "data-part": "cell" }, "Overflowing")) +
-            h("tr", { class: "even:bg-muted m-0 border-t p-0", "data-part": "row" }, h("td", { class: "border px-4 py-2 text-left [&[align=center]]:text-center [&[align=right]]:text-right", "data-part": "cell" }, "Modest") + h("td", { class: "border px-4 py-2 text-left [&[align=center]]:text-center [&[align=right]]:text-right", "data-part": "cell" }, "Satisfied"))))),
+            h("tr", { class: "even:bg-muted m-0 border-t p-0", "data-part": "row", "data-key": "0" }, h("td", { class: "border px-4 py-2 text-left [&[align=center]]:text-center [&[align=right]]:text-right", "data-part": "cell", "data-key": "0" }, "Empty") + h("td", { class: "border px-4 py-2 text-left [&[align=center]]:text-center [&[align=right]]:text-right", "data-part": "cell", "data-key": "1" }, "Overflowing")) +
+            h("tr", { class: "even:bg-muted m-0 border-t p-0", "data-part": "row", "data-key": "1" }, h("td", { class: "border px-4 py-2 text-left [&[align=center]]:text-center [&[align=right]]:text-right", "data-part": "cell", "data-key": "0" }, "Modest") + h("td", { class: "border px-4 py-2 text-left [&[align=center]]:text-center [&[align=right]]:text-right", "data-part": "cell", "data-key": "1" }, "Satisfied"))))),
   });
 
   // ---------- overlays (statically open, stage-clipped) ----------
@@ -808,6 +913,7 @@
       role: "menuitem" + (opts.type ? opts.type : ""),
       "data-slot": opts.slot || "dropdown-menu-item",
       "data-part": opts.part || "item",
+      "data-key": opts.key,
       "data-variant": opts.variant,
       "data-inset": opts.inset,
       "data-highlighted": opts.highlighted || undefined,
@@ -815,7 +921,7 @@
       "data-automation-id": opts.id,
       "data-checked": opts.checked,
       "aria-checked": opts.checked !== undefined ? (opts.checked ? "true" : "false") : undefined,
-      "aria-disabled": opts.disabled || undefined,
+      "aria-disabled": opts.disabled ? "true" : undefined,
       "data-disabled": opts.disabled || undefined,
       class: opts.cls,
     }, (opts.indicator || "") + (opts.icon ? ic(opts.icon) : "") + label_ + (opts.shortcut ? h("span", { "data-slot": "dropdown-menu-shortcut", "data-part": "shortcut", class: "cn-dropdown-menu-shortcut" }, opts.shortcut) : ""));
@@ -833,15 +939,21 @@
             class: "cn-dropdown-menu-content cn-dropdown-menu-content-logical z-50 max-h-(--available-height) w-(--anchor-width) origin-(--transform-origin) overflow-x-hidden overflow-y-auto outline-none data-closed:overflow-hidden w-48",
           },
             h("div", { "data-slot": "dropdown-menu-label", "data-part": "label", class: "cn-dropdown-menu-label" }, "My Account") +
-            h("div", { "data-slot": "dropdown-menu-separator", "data-part": "separator", class: "cn-dropdown-menu-separator" }) +
+            h("div", { "data-slot": "dropdown-menu-separator", "data-part": "separator", "data-key": "1", class: "cn-dropdown-menu-separator" }) +
             h("div", { "data-slot": "dropdown-menu-group", role: "group" },
-              menuItem("Profile", { icon: "user", cls: "cn-dropdown-menu-item group/dropdown-menu-item relative flex cursor-default items-center outline-hidden select-none data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0", shortcut: "Ctrl+Shift+P" }) +
-              menuItem("Settings", { icon: "settings", cls: "cn-dropdown-menu-item group/dropdown-menu-item relative flex cursor-default items-center outline-hidden select-none data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0", shortcut: "Ctrl+," }) +
-              menuItem("Team members", { icon: "user", highlighted: true, force: "focus", id: "dropdown-menu.default.item-highlighted", cls: "cn-dropdown-menu-item group/dropdown-menu-item relative flex cursor-default items-center outline-hidden select-none data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0" }) +
-              menuItem("Show toolbar", { slot: "dropdown-menu-checkbox-item", type: "checkbox", checked: true, indicator: h("span", { "data-slot": "dropdown-menu-item-indicator", "data-part": "indicator", class: "cn-dropdown-menu-item-indicator" }, ic("check")), cls: "cn-dropdown-menu-checkbox-item group/dropdown-menu-item relative flex cursor-default items-center outline-hidden select-none data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0" })) +
-            h("div", { "data-slot": "dropdown-menu-separator", "data-part": "separator", class: "cn-dropdown-menu-separator" }) +
-            menuItem("Delete account", { variant: "destructive", cls: "cn-dropdown-menu-item group/dropdown-menu-item relative flex cursor-default items-center outline-hidden select-none data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0", icon: "log-out", part: "item-destructive" }))),
-        "h-72"),
+              menuItem("Profile", { key: "profile", icon: "user", cls: "cn-dropdown-menu-item group/dropdown-menu-item relative flex cursor-default items-center outline-hidden select-none data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0", shortcut: "Ctrl+Shift+P" }) +
+              menuItem("Settings", { key: "settings", icon: "settings", cls: "cn-dropdown-menu-item group/dropdown-menu-item relative flex cursor-default items-center outline-hidden select-none data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0", shortcut: "Ctrl+," }) +
+              menuItem("Team members", { key: "team", icon: "user", highlighted: true, force: "focus", id: "dropdown-menu.default.item-highlighted", cls: "cn-dropdown-menu-item group/dropdown-menu-item relative flex cursor-default items-center outline-hidden select-none data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0" }) +
+              menuItem("Billing", { key: "billing", icon: "settings", disabled: true, cls: "cn-dropdown-menu-item group/dropdown-menu-item relative flex cursor-default items-center outline-hidden select-none data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0" }) +
+              menuItem("Show toolbar", { key: "toolbar", slot: "dropdown-menu-checkbox-item", type: "checkbox", checked: true, indicator: h("span", { "data-slot": "dropdown-menu-item-indicator", "data-part": "indicator", class: "cn-dropdown-menu-item-indicator" }, ic("check")), cls: "cn-dropdown-menu-checkbox-item group/dropdown-menu-item relative flex cursor-default items-center outline-hidden select-none data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0" }) +
+              menuItem("Word wrap", { key: "word-wrap", slot: "dropdown-menu-checkbox-item", type: "checkbox", checked: false, indicator: h("span", { "data-slot": "dropdown-menu-item-indicator", "data-part": "indicator", class: "cn-dropdown-menu-item-indicator" }), cls: "cn-dropdown-menu-checkbox-item group/dropdown-menu-item relative flex cursor-default items-center outline-hidden select-none data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0" }) +
+              h("div", { "data-slot": "dropdown-menu-radio-group", role: "group" },
+                menuItem("Panel left", { key: "panel-left", slot: "dropdown-menu-radio-item", type: "radio", checked: true, indicator: h("span", { "data-slot": "dropdown-menu-item-indicator", "data-part": "indicator", class: "cn-dropdown-menu-item-indicator" }, ic("check")), cls: "cn-dropdown-menu-radio-item group/dropdown-menu-item relative flex cursor-default items-center outline-hidden select-none data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0" }) +
+                menuItem("Panel right", { key: "panel-right", slot: "dropdown-menu-radio-item", type: "radio", checked: false, indicator: h("span", { "data-slot": "dropdown-menu-item-indicator", "data-part": "indicator", class: "cn-dropdown-menu-item-indicator" }), cls: "cn-dropdown-menu-radio-item group/dropdown-menu-item relative flex cursor-default items-center outline-hidden select-none data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0" }))) +
+            h("div", { "data-slot": "dropdown-menu-separator", "data-part": "separator", "data-key": "2", class: "cn-dropdown-menu-separator" }) +
+            menuItem("Delete account", { key: "delete", variant: "destructive", cls: "cn-dropdown-menu-item group/dropdown-menu-item relative flex cursor-default items-center outline-hidden select-none data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0", icon: "log-out" }) +
+            menuItem("Delete workspace", { key: "delete-ws", variant: "destructive", highlighted: true, force: "focus", id: "dropdown-menu.default.item-destructive-highlighted", icon: "log-out", cls: "cn-dropdown-menu-item group/dropdown-menu-item relative flex cursor-default items-center outline-hidden select-none data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0" }))),
+        "h-[420px]"),
   });
 
   // Select open (trigger + popup list - selected item indicator)
@@ -851,7 +963,10 @@
       "aria-selected": opts.selected ? "true" : "false",
       "data-selected": opts.selected || undefined,
       "data-slot": "select-item",
-      "data-part": opts.selected ? "item-selected" : "item",
+      "data-part": "item",
+      "data-key": opts.key,
+      "data-disabled": opts.disabled || undefined,
+      "aria-disabled": opts.disabled ? "true" : undefined,
       "data-highlighted": opts.highlighted || undefined,
       "data-force-state": opts.force || (opts.highlighted ? "focus" : undefined),
       "data-automation-id": opts.id,
@@ -874,12 +989,17 @@
             class: "cn-select-content cn-select-content-logical relative isolate z-50 max-h-(--available-height) w-(--anchor-width) origin-(--transform-origin) overflow-x-hidden overflow-y-auto data-[align-trigger=true]:animate-none w-52",
           },
             h("div", { "data-slot": "select-group", role: "group", class: "cn-select-group scroll-my-1 p-1" },
-              h("div", { "data-slot": "select-label", "data-part": "label", class: "cn-select-label" }, "Environment") +
-              selectItem("Development") +
-              selectItem("Staging", { highlighted: true, id: "select.default.open.item-highlighted" }) +
-              selectItem("Production", { selected: true }) +
-              selectItem("Preview")))),
-        "h-64"),
+              h("div", { "data-slot": "select-label", "data-part": "label", "data-key": "env", class: "cn-select-label" }, "Environment") +
+              selectItem("Development", { key: "development" }) +
+              selectItem("Staging", { highlighted: true, key: "staging", id: "select.default.open.item-highlighted" }) +
+              selectItem("Production", { selected: true, key: "production" }) +
+              selectItem("Preview", { key: "preview" }) +
+              selectItem("Deprecated", { disabled: true, key: "deprecated" })) +
+            h("div", { "data-slot": "select-separator", "data-part": "separator", class: "cn-select-separator" }) +
+            h("div", { "data-slot": "select-group", role: "group", class: "cn-select-group scroll-my-1 p-1" },
+              h("div", { "data-slot": "select-label", "data-part": "label", "data-key": "region", class: "cn-select-label" }, "Region") +
+              selectItem("EU West", { key: "eu-west" })))),
+        "h-[360px]"),
   });
 
   // ---------- native text (upstream Input/Textarea visual contract) ----------
@@ -900,9 +1020,99 @@
   for (const st of ["placeholder", "filled", "focused", "selection", "disabled", "readonly", "invalid"]) {
     e({ automation_id: `native-text.single-line.${st}`, component: "native-text", variant: "single-line", state: st, category: "native-text", kind: "text", render: () => nt("single-line", st) });
   }
-  for (const st of ["placeholder", "filled", "focused", "selection", "disabled", "readonly"]) {
+  for (const st of ["placeholder", "filled", "focused", "selection", "disabled", "readonly", "invalid"]) {
     e({ automation_id: `native-text.multiline.${st}`, component: "native-text", variant: "multiline", state: st, category: "native-text", kind: "text", render: () => nt("multiline", st) });
   }
+
+  // ---------- settings-nav (sidebar-13 desktop subset) ----------
+  const captureState = () => new URLSearchParams(location.search).get("state") || "";
+  const NAV_ITEMS = [
+    ["Workspace", [["general", "General", "settings"], ["appearance", "Appearance", "palette"]]],
+    ["Assistant", [["agents", "Agents", "bot"], ["voice", "Voice", "mic"]]],
+    ["System", [["integrations", "Integrations", "plug"], ["advanced", "Advanced", "sliders-horizontal"]]],
+  ];
+  const navButton = (key_, label_, icon, collapsed, opts = {}) =>
+    h("li", { "data-slot": "sidebar-menu-item", class: "cn-sidebar-menu-item group/menu-item relative" },
+      h("a", {
+        "data-slot": "sidebar-menu-button", "data-size": "default", "data-variant": "default",
+        "data-active": opts.active || undefined, "data-sidebar": "menu-button",
+        href: "#", "aria-disabled": opts.disabled ? "true" : undefined,
+        "data-disabled": opts.disabled || undefined,
+        "data-force-state": opts.force,
+        "data-automation-id": opts.id,
+        "data-part": "item", "data-key": key_,
+        class: "cn-sidebar-menu-button peer/menu-button group/menu-button flex w-full items-center overflow-hidden outline-hidden disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 [&_svg]:size-4 [&_svg]:shrink-0 [&>span:last-child]:truncate cn-sidebar-menu-button-variant-default cn-sidebar-menu-button-size-default",
+      },
+        ic(icon) + h("span", { class: collapsed ? "hidden" : "", "data-part": "label" }, label_)));
+  const settingsNav = (collapsed) => {
+    const groups = NAV_ITEMS.map(([gname, items]) =>
+      h("div", { "data-slot": "sidebar-group", "data-part": "group", "data-key": gname.toLowerCase(), class: "cn-sidebar-group relative flex w-full min-w-0 flex-col" },
+        h("div", { "data-slot": "sidebar-group-label", "data-part": "group-label", class: "cn-sidebar-group-label flex shrink-0 items-center outline-hidden [&>svg]:shrink-0" + (collapsed ? " hidden" : "") }, gname) +
+        h("div", { "data-slot": "sidebar-group-content", class: "cn-sidebar-group-content w-full" },
+          h("ul", { "data-slot": "sidebar-menu", class: "cn-sidebar-menu flex w-full min-w-0 flex-col" },
+            // presentation-independent ids: settings-nav.<key> survives the
+            // collapsed rail capture state
+            items.map(([k, label_, icon]) => navButton(k, label_, icon, collapsed, { id: `settings-nav.${k}`, active: k === "appearance" })).join("")))));
+    return h("div", {
+      "data-slot": "sidebar-wrapper",
+      style: "--sidebar-width:16rem;--sidebar-width-icon:3rem",
+      class: "group/sidebar-wrapper flex min-h-0 w-full has-data-[variant=inset]:bg-sidebar",
+      "data-automation-id": "settings-nav.default",
+    },
+      // Sidebar collapsible="none" (wide) / collapsible="icon" (rail)
+      h("div", {
+        "data-slot": "sidebar", "data-part": "sidebar", "data-collapsible": collapsed ? "icon" : "none",
+        "data-state": collapsed ? "collapsed" : "expanded",
+        class: `group peer flex h-full ${collapsed ? "w-(--sidebar-width-icon)" : "w-(--sidebar-width)"} flex-col bg-sidebar text-sidebar-foreground`,
+      },
+        h("div", { "data-slot": "sidebar-header", "data-part": "header", class: `cn-sidebar-header flex flex-col${collapsed ? " hidden" : ""}` },
+          h("div", { class: "text-sidebar-foreground px-2 py-1 text-sm font-semibold" }, "Settings")) +
+        h("div", { "data-slot": "sidebar-content", "data-part": "nav", class: "cn-sidebar-content flex min-h-0 flex-1 flex-col overflow-auto group-data-[collapsible=icon]:overflow-hidden" },
+          groups.join(""))) +
+      // content pane (sidebar-13 composition: header + separator + settings
+      // rows; content is the inset/background surface - bg-background)
+      h("main", { "data-part": "content", class: "flex min-w-0 flex-1 flex-col overflow-hidden bg-background" },
+        // header, separator and rows share the one max-w-2xl column (rev-3
+        // polish - previously the header separator spanned full width)
+        h("div", { class: "flex w-full max-w-2xl flex-col p-4" },
+          h("header", { "data-part": "header", class: "flex shrink-0 flex-col gap-1" },
+            h("div", { class: "text-base font-semibold" }, "Appearance") +
+            h("div", { class: "text-muted-foreground text-sm" }, "Customize how the app looks.")) +
+          h("div", { "data-slot": "separator", "data-part": "separator", "data-key": "header", "data-orientation": "horizontal", role: "separator", class: "bg-border mt-4 h-px shrink-0" }) +
+          h("div", { class: "flex flex-1 flex-col overflow-y-auto" },
+            h("div", { class: "flex w-full flex-col" },
+              field({ orientation: "horizontal", row: true, fieldKey: "theme", label: "Theme", description: "Select the interface theme.", control: selectTrigger({ text: "System", placeholder: false }) }) +
+              h("div", { "data-slot": "separator", "data-part": "separator", "data-key": "row-1", "data-orientation": "horizontal", role: "separator", class: "bg-border my-3 h-px shrink-0" }) +
+              field({ orientation: "horizontal", row: true, fieldKey: "animations", label: "Animations", description: "UI transitions and motion.", control: switch_(true) }) +
+              h("div", { "data-slot": "separator", "data-part": "separator", "data-key": "row-2", "data-orientation": "horizontal", role: "separator", class: "bg-border my-3 h-px shrink-0" }) +
+              field({ orientation: "horizontal", row: true, fieldKey: "compact", label: "Compact mode", description: "Reduce padding.", control: switch_(false) }))))));
+  };
+  e({ automation_id: "settings-nav.default", component: "settings-nav", variant: "default", state: "open", category: "navigation", kind: "overlay",
+    meta: { presentation: "sidebar-13 desktop subset rendered as an app-pane stage (not inside a Dialog - documented adaptation); capture_state settings-nav-collapsed renders the collapsible=icon rail (w=3rem)", width_vars: { sidebar: "16rem", icon_rail: "3rem" } },
+    // stage sizes to content (no fixed height - flex stretch makes the
+    // sidebar span the full stage height)
+    render: () => h("div", { class: "overlay-stage w-full" }, settingsNav(captureState() === "settings-nav-collapsed")) });
+
+  // settings-nav item states (component settings-nav-item, parent = container)
+  const navItem = (state, opts = {}) =>
+    h("div", { class: "flex w-56 flex-col bg-sidebar p-2" },
+      h("ul", { "data-slot": "sidebar-menu", class: "cn-sidebar-menu flex w-full min-w-0 flex-col" },
+        h("li", { "data-slot": "sidebar-menu-item", class: "cn-sidebar-menu-item group/menu-item relative" },
+          h("a", {
+            "data-slot": "sidebar-menu-button", "data-size": "default", "data-variant": "default",
+            "data-active": opts.active || undefined, "data-sidebar": "menu-button",
+            href: "#",
+            "aria-disabled": opts.disabled ? "true" : undefined,
+            "data-disabled": opts.disabled || undefined,
+            "data-force-state": opts.force,
+            "data-automation-id": opts.id,
+            class: "cn-sidebar-menu-button peer/menu-button group/menu-button flex w-full items-center overflow-hidden outline-hidden disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 [&_svg]:size-4 [&_svg]:shrink-0 [&>span:last-child]:truncate cn-sidebar-menu-button-variant-default cn-sidebar-menu-button-size-default",
+          }, ic("palette") + h("span", {}, "Appearance")))));
+  e({ automation_id: "settings-nav-item.default", component: "settings-nav-item", variant: "default", state: "normal", category: "navigation", meta: { parent: "settings-nav.default" }, render: () => navItem("default", { id: "settings-nav-item.default" }) });
+  e({ automation_id: "settings-nav-item.default.hover", component: "settings-nav-item", variant: "default", state: "hover", category: "navigation", meta: { parent: "settings-nav.default" }, render: () => navItem("hover", { force: "hover", id: "settings-nav-item.default.hover" }) });
+  e({ automation_id: "settings-nav-item.default.focus-visible", component: "settings-nav-item", variant: "default", state: "focus-visible", category: "navigation", meta: { parent: "settings-nav.default" }, render: () => navItem("focus-visible", { force: "focus,focus-visible", id: "settings-nav-item.default.focus-visible" }) });
+  e({ automation_id: "settings-nav-item.default.active", component: "settings-nav-item", variant: "default", state: "active", category: "navigation", meta: { parent: "settings-nav.default" }, render: () => navItem("active", { active: true, id: "settings-nav-item.default.active" }) });
+  e({ automation_id: "settings-nav-item.default.disabled", component: "settings-nav-item", variant: "default", state: "disabled", category: "navigation", meta: { parent: "settings-nav.default" }, render: () => navItem("disabled", { disabled: true, id: "settings-nav-item.default.disabled" }) });
 
   window.CATALOG = C;
   window.PAGES = [

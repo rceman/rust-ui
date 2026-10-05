@@ -2,6 +2,7 @@
 @import "tw-animate-css";
 @import "../vendor/shadcn/packages/shadcn/src/tailwind.css";
 @import "../vendor/shadcn/theme-neutral.css";
+@import "../src/theme-local.css";
 /* upstream imports the style recipes in layer(base) so the components' own
    utility classes win - apps/v4/app/style-registry.css */
 @import "../vendor/shadcn/apps/v4/registry/styles/style-nova.css" layer(base);
@@ -15,14 +16,27 @@
 @source "../src/render.js";
 @source "../index.html";
 
+/* Geist - vendored OFL variable fonts (vendor/geist/), upstream Nova's
+   canonical family. Single wght axis 100-900, no opsz. */
+@font-face {
+  font-family: "Geist";
+  src: url("../vendor/geist/Geist-Variable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: block;
+}
+@font-face {
+  font-family: "Geist Mono";
+  src: url("../vendor/geist/GeistMono-Variable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: block;
+}
+
 @theme inline {
-  /* Nova's canonical sans is Geist - rust-ui deliberately renders the
-     reference in Segoe UI Variable (system-installed); resolved platform
-     family is asserted at capture. See reference.json font block. */
-  --font-sans: "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI",
-    system-ui, sans-serif;
+  --font-sans: "Geist", ui-sans-serif, system-ui, sans-serif;
   --font-heading: var(--font-sans);
-  --font-mono: "Cascadia Mono", Consolas, monospace;
+  --font-mono: "Geist Mono", ui-monospace, monospace;
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -49,7 +63,6 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
-  --color-destructive-foreground: var(--destructive-foreground);
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);
@@ -68,32 +81,6 @@
   --color-selection-foreground: var(--selection-foreground);
 }
 
-/* Additional theme vars used by the verbatim style-nova recipes but not
-   part of themes.ts "neutral" - from upstream apps/v4/app/globals.css. */
-:root {
-  --destructive-foreground: oklch(0.97 0.01 17);
-  --surface: oklch(0.98 0 0);
-  --surface-foreground: var(--foreground);
-  --code: var(--surface);
-  --code-foreground: var(--surface-foreground);
-  --code-highlight: oklch(0.96 0 0);
-  --code-number: oklch(0.56 0 0);
-  --selection: oklch(0 0 0);
-  --selection-foreground: oklch(1 0 0);
-}
-
-.dark {
-  --destructive-foreground: oklch(0.58 0.22 27);
-  --surface: oklch(0.2 0 0);
-  --surface-foreground: oklch(0.708 0 0);
-  --code: var(--surface);
-  --code-foreground: var(--surface-foreground);
-  --code-highlight: oklch(0.27 0 0);
-  --code-number: oklch(0.72 0 0);
-  --selection: oklch(0.922 0 0);
-  --selection-foreground: oklch(0.205 0 0);
-}
-
 @layer base {
   * {
     @apply border-border outline-ring/50;
@@ -108,15 +95,72 @@
     color: var(--selection-foreground);
   }
   body {
-    font-optical-sizing: auto;
     font-synthesis-weight: none;
     text-rendering: optimizeLegibility;
   }
 }
 
+/* verbatim @utility from vendored apps/v4/app/globals.css:254 (used by the
+   upstream mdx-components pre className transcribed for code-block) */
+@utility no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* docs code-block chrome - verbatim-subset transcription of the
+   [data-rehype-pretty-code-figure] rules in vendored
+   apps/v4/app/globals.css:309 (bg/radius/color/font-size/overflow/ligatures);
+   copy-button/title selectors omitted - our figure has neither */
+[data-rehype-pretty-code-figure] {
+  background-color: var(--color-code);
+  color: var(--color-code-foreground);
+  border-radius: var(--radius-2xl);
+  border-width: 0px;
+  border-color: var(--border);
+  margin-top: calc(var(--spacing) * 6);
+  overflow: hidden;
+  font-size: var(--text-sm);
+  outline: none;
+  position: relative;
+  @apply -mx-1 md:-mx-1;
+}
+[data-rehype-pretty-code-figure] code,
+[data-rehype-pretty-code-figure] code span {
+  font-variant-ligatures: none;
+  font-feature-settings:
+    "liga" 0,
+    "calt" 0;
+}
+
 /* ---- shell / specimen frame (gallery chrome, not component recipes) ---- */
 .specimen-frame {
   @apply ring-foreground/10 rounded-xl bg-background ring-1;
+}
+/* gallery-layout adaptation: the specimen frame is an isolated surface, so
+   the upstream FLOW margins on the specimen's outer block (blockquote mt-6,
+   ul/table my-6, [data-rehype-pretty-code-figure] margin-top, and the
+   conditional [&:not(:first-child)]:mt-6) would only unbalance the frame
+   padding. They are zeroed here at the frame boundary; every inner upstream
+   rule is untouched. The upstream flow-margin contract is recorded as data
+   in tokens.json typography.flow_margins_px. */
+.specimen-frame > :first-child {
+  margin-top: 0 !important;
+}
+.specimen-frame > :last-child {
+  margin-bottom: 0 !important;
+}
+/* a list specimen's first li mt-2 collapses OUT through the zero-padding ul
+   root and re-appears above the frame's inner edge; upstream absorbs the
+   same margin via collapse in document flow, so zero it here too */
+.specimen-frame > :is(ul, ol):first-child > li:first-child {
+  margin-top: 0 !important;
+}
+.specimen-frame > :is(ul, ol):first-child > li:last-child {
+  margin-bottom: 0 !important;
 }
 .specimen-caption {
   @apply text-muted-foreground mt-1.5 text-center font-mono text-[10px] leading-tight whitespace-nowrap;
