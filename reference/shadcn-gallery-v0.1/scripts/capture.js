@@ -693,7 +693,7 @@ async function main() {
     "$schema": "rust-ui.shadcn-reference.reference/0.1",
     reference_version: "0.1",
     candidate_revision: 3,
-    status: "candidate - pre-freeze review revision; freeze policy applies after split review approval",
+    status: "SHADCN_REFERENCE_V0_1_FROZEN",
     authority: {
       site: "https://ui.shadcn.com/",
       urls_reviewed: [

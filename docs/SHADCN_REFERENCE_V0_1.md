@@ -6,8 +6,10 @@ HTML/CSS reference of the current official shadcn visual language
 radius default), frozen as the measurement target for a later native
 rust-ui Gallery.
 
-Status: `reference_version: "0.1"`, `candidate_revision: 3` - a pre-freeze
-candidate revision; freeze policy applies after split review approval.
+Status: `SHADCN_REFERENCE_V0_1_FROZEN`, `reference_version: "0.1"`.
+The approved generation marker `candidate_revision: 3` is retained as
+provenance. Freeze policy is active. The canonical freeze record and final
+review identities are in [`SHADCN_REFERENCE_V0_1_FREEZE.md`](SHADCN_REFERENCE_V0_1_FREEZE.md).
 
 Hierarchy:
 
@@ -34,7 +36,7 @@ Rules:
   `reference.json`, `static/gallery.css` and `screenshots/` are the frozen
   artifacts. The freeze rule (any change requires a `reference_version`
   bump and a fresh `npm run reference:capture` + `reference:check`) applies
-  after split review approval.
+  now that both split reviews are approved.
 - `tokens.json` is the frozen reference palette, NOT the rust-ui runtime
   style authority - the typed theme API stays canonical.
 - Fonts: Geist + Geist Mono (upstream canonical), vendored OFL woff2 in

@@ -1,4 +1,4 @@
-# Shadcn Gallery Reference v0.1 (candidate revision 2)
+# Shadcn Gallery Reference v0.1 (frozen)
 
 A deterministic, isolated HTML/CSS reference of the **current official
 shadcn visual language**, frozen so that a later native rust-ui Gallery can
@@ -7,9 +7,13 @@ contract - **not** a rust-ui component implementation. Everything under
 this directory is dev-only tooling (Node/Tailwind/Playwright); there is
 zero rust-ui runtime or Cargo dependency.
 
-**Status:** `reference_version: "0.1"`, `candidate_revision: 2` - a
-pre-freeze candidate revision; the freeze policy ("any change requires a
-reference_version bump") applies only after split review approval.
+**Status:** `SHADCN_REFERENCE_V0_1_FROZEN`, `reference_version: "0.1"`.
+The approved payload retains its generation marker `candidate_revision: 3`;
+this is provenance, not a pending review. The freeze policy is now active:
+any intentional reference-authority change requires a new reference version
+and fresh capture/check + split review approval. See
+[`SHADCN_REFERENCE_V0_1_FREEZE.md`](../../docs/SHADCN_REFERENCE_V0_1_FREEZE.md)
+for approved payload identity, final reviews and immutable hashes.
 
 ## Product scope
 
@@ -310,7 +314,7 @@ are exactly what a future rust-ui `.automation_id(...)` (UIA
   values to `tokens.json` paths; `reference:check` compares them post-force
   (colors to sRGB+alpha at <=1/255 per channel and alpha <=0.005; lengths
   exact to 0.01px). Every core family has bindings.
-- `reference.json` - freeze metadata: candidate revision, authority, style,
+- `reference.json` - frozen status and metadata: approved generation revision, authority, style,
   fonts (+proof counts), tiers, viewport/platform, capture states, git bases.
 - `screenshots/SHA256.json` - hashes for the determinism check.
 - `vendor/geist/{LICENSE,UPSTREAM.md}` - Geist OFL + package provenance;

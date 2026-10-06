@@ -9,9 +9,10 @@ ledger summarizes support status and must not drift from it.
 - **Desktop responsiveness: supported / required.**
 - **Mobile platforms / product behavior: intentionally out of scope.**
 
-Visual authority: shadcn `base-nova` reference v0.1 (pre-freeze candidate,
-`reference/shadcn-gallery-v0.1/`). An HTML reference existing never means a
-native component exists.
+Visual authority: shadcn `base-nova` reference v0.1 is FROZEN
+(`reference/shadcn-gallery-v0.1/`; see `SHADCN_REFERENCE_V0_1_FREEZE.md`).
+Reference completeness stays tier-specific below; freezing the reference
+does not change Native API, platform, parity or implementation status.
 
 ## Vocabulary
 
