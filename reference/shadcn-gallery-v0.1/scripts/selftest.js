@@ -53,6 +53,10 @@ expectNeg("missing candidate_revision detected", validateVersions({
 }).length > 0);
 expectNeg("tokens $schema wrong detected",
   validateTokens({ ...tokens, "$schema": "rust-ui.shadcn-reference.tokens/0.2" }).some((e) => /\$schema/.test(e)));
+expectNeg("tokens reference_version wrong detected",
+  validateTokens({ ...tokens, reference_version: "0.2" }).some((e) => /reference_version/.test(e)));
+expectNeg("tokens candidate_revision wrong detected",
+  validateTokens({ ...tokens, candidate_revision: 0 }).some((e) => /candidate_revision/.test(e)));
 
 // ---------- C04 coverage --------------------------------------------------
 {
@@ -131,6 +135,18 @@ expectNeg("control height token = Infinity detected", validateBindings(
   [bdHeight],
   { "button.default||light|": { height: "32px" } },
 ).errs.length > 0);
+// Each mutation is isolated. Numeric JSON fields never accept numeric
+// strings, including strings whose prefix happens to match the live value.
+for (const bad of ["32garbage", " 32px ", "1foo", "NaN", "Infinity", NaN, Infinity, -Infinity, -1, null, undefined]) {
+  const t = clone(tokens);
+  if (bad === undefined) delete t.control_heights_px["button.default"];
+  else t.control_heights_px["button.default"] = bad;
+  expectNeg(`control height ${String(bad)} rejects before comparison`,
+    validateBindings(t, [bdHeight], { "button.default||light|": { height: "32px" } }).errs
+      .some((e) => /control_heights_px\.button\.default/.test(e) && /finite|unresolvable/.test(e)));
+  if (bad !== undefined) expectNeg(`token leaf control height ${String(bad)} rejects`,
+    validateTokens(t).some((e) => /control_heights_px\.button\.default.*invalid finite numeric/.test(e)));
+}
 expectNeg("wrong padding detected", validateBindings(tokens, [bdPad], {
   "button.default||light|": { "padding-left": "9px" },
 }).errs.length > 0);
@@ -170,8 +186,10 @@ if (!shadowEntry) {
       return t;
     };
     for (const [label, fn, re] of [
+      ["offset x changed", (l) => { l.x += 1; }, /\.x/],
       ["offset y changed", (l) => { l.y += 1; }, /\.y/],
       ["blur changed", (l) => { l.blur += 1; }, /blur/],
+      ["spread changed", (l) => { l.spread += 1; }, /spread/],
       ["alpha changed", (l) => { l.alpha += 0.05; }, /alpha/],
       ["color changed", (l) => { l.color = "#ff0000"; }, /color/],
     ]) {
@@ -179,6 +197,26 @@ if (!shadowEntry) {
         [key]: { "box-shadow-layers": liveShadow(shTok.layers) },
       }).errs.some((e) => re.test(e)));
     }
+    // Astra's exact NaN alpha counterexample plus independent finite-domain
+    // failures for every effect field. Validate before Math.abs comparisons.
+    for (const field of ["x", "y", "blur", "spread", "alpha"]) {
+      for (const bad of [NaN, Infinity, -Infinity, "1foo"]) {
+        const t = mut((l) => { l[field] = bad; });
+        const intended = (e) => e.includes(`shadows.${shName}`) && e.includes(`.${field}`) && /finite/.test(e);
+        expectNeg(`shadows.${shName}.layers[0].${field}=${String(bad)} domain rejects`, validateTokens(t).some(intended));
+        expectNeg(`shadows.${shName}.layers[0].${field}=${String(bad)} binding rejects before arithmetic`,
+          validateBindings(t, [bdSh], { [key]: { "box-shadow-layers": liveShadow(shTok.layers) } }).errs.some(intended));
+      }
+    }
+    for (const bad of [-0.1, 1.1]) {
+      const t = mut((l) => { l.alpha = bad; });
+      expectNeg(`used shadow alpha=${bad} outside domain rejects`,
+        validateTokens(t).some((e) => /alpha/.test(e) && /invalid|outside/.test(e)));
+    }
+    const reversed = clone(tokens);
+    reversed.shadows[shName].layers.reverse();
+    expectNeg("used shadow layer order changed detected",
+      validateBindings(reversed, [bdSh], { [key]: { "box-shadow-layers": liveShadow(shTok.layers) } }).errs.length > 0);
   }
 }
 

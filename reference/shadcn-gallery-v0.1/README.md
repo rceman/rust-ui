@@ -328,6 +328,14 @@ npm run reference:check    # validate everything below; invokes selftest
 npm run reference:selftest # fault-injection: proves validators fail on wrong values
 ```
 
+Numeric token fields require actual finite JSON numbers, not numeric strings
+or numeric prefixes such as `"32garbage"`. The existing typography table's
+inherited (`null`) and named (`"leading-snug"`) line-height entries are recipe
+metadata, not numeric bindings. Structured shadow x/y/blur/spread/alpha fields
+are validated before comparison; offsets/spread may be signed, blur is
+non-negative, and alpha must be finite in [0,1]. The same shadow validation is
+used by the token walk and the browser binding comparisons.
+
 `reference:check` runs: version/schema validation (reference_version +
 candidate_revision consistent across all committed JSON, plus a
 fail-closed domain walk of every tokens.json leaf), theme derivation

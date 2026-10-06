@@ -26,6 +26,28 @@ function validateVersions({ reference, contract, coverage, bindings, tokens }) {
 // ---------- tokens.json: schema + every leaf value domain-checked ---------
 // fail-closed: an unparseable/non-finite/out-of-domain token must never be
 // silently comparable.
+// Numeric token fields are actual finite numbers, never numeric strings.
+// CSS strings returned by the browser are parsed only on the live side.
+const tokenNumOk = (value, allowNegative = false) =>
+  typeof value === "number" && Number.isFinite(value) && (allowNegative || value >= 0);
+
+// Shared by the token walk and binding comparison, before any arithmetic.
+function validateShadowLayers(layers, path) {
+  const errs = [];
+  if (!Array.isArray(layers) || !layers.length) return [`${path}: missing/nonempty layers required`];
+  for (const [i, layer] of layers.entries()) {
+    const p = `${path}[${i}]`;
+    if (!layer || typeof layer !== "object") { errs.push(`${p}: missing layer`); continue; }
+    for (const k of ["x", "y", "blur", "spread"])
+      if (!tokenNumOk(layer[k], k !== "blur")) errs.push(`${p}.${k}: invalid finite numeric token/value`);
+    if (!tokenNumOk(layer.alpha) || layer.alpha > 1)
+      errs.push(`${p}.alpha: invalid finite alpha, expected [0,1]`);
+    if (typeof layer.color !== "string" || !/^#[0-9a-f]{6}$/i.test(layer.color))
+      errs.push(`${p}.color: invalid color, expected #rrggbb`);
+  }
+  return errs;
+}
+
 function validateTokens(tokens) {
   const errs = [];
   if (!tokens || typeof tokens !== "object") return ["tokens: missing/not an object"];
@@ -35,54 +57,49 @@ function validateTokens(tokens) {
     errs.push(`tokens: reference_version=${tokens.reference_version} != 0.1`);
   if (tokens.candidate_revision !== CANDIDATE_REVISION)
     errs.push(`tokens: candidate_revision=${tokens.candidate_revision} != ${CANDIDATE_REVISION}`);
-  const walk = (node, path) => {
+  const numericKeys = new Set([
+    "alpha", "px", "x", "y", "blur", "spread", "top", "bottom", "left", "right",
+    "width", "height", "line_height", "size", "translate_checked", "translate_unchecked",
+    "unit_px", "caption_font_px", "sidebar_width_px", "width_px", "opacity", "translate_y_px",
+  ]);
+  const numericMap = /^(control_heights_px\.|typography\.weight_values\.|spacing\.used\.|border_widths_px\.)/;
+  const walk = (node, path, key) => {
+    // The existing typography table deliberately permits an inherited line
+    // height (null) or the named upstream leading-snug recipe. Neither is a
+    // numeric binding. Every other declared numeric slot requires a number.
+    const lineHeightRecipe = /^typography\.sizes_px\..+\.line_height$/.test(path)
+      && (node === null || node === "leading-snug");
+    const numericSlot = numericKeys.has(key) || (numericMap.test(path) && (node === null || typeof node !== "object"));
+    if (numericSlot && !lineHeightRecipe) {
+      const signed = /\.shadows\./.test(`.${path}.`) && ["x", "y", "spread"].includes(key);
+      if (!tokenNumOk(node, signed)) errs.push(`tokens: ${path} invalid finite numeric token/value '${node}'`);
+      if ((key === "alpha" || key === "opacity") && tokenNumOk(node) && node > 1)
+        errs.push(`tokens: ${path} ${key} ${node} outside [0,1]`);
+    }
     if (node === null || node === undefined) return;
     if (typeof node === "number") {
       if (!Number.isFinite(node)) errs.push(`tokens: ${path} not finite (${node})`);
       return;
     }
     if (typeof node === "object") {
-      // domain check leaf value slots
-      for (const k of ["alpha"]) {
-        if (typeof node[k] === "number" && (node[k] < 0 || node[k] > 1))
-          errs.push(`tokens: ${path}.${k} alpha ${node[k]} outside [0,1]`);
-      }
       // srgb leaves must be #rrggbb or a parseable CSS color; `color` keys
       // outside shadow layers are descriptive strings - layer colors are
       // domain-checked in the shadows walk below
       if (typeof node.srgb === "string" && !/^#[0-9a-f]{6}$/i.test(node.srgb) && !computedToSrgba(node.srgb))
         errs.push(`tokens: ${path}.srgb unparseable color '${node.srgb}'`);
-      for (const k of ["px", "x", "y", "blur", "spread", "top", "bottom", "width", "height", "line_height"]) {
-        if (k in node && node[k] !== null && typeof node[k] !== "number" && typeof node[k] !== "string")
-          errs.push(`tokens: ${path}.${k} unexpected type ${typeof node[k]}`);
-        if (typeof node[k] === "number" && !Number.isFinite(node[k]))
-          errs.push(`tokens: ${path}.${k} not finite`);
-      }
       for (const [k, v] of Object.entries(node)) {
-        if (typeof v === "object" && v !== null) walk(v, path ? `${path}.${k}` : k);
+        walk(v, path ? `${path}.${k}` : k, k);
       }
       return;
     }
   };
   for (const [k, v] of Object.entries(tokens)) {
-    if (k.startsWith("$") || typeof v === "string") continue;
-    if (typeof v === "object" && v !== null) walk(v, k);
+    if (!k.startsWith("$")) walk(v, k, k);
   }
   // structured shadows: used entries carry validated layer data
   for (const [name, s] of Object.entries(tokens.shadows || {})) {
     if (s.status === "used") {
-      if (!Array.isArray(s.layers) || !s.layers.length)
-        errs.push(`tokens: shadows.${name} used but has no layers`);
-      else for (const [i, l] of s.layers.entries()) {
-        for (const k of ["x", "y", "blur", "spread"]) {
-          if (typeof l[k] !== "number" || !Number.isFinite(l[k]))
-            errs.push(`tokens: shadows.${name}.layers[${i}].${k} missing/not finite`);
-        }
-        if (typeof l.alpha !== "number" || l.alpha < 0 || l.alpha > 1)
-          errs.push(`tokens: shadows.${name}.layers[${i}].alpha invalid`);
-        if (!/^#[0-9a-f]{6}$/i.test(l.color || ""))
-          errs.push(`tokens: shadows.${name}.layers[${i}].color '${l.color}' not #rrggbb`);
-      }
+      errs.push(...validateShadowLayers(s.layers, `tokens: shadows.${name}.layers`));
       if (!Array.isArray(s.used_by) || !s.used_by.length)
         errs.push(`tokens: shadows.${name} used but used_by empty`);
     } else if (s.status !== "unused") {
@@ -358,9 +375,6 @@ function validateBindings(tokens, bindingsDoc, live) {
   let checked = 0;
   const rows = bindingsDoc.bindings || bindingsDoc;
   // expected-token domain checks (fail-closed BEFORE comparison)
-  const tokenNumOk = (t, allowNegative) =>
-    typeof t === "number" ? Number.isFinite(t) && (allowNegative || t >= 0)
-      : (() => { const v = parseFloat(String(t)); return Number.isFinite(v) && (allowNegative || v >= 0); })();
   for (const bd of rows) {
     const themes = bd.theme === "both" ? ["light", "dark"] : [bd.theme];
     for (const theme of themes) {
@@ -376,6 +390,8 @@ function validateBindings(tokens, bindingsDoc, live) {
       // expected token must be valid for its domain before any comparison
       if (bd.css_property === "box-shadow-layers") {
         if (!token || !Array.isArray(token.layers)) { errs.push(`${bd.automation_id}: token '${bd.token_path}' not a structured shadow entry`); continue; }
+        const invalid = validateShadowLayers(token.layers, `${bd.automation_id}: token '${bd.token_path}'.layers`);
+        if (invalid.length) { errs.push(...invalid); continue; }
       } else if (bd.css_property === "box-shadow-alpha" || bd.token_path.endsWith(".alpha")) {
         if (!tokenNumOk(token, false) || token > 1) { errs.push(`${bd.automation_id}: token '${bd.token_path}' alpha ${token} invalid`); continue; }
       } else if (isColorProp || bd.css_property === "box-shadow-color") {
@@ -465,7 +481,7 @@ function validateBindings(tokens, bindingsDoc, live) {
         }
       } else {
         let v = parseFloat(String(livev).replace("px", ""));
-        const want = typeof token === "number" ? token : parseFloat(String(token));
+        const want = token;
         // rounded-full = calc(infinity * 1px) computes to ~3.3e7px; clamp to
         // the 9999 sentinel the token table uses
         if (want === 9999 && v >= 9999) v = 9999;

@@ -117,7 +117,7 @@ const IN_PAGE_MEASURE = `(() => {
         font_weight: parseInt(cs.fontWeight, 10) || 400,
         line_height: cs.lineHeight === "normal" ? round(fm.ascent + fm.descent) : round(parseFloat(cs.lineHeight)),
         color: ent.color,
-        measure: "mirror-div identical box/font styles (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
+        measure: "mirror-div effective font/text/padding geometry with control border width suppressed (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
       });
       m.remove();
     }

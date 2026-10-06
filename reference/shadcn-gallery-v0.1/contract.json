@@ -25897,7 +25897,7 @@
               "font_weight": 400,
               "line_height": 20,
               "color": "oklch(0.556 0 0)",
-              "measure": "mirror-div identical box/font styles (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
+              "measure": "mirror-div effective font/text/padding geometry with control border width suppressed (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
               "baseline_validated": "ink-band"
             }
           ]
@@ -25986,7 +25986,7 @@
               "font_weight": 400,
               "line_height": 20,
               "color": "oklch(0.556 0 0)",
-              "measure": "mirror-div identical box/font styles (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
+              "measure": "mirror-div effective font/text/padding geometry with control border width suppressed (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
               "baseline_validated": "ink-band"
             }
           ]
@@ -26090,7 +26090,7 @@
               "font_weight": 400,
               "line_height": 20,
               "color": "oklch(0.145 0 0)",
-              "measure": "mirror-div identical box/font styles (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
+              "measure": "mirror-div effective font/text/padding geometry with control border width suppressed (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
               "baseline_validated": "ink-band"
             }
           ]
@@ -26179,7 +26179,7 @@
               "font_weight": 400,
               "line_height": 20,
               "color": "oklch(0.145 0 0)",
-              "measure": "mirror-div identical box/font styles (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
+              "measure": "mirror-div effective font/text/padding geometry with control border width suppressed (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
               "baseline_validated": "ink-band"
             }
           ]
@@ -26283,7 +26283,7 @@
               "font_weight": 400,
               "line_height": 20,
               "color": "oklch(0.145 0 0)",
-              "measure": "mirror-div identical box/font styles (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
+              "measure": "mirror-div effective font/text/padding geometry with control border width suppressed (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
               "baseline_validated": "ink-band"
             }
           ]
@@ -26372,7 +26372,7 @@
               "font_weight": 400,
               "line_height": 20,
               "color": "oklch(0.145 0 0)",
-              "measure": "mirror-div identical box/font styles (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
+              "measure": "mirror-div effective font/text/padding geometry with control border width suppressed (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
               "baseline_validated": "ink-band"
             }
           ]
@@ -26477,7 +26477,7 @@
               "font_weight": 400,
               "line_height": 20,
               "color": "oklch(0.145 0 0)",
-              "measure": "mirror-div identical box/font styles (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
+              "measure": "mirror-div effective font/text/padding geometry with control border width suppressed (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
               "baseline_validated": "ink-band"
             }
           ]
@@ -26566,7 +26566,7 @@
               "font_weight": 400,
               "line_height": 20,
               "color": "oklch(0.145 0 0)",
-              "measure": "mirror-div identical box/font styles (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
+              "measure": "mirror-div effective font/text/padding geometry with control border width suppressed (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
               "baseline_validated": "ink-band"
             }
           ]
@@ -26670,7 +26670,7 @@
               "font_weight": 400,
               "line_height": 20,
               "color": "oklch(0.145 0 0)",
-              "measure": "mirror-div identical box/font styles (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
+              "measure": "mirror-div effective font/text/padding geometry with control border width suppressed (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
               "baseline_validated": "ink-band"
             }
           ]
@@ -26759,7 +26759,7 @@
               "font_weight": 400,
               "line_height": 20,
               "color": "oklch(0.145 0 0)",
-              "measure": "mirror-div identical box/font styles (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
+              "measure": "mirror-div effective font/text/padding geometry with control border width suppressed (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
               "baseline_validated": "ink-band"
             }
           ]
@@ -26864,7 +26864,7 @@
               "font_weight": 400,
               "line_height": 20,
               "color": "oklch(0.556 0 0)",
-              "measure": "mirror-div identical box/font styles (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
+              "measure": "mirror-div effective font/text/padding geometry with control border width suppressed (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
               "baseline_validated": "ink-band"
             }
           ]
@@ -26953,7 +26953,7 @@
               "font_weight": 400,
               "line_height": 20,
               "color": "oklch(0.556 0 0)",
-              "measure": "mirror-div identical box/font styles (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
+              "measure": "mirror-div effective font/text/padding geometry with control border width suppressed (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
               "baseline_validated": "ink-band"
             }
           ]
@@ -27814,7 +27814,7 @@
               "font_weight": 400,
               "line_height": 20,
               "color": "oklch(0.556 0 0)",
-              "measure": "mirror-div identical box/font styles (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
+              "measure": "mirror-div effective font/text/padding geometry with control border width suppressed (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
               "baseline_validated": "ink-band"
             }
           ]
@@ -27903,7 +27903,7 @@
               "font_weight": 400,
               "line_height": 20,
               "color": "oklch(0.556 0 0)",
-              "measure": "mirror-div identical box/font styles (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
+              "measure": "mirror-div effective font/text/padding geometry with control border width suppressed (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
               "baseline_validated": "ink-band"
             }
           ]
@@ -27992,7 +27992,7 @@
               "font_weight": 400,
               "line_height": 20,
               "color": "oklch(0.556 0 0)",
-              "measure": "mirror-div identical box/font styles (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
+              "measure": "mirror-div effective font/text/padding geometry with control border width suppressed (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
               "baseline_validated": "ink-band"
             }
           ]
@@ -28132,7 +28132,7 @@
               "font_weight": 400,
               "line_height": 20,
               "color": "oklch(0.145 0 0)",
-              "measure": "mirror-div identical box/font styles (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
+              "measure": "mirror-div effective font/text/padding geometry with control border width suppressed (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
               "baseline_validated": "ink-band"
             }
           ]
@@ -28257,7 +28257,7 @@
               "font_weight": 400,
               "line_height": 20,
               "color": "oklch(0.145 0 0)",
-              "measure": "mirror-div identical box/font styles (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
+              "measure": "mirror-div effective font/text/padding geometry with control border width suppressed (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
               "baseline_validated": "ink-band"
             }
           ]
@@ -28382,7 +28382,7 @@
               "font_weight": 400,
               "line_height": 20,
               "color": "oklch(0.145 0 0)",
-              "measure": "mirror-div identical box/font styles (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
+              "measure": "mirror-div effective font/text/padding geometry with control border width suppressed (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
               "baseline_validated": "ink-band"
             }
           ]
@@ -28504,7 +28504,7 @@
               "font_weight": 400,
               "line_height": 20,
               "color": "oklch(0.145 0 0)",
-              "measure": "mirror-div identical box/font styles (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
+              "measure": "mirror-div effective font/text/padding geometry with control border width suppressed (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
               "baseline_validated": "ink-band"
             }
           ]
@@ -28611,7 +28611,7 @@
               "font_weight": 400,
               "line_height": 20,
               "color": "oklch(0.145 0 0)",
-              "measure": "mirror-div identical box/font styles (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
+              "measure": "mirror-div effective font/text/padding geometry with control border width suppressed (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
               "baseline_validated": "ink-band"
             }
           ]
@@ -28718,7 +28718,7 @@
               "font_weight": 400,
               "line_height": 20,
               "color": "oklch(0.145 0 0)",
-              "measure": "mirror-div identical box/font styles (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
+              "measure": "mirror-div effective font/text/padding geometry with control border width suppressed (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
               "baseline_validated": "ink-band"
             }
           ]
@@ -28823,7 +28823,7 @@
               "font_weight": 400,
               "line_height": 20,
               "color": "oklch(0.145 0 0)",
-              "measure": "mirror-div identical box/font styles (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
+              "measure": "mirror-div effective font/text/padding geometry with control border width suppressed (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
               "baseline_validated": "ink-band"
             }
           ]
@@ -28912,7 +28912,7 @@
               "font_weight": 400,
               "line_height": 20,
               "color": "oklch(0.145 0 0)",
-              "measure": "mirror-div identical box/font styles (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
+              "measure": "mirror-div effective font/text/padding geometry with control border width suppressed (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
               "baseline_validated": "ink-band"
             }
           ]
@@ -29001,7 +29001,7 @@
               "font_weight": 400,
               "line_height": 20,
               "color": "oklch(0.145 0 0)",
-              "measure": "mirror-div identical box/font styles (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
+              "measure": "mirror-div effective font/text/padding geometry with control border width suppressed (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
               "baseline_validated": "ink-band"
             }
           ]
@@ -29105,7 +29105,7 @@
               "font_weight": 400,
               "line_height": 20,
               "color": "oklch(0.556 0 0)",
-              "measure": "mirror-div identical box/font styles (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
+              "measure": "mirror-div effective font/text/padding geometry with control border width suppressed (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
               "baseline_validated": "ink-band"
             }
           ]
@@ -29194,7 +29194,7 @@
               "font_weight": 400,
               "line_height": 20,
               "color": "oklch(0.556 0 0)",
-              "measure": "mirror-div identical box/font styles (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
+              "measure": "mirror-div effective font/text/padding geometry with control border width suppressed (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
               "baseline_validated": "ink-band"
             }
           ]
@@ -29283,7 +29283,7 @@
               "font_weight": 400,
               "line_height": 20,
               "color": "oklch(0.556 0 0)",
-              "measure": "mirror-div identical box/font styles (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
+              "measure": "mirror-div effective font/text/padding geometry with control border width suppressed (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
               "baseline_validated": "ink-band"
             }
           ]
@@ -29405,7 +29405,7 @@
               "font_weight": 400,
               "line_height": 20,
               "color": "oklch(0.145 0 0)",
-              "measure": "mirror-div identical box/font styles (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
+              "measure": "mirror-div effective font/text/padding geometry with control border width suppressed (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
               "baseline_validated": "ink-band"
             }
           ]
@@ -29512,7 +29512,7 @@
               "font_weight": 400,
               "line_height": 20,
               "color": "oklch(0.145 0 0)",
-              "measure": "mirror-div identical box/font styles (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
+              "measure": "mirror-div effective font/text/padding geometry with control border width suppressed (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
               "baseline_validated": "ink-band"
             }
           ]
@@ -29619,7 +29619,7 @@
               "font_weight": 400,
               "line_height": 20,
               "color": "oklch(0.145 0 0)",
-              "measure": "mirror-div identical box/font styles (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
+              "measure": "mirror-div effective font/text/padding geometry with control border width suppressed (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
               "baseline_validated": "ink-band"
             }
           ]
@@ -29759,7 +29759,7 @@
               "font_weight": 400,
               "line_height": 20,
               "color": "oklch(0.145 0 0)",
-              "measure": "mirror-div identical box/font styles (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
+              "measure": "mirror-div effective font/text/padding geometry with control border width suppressed (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
               "baseline_validated": "ink-band"
             }
           ]
@@ -29884,7 +29884,7 @@
               "font_weight": 400,
               "line_height": 20,
               "color": "oklch(0.145 0 0)",
-              "measure": "mirror-div identical box/font styles (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
+              "measure": "mirror-div effective font/text/padding geometry with control border width suppressed (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
               "baseline_validated": "ink-band"
             }
           ]
@@ -30012,7 +30012,7 @@
               "font_weight": 400,
               "line_height": 20,
               "color": "oklch(0.145 0 0)",
-              "measure": "mirror-div identical box/font styles (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
+              "measure": "mirror-div effective font/text/padding geometry with control border width suppressed (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
               "baseline_validated": "ink-band"
             }
           ]
@@ -30116,7 +30116,7 @@
               "font_weight": 400,
               "line_height": 20,
               "color": "oklch(0.556 0 0)",
-              "measure": "mirror-div identical box/font styles (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
+              "measure": "mirror-div effective font/text/padding geometry with control border width suppressed (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
               "baseline_validated": "ink-band"
             }
           ]
@@ -30205,7 +30205,7 @@
               "font_weight": 400,
               "line_height": 20,
               "color": "oklch(0.556 0 0)",
-              "measure": "mirror-div identical box/font styles (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
+              "measure": "mirror-div effective font/text/padding geometry with control border width suppressed (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
               "baseline_validated": "ink-band"
             }
           ]
@@ -30294,7 +30294,7 @@
               "font_weight": 400,
               "line_height": 20,
               "color": "oklch(0.556 0 0)",
-              "measure": "mirror-div identical box/font styles (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
+              "measure": "mirror-div effective font/text/padding geometry with control border width suppressed (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
               "baseline_validated": "ink-band"
             }
           ]
@@ -30398,7 +30398,7 @@
               "font_weight": 400,
               "line_height": 20,
               "color": "oklch(0.145 0 0)",
-              "measure": "mirror-div identical box/font styles (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
+              "measure": "mirror-div effective font/text/padding geometry with control border width suppressed (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
               "baseline_validated": "ink-band"
             }
           ]
@@ -30487,7 +30487,7 @@
               "font_weight": 400,
               "line_height": 20,
               "color": "oklch(0.145 0 0)",
-              "measure": "mirror-div identical box/font styles (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
+              "measure": "mirror-div effective font/text/padding geometry with control border width suppressed (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
               "baseline_validated": "ink-band"
             }
           ]
@@ -30576,7 +30576,7 @@
               "font_weight": 400,
               "line_height": 20,
               "color": "oklch(0.145 0 0)",
-              "measure": "mirror-div identical box/font styles (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
+              "measure": "mirror-div effective font/text/padding geometry with control border width suppressed (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
               "baseline_validated": "ink-band"
             }
           ]
@@ -30680,7 +30680,7 @@
               "font_weight": 400,
               "line_height": 20,
               "color": "oklch(0.145 0 0)",
-              "measure": "mirror-div identical box/font styles (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
+              "measure": "mirror-div effective font/text/padding geometry with control border width suppressed (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
               "baseline_validated": "ink-band"
             }
           ]
@@ -30769,7 +30769,7 @@
               "font_weight": 400,
               "line_height": 20,
               "color": "oklch(0.145 0 0)",
-              "measure": "mirror-div identical box/font styles (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
+              "measure": "mirror-div effective font/text/padding geometry with control border width suppressed (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
               "baseline_validated": "ink-band"
             }
           ]
@@ -30858,7 +30858,7 @@
               "font_weight": 400,
               "line_height": 20,
               "color": "oklch(0.145 0 0)",
-              "measure": "mirror-div identical box/font styles (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
+              "measure": "mirror-div effective font/text/padding geometry with control border width suppressed (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
               "baseline_validated": "ink-band"
             }
           ]
@@ -30963,7 +30963,7 @@
               "font_weight": 400,
               "line_height": 20,
               "color": "oklch(0.145 0 0)",
-              "measure": "mirror-div identical box/font styles (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
+              "measure": "mirror-div effective font/text/padding geometry with control border width suppressed (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
               "baseline_validated": "ink-band"
             }
           ]
@@ -31052,7 +31052,7 @@
               "font_weight": 400,
               "line_height": 20,
               "color": "oklch(0.145 0 0)",
-              "measure": "mirror-div identical box/font styles (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
+              "measure": "mirror-div effective font/text/padding geometry with control border width suppressed (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
               "baseline_validated": "ink-band"
             }
           ]
@@ -31141,7 +31141,7 @@
               "font_weight": 400,
               "line_height": 20,
               "color": "oklch(0.145 0 0)",
-              "measure": "mirror-div identical box/font styles (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
+              "measure": "mirror-div effective font/text/padding geometry with control border width suppressed (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
               "baseline_validated": "ink-band"
             }
           ]
@@ -31245,7 +31245,7 @@
               "font_weight": 400,
               "line_height": 20,
               "color": "oklch(0.556 0 0)",
-              "measure": "mirror-div identical box/font styles (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
+              "measure": "mirror-div effective font/text/padding geometry with control border width suppressed (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
               "baseline_validated": "ink-band"
             }
           ]
@@ -31334,7 +31334,7 @@
               "font_weight": 400,
               "line_height": 20,
               "color": "oklch(0.556 0 0)",
-              "measure": "mirror-div identical box/font styles (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
+              "measure": "mirror-div effective font/text/padding geometry with control border width suppressed (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
               "baseline_validated": "ink-band"
             }
           ]
@@ -31423,7 +31423,7 @@
               "font_weight": 400,
               "line_height": 20,
               "color": "oklch(0.556 0 0)",
-              "measure": "mirror-div identical box/font styles (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
+              "measure": "mirror-div effective font/text/padding geometry with control border width suppressed (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
               "baseline_validated": "ink-band"
             }
           ]
@@ -31527,7 +31527,7 @@
               "font_weight": 400,
               "line_height": 20,
               "color": "oklch(0.145 0 0)",
-              "measure": "mirror-div identical box/font styles (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
+              "measure": "mirror-div effective font/text/padding geometry with control border width suppressed (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
               "baseline_validated": "ink-band"
             }
           ]
@@ -31616,7 +31616,7 @@
               "font_weight": 400,
               "line_height": 20,
               "color": "oklch(0.145 0 0)",
-              "measure": "mirror-div identical box/font styles (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
+              "measure": "mirror-div effective font/text/padding geometry with control border width suppressed (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
               "baseline_validated": "ink-band"
             }
           ]
@@ -31705,7 +31705,7 @@
               "font_weight": 400,
               "line_height": 20,
               "color": "oklch(0.145 0 0)",
-              "measure": "mirror-div identical box/font styles (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
+              "measure": "mirror-div effective font/text/padding geometry with control border width suppressed (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
               "baseline_validated": "ink-band"
             }
           ]
@@ -31812,7 +31812,7 @@
               "font_weight": 400,
               "line_height": 20,
               "color": "oklch(0.145 0 0)",
-              "measure": "mirror-div identical box/font styles (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
+              "measure": "mirror-div effective font/text/padding geometry with control border width suppressed (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
               "baseline_validated": "ink-band"
             }
           ]
@@ -31904,7 +31904,7 @@
               "font_weight": 400,
               "line_height": 20,
               "color": "oklch(0.145 0 0)",
-              "measure": "mirror-div identical box/font styles (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
+              "measure": "mirror-div effective font/text/padding geometry with control border width suppressed (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
               "baseline_validated": "ink-band"
             }
           ]
@@ -31993,7 +31993,7 @@
               "font_weight": 400,
               "line_height": 20,
               "color": "oklch(0.145 0 0)",
-              "measure": "mirror-div identical box/font styles (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
+              "measure": "mirror-div effective font/text/padding geometry with control border width suppressed (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
               "baseline_validated": "ink-band"
             }
           ]
@@ -59143,7 +59143,7 @@
               "font_weight": 400,
               "line_height": 20,
               "color": "oklch(0.556 0 0)",
-              "measure": "mirror-div identical box/font styles (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
+              "measure": "mirror-div effective font/text/padding geometry with control border width suppressed (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
               "baseline_validated": "ink-band"
             }
           ]
@@ -59232,7 +59232,7 @@
               "font_weight": 400,
               "line_height": 20,
               "color": "oklch(0.556 0 0)",
-              "measure": "mirror-div identical box/font styles (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
+              "measure": "mirror-div effective font/text/padding geometry with control border width suppressed (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
               "baseline_validated": "ink-band"
             }
           ]
@@ -59354,7 +59354,7 @@
               "font_weight": 400,
               "line_height": 20,
               "color": "oklch(0.145 0 0)",
-              "measure": "mirror-div identical box/font styles (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
+              "measure": "mirror-div effective font/text/padding geometry with control border width suppressed (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
               "baseline_validated": "ink-band"
             }
           ]
@@ -59461,7 +59461,7 @@
               "font_weight": 400,
               "line_height": 20,
               "color": "oklch(0.145 0 0)",
-              "measure": "mirror-div identical box/font styles (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
+              "measure": "mirror-div effective font/text/padding geometry with control border width suppressed (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
               "baseline_validated": "ink-band"
             }
           ]
@@ -59565,7 +59565,7 @@
               "font_weight": 400,
               "line_height": 20,
               "color": "oklch(0.145 0 0)",
-              "measure": "mirror-div identical box/font styles (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
+              "measure": "mirror-div effective font/text/padding geometry with control border width suppressed (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
               "baseline_validated": "ink-band"
             }
           ]
@@ -59654,7 +59654,7 @@
               "font_weight": 400,
               "line_height": 20,
               "color": "oklch(0.145 0 0)",
-              "measure": "mirror-div identical box/font styles (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
+              "measure": "mirror-div effective font/text/padding geometry with control border width suppressed (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
               "baseline_validated": "ink-band"
             }
           ]
@@ -59759,7 +59759,7 @@
               "font_weight": 400,
               "line_height": 20,
               "color": "oklch(0.145 0 0)",
-              "measure": "mirror-div identical box/font styles (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
+              "measure": "mirror-div effective font/text/padding geometry with control border width suppressed (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
               "baseline_validated": "ink-band"
             }
           ]
@@ -59848,7 +59848,7 @@
               "font_weight": 400,
               "line_height": 20,
               "color": "oklch(0.145 0 0)",
-              "measure": "mirror-div identical box/font styles (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
+              "measure": "mirror-div effective font/text/padding geometry with control border width suppressed (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
               "baseline_validated": "ink-band"
             }
           ]
@@ -59952,7 +59952,7 @@
               "font_weight": 400,
               "line_height": 20,
               "color": "oklch(0.145 0 0)",
-              "measure": "mirror-div identical box/font styles (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
+              "measure": "mirror-div effective font/text/padding geometry with control border width suppressed (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
               "baseline_validated": "ink-band"
             }
           ]
@@ -60041,7 +60041,7 @@
               "font_weight": 400,
               "line_height": 20,
               "color": "oklch(0.145 0 0)",
-              "measure": "mirror-div identical box/font styles (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
+              "measure": "mirror-div effective font/text/padding geometry with control border width suppressed (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
               "baseline_validated": "ink-band"
             }
           ]
@@ -60146,7 +60146,7 @@
               "font_weight": 400,
               "line_height": 20,
               "color": "oklch(0.556 0 0)",
-              "measure": "mirror-div identical box/font styles (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
+              "measure": "mirror-div effective font/text/padding geometry with control border width suppressed (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
               "baseline_validated": "ink-band"
             }
           ]
@@ -60235,7 +60235,7 @@
               "font_weight": 400,
               "line_height": 20,
               "color": "oklch(0.556 0 0)",
-              "measure": "mirror-div identical box/font styles (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
+              "measure": "mirror-div effective font/text/padding geometry with control border width suppressed (input values + placeholders have no DOM text nodes; browser editing behavior is not authority)",
               "baseline_validated": "ink-band"
             }
           ]
