@@ -368,6 +368,7 @@ pub(crate) enum NodeData {
 pub(crate) type MsgAdapters = Rc<Vec<Rc<dyn Fn(Box<dyn Any>) -> Box<dyn Any>>>>;
 
 pub(crate) struct Node {
+    pub automation_id: Option<Rc<str>>,
     pub key: ChildKey,
     pub parent: Option<u32>,
     pub children: Vec<u32>,

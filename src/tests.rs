@@ -4409,6 +4409,7 @@ fn native_probe_richedit_paints_text() {
         let prov = unsafe { acc.CreateProvider(&site) }.expect("provider");
         let frag: IRawElementProviderFragment = prov.cast().expect("frag");
         root.rebuild(vec![ChildBuild {
+            automation_id: String::new(),
             id: node,
             name: "ed".into(),
             ct: UIA_EditControlTypeId,
@@ -4603,6 +4604,7 @@ fn native_probe_richedit_paints_text() {
             generation: 8,
         };
         root.rebuild(vec![ChildBuild {
+            automation_id: String::new(),
             id: node2,
             name: "ed2".into(),
             ct: UIA_EditControlTypeId,
@@ -4869,6 +4871,7 @@ fn uia_children_survive_rebuild() {
 
     let root = UiaRoot::new(HWND::default(), "t").expect("root");
     let mk = |slot: u32, name: &str, ct: UIA_CONTROLTYPE_ID, loc: &'static str, act| ChildBuild {
+        automation_id: String::new(),
         id: crate::NodeId {
             slot,
             generation: 0,
@@ -4956,6 +4959,7 @@ fn uia_element_from_point_uses_snapshot_rect() {
     let root = UiaRoot::new(HWND::default(), "t").expect("root");
     let mk = |slot: u32, name: &str, rect: UiaRect, native: Option<IRawElementProviderFragment>| {
         ChildBuild {
+            automation_id: String::new(),
             id: crate::NodeId {
                 slot,
                 generation: 0,
@@ -5043,6 +5047,7 @@ fn uia_disabled_node_reports_not_enabled() {
 
     let root = UiaRoot::new(HWND::default(), "t").expect("root");
     let mk = |generation: u64, enabled: bool| ChildBuild {
+        automation_id: String::new(),
         id: crate::NodeId {
             slot: 0,
             generation,
@@ -5486,6 +5491,7 @@ fn uia_retained_provider_lifecycle() {
 
     let root = UiaRoot::new(HWND::default(), "t").expect("root");
     let mk = |slot: u32, generation: u64, name: &str, enabled: bool| ChildBuild {
+        automation_id: String::new(),
         id: crate::NodeId { slot, generation },
         name: name.into(),
         ct: UIA_ButtonControlTypeId,
@@ -7629,4 +7635,74 @@ mod native_contract_tests {
         assert!(pool.alloc().is_none());
         let _ = KillTimer;
     }
+}
+
+#[test]
+fn automation_duplicate_aborts_and_semantic_id_survives_reconcile() {
+    let mut rig = Rig::new(
+        false,
+        |_: &mut bool, _: Msg, _: &mut UpdateCtx<Msg>| {},
+        |s: &bool, ui: &mut Ui<Msg>| {
+            ui.label("first").automation_id("test.first");
+            ui.label("second")
+                .automation_id(if *s { "test.first" } else { "test.second" });
+        },
+    );
+    rig.view().unwrap();
+    let ids = rig.root_children();
+    let original = ids[0];
+    rig.view().unwrap();
+    assert_eq!(rig.root_children()[0], original);
+    assert_eq!(
+        rig.rt.arena.get(original).unwrap().automation_id.as_deref(),
+        Some("test.first")
+    );
+    rig.rt.state = true;
+    assert!(matches!(
+        rig.view(),
+        Err(UiError::InvalidUi(UiDiagnostic::DuplicateAutomationId))
+    ));
+    assert_eq!(rig.root_children(), ids);
+}
+
+#[cfg(windows)]
+#[test]
+fn devctl_automation_id_reaches_uia_and_refreshes_without_replacement() {
+    use crate::platform::win32::uia::{ChildBuild, UiaRoot};
+    use windows::Win32::{Foundation::HWND, UI::Accessibility::*};
+    use windows::core::Interface;
+    let root = UiaRoot::new(HWND::default(), "ids").unwrap();
+    let node = crate::NodeId {
+        slot: 0,
+        generation: 1,
+    };
+    let make = |id: &str| ChildBuild {
+        automation_id: id.into(),
+        id: node,
+        name: "button".into(),
+        ct: UIA_ButtonControlTypeId,
+        localized: "Button",
+        rect: UiaRect {
+            left: 0.,
+            top: 0.,
+            width: 32.,
+            height: 32.,
+        },
+        actionable: true,
+        enabled: true,
+        peer_node: false,
+        native: None,
+    };
+    root.rebuild(vec![make("probe.button")]).unwrap();
+    let fragment: IRawElementProviderFragment = root.provider().cast().unwrap();
+    let child = unsafe { fragment.Navigate(NavigateDirection_FirstChild) }.unwrap();
+    let simple: IRawElementProviderSimple = child.cast().unwrap();
+    let get = || {
+        let v = unsafe { simple.GetPropertyValue(UIA_AutomationIdPropertyId) }.unwrap();
+        uia_variant_string(&v)
+    };
+    assert_eq!(get(), "probe.button");
+    root.rebuild(vec![make("probe.renamed")]).unwrap();
+    assert_eq!(get(), "probe.renamed");
+    root.close();
 }

@@ -5,6 +5,8 @@
 
 mod app;
 mod arena;
+#[cfg(feature = "devtools")]
+pub mod devtools;
 mod event;
 mod geom;
 mod key;
@@ -98,6 +100,7 @@ pub enum UiError {
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum UiDiagnostic {
     DuplicateKey,
+    DuplicateAutomationId,
     DuplicateTextBinding,
     InvalidLayout,
     /// a rejected programmatic proposal with no `on_conflict` handler —
@@ -113,6 +116,7 @@ pub enum UiDiagnostic {
 impl std::fmt::Display for UiDiagnostic {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let s = match self {
+            UiDiagnostic::DuplicateAutomationId => "duplicate or invalid semantic automation ID",
             UiDiagnostic::DuplicateKey => "duplicate key in one parent scope",
             UiDiagnostic::DuplicateTextBinding => "TextValue bound to two mounted peers",
             UiDiagnostic::InvalidLayout => "invalid layout",

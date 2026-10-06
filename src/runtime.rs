@@ -172,6 +172,7 @@ where
         let mut arena = Arena::new();
         // a virtual group root holds the view's children
         let root = arena.alloc(Node {
+            automation_id: None,
             key: ChildKey::Static {
                 kind: KIND_GROUP,
                 ordinal: 0,
@@ -328,6 +329,21 @@ where
                 self.diagnostics.push(d);
                 self.scratch_nodes = tx.nodes;
                 return Err(UiError::InvalidUi(d));
+            }
+            #[cfg(any(test, feature = "devtools"))]
+            {
+                let mut ids = std::collections::HashSet::new();
+                for n in &tx.nodes {
+                    if let Some(id) = &n.automation_id
+                        && (id.is_empty()
+                            || id.len() > 256
+                            || id.chars().any(char::is_control)
+                            || !ids.insert(id.clone()))
+                    {
+                        self.scratch_nodes = tx.nodes;
+                        return Err(UiError::InvalidUi(UiDiagnostic::DuplicateAutomationId));
+                    }
+                }
             }
             // style preflight — invalid values reject as InvalidStyle;
             // representable-but-unsupported (nonopaque peer backing or
@@ -527,6 +543,7 @@ where
         nodes: &mut Vec<StagedNode>,
     ) -> UiResult<NodeId> {
         let StagedNode {
+            automation_id,
             key,
             data,
             visibility,
@@ -583,6 +600,7 @@ where
         }
 
         let id = self.arena.alloc(Node {
+            automation_id,
             key,
             parent,
             children: Vec::new(),
@@ -653,6 +671,7 @@ where
         nodes: &mut Vec<StagedNode>,
     ) -> UiResult {
         let StagedNode {
+            automation_id,
             data,
             visibility,
             layout,
@@ -677,7 +696,12 @@ where
                 .forced_colors
                 .then(|| self.forced_resolver.as_deref())
                 .flatten();
+            let identity_changed = n.automation_id != automation_id;
+            n.automation_id = automation_id;
             n.dirty = crate::node::dirty_diff(&old_data, &n.data, dark, forced);
+            if identity_changed {
+                n.dirty |= Self::DIRTY_SEMANTICS;
+            }
             if n.layout != layout || old_vis != visibility {
                 n.dirty |= Self::DIRTY_LAYOUT;
             }

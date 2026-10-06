@@ -186,6 +186,7 @@ impl IRawElementProviderWindowlessSite_Impl for WindowlessSite_Impl {
 /// PLACE for a surviving NodeId so providers persist across tree changes
 /// and property values never go stale between WM_GETOBJECT calls.
 struct ChildState {
+    automation_id: Mutex<String>,
     name: Mutex<String>,
     rect: Mutex<UiaRect>,
     enabled: std::sync::atomic::AtomicBool,
@@ -240,6 +241,9 @@ impl IRawElementProviderSimple_Impl for PaintFragment_Impl {
             )));
         }
         match propertyid {
+            x if x == UIA_AutomationIdPropertyId => Ok(VARIANT::from(BSTR::from(
+                &*self.state.automation_id.lock().unwrap(),
+            ))),
             x if x == UIA_NamePropertyId => {
                 Ok(VARIANT::from(BSTR::from(&*self.state.name.lock().unwrap())))
             }
@@ -442,6 +446,9 @@ impl IRawElementProviderSimple_Impl for EditorFragment_Impl {
             return Err(EditorFragment::unavailable());
         }
         match propertyid {
+            x if x == UIA_AutomationIdPropertyId => Ok(VARIANT::from(BSTR::from(
+                &*self.this.state.automation_id.lock().unwrap(),
+            ))),
             x if x == UIA_NamePropertyId => Ok(VARIANT::from(BSTR::from(
                 &*self.this.state.name.lock().unwrap(),
             ))),
@@ -1297,6 +1304,7 @@ impl IRawElementProviderFragmentRoot_Impl for RootFragment_Impl {
 /// editor provider parents through.
 /// One active-order UIA child a rebuild installs.
 pub(crate) struct ChildBuild {
+    pub automation_id: String,
     pub id: NodeId,
     pub name: String,
     pub ct: UIA_CONTROLTYPE_ID,
@@ -1417,6 +1425,7 @@ impl UiaRoot {
                 // reuse the surviving association when the NodeId matches —
                 // state updates in place (no provider churn per rebuild)
                 if let Some(h) = table.get(&k.id) {
+                    *h.state.automation_id.lock().unwrap() = k.automation_id.clone();
                     // name/bounds updates notify — silent value drift is a
                     // live-contract violation
                     {
@@ -1449,6 +1458,7 @@ impl UiaRoot {
                 }
                 structure_changed = true;
                 let state = Arc::new(ChildState {
+                    automation_id: Mutex::new(k.automation_id.clone()),
                     name: Mutex::new(k.name),
                     rect: Mutex::new(k.rect),
                     enabled: std::sync::atomic::AtomicBool::new(k.enabled),

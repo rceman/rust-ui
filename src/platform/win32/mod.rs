@@ -8,6 +8,8 @@
 
 #![cfg(windows)]
 
+#[cfg(feature = "devtools")]
+mod devtools;
 pub(crate) mod layout;
 pub(crate) mod render;
 pub(crate) mod space;
@@ -432,6 +434,8 @@ where
     /// against a fresh resolution every turn: descriptor-equal
     /// GetSysColor drift still refreshes.
     applied_palette: std::cell::RefCell<Option<Vec<(NodeId, ([f32; 4], [f32; 4], [f32; 4]))>>>,
+    #[cfg(feature = "devtools")]
+    devtools: Option<crate::devtools::client::Server>,
 }
 
 #[cfg(test)]
@@ -450,6 +454,8 @@ where
         peer_ctx: Rc<PeerCtx>,
     ) -> UiResult<Self> {
         Ok(Backend {
+            #[cfg(feature = "devtools")]
+            devtools: None,
             rt,
             hwnd: HWND::default(),
             peer_ctx,
@@ -2242,6 +2248,7 @@ where
                 _ => continue,
             };
             kids.push(uia::ChildBuild {
+                automation_id: n.automation_id.as_deref().unwrap_or("").to_string(),
                 id,
                 name,
                 ct,
@@ -2541,9 +2548,17 @@ where
     /// and the queue is drained before the entry completes.
     pub(crate) fn guarded_turn(&mut self) -> UiResult {
         self.in_dispatch.set(true);
-        let r = self.turn();
+        let r = (|| {
+            self.turn()?;
+            #[cfg(feature = "devtools")]
+            self.service_devtools()?;
+            Ok(())
+        })();
         self.in_dispatch.set(false);
-        r.and_then(|_| self.drain_reentrant())
+        r.and_then(|_| self.drain_reentrant())?;
+        #[cfg(feature = "devtools")]
+        self.complete_devtools_idle();
+        Ok(())
     }
 
     /// fatal (typed) error from inside a WndProc — surface on next turn
@@ -2661,6 +2676,8 @@ where
     /// Deterministic: pending deferred deliveries drop, every native timer
     /// dies with the window, capture/caret release.
     pub(crate) fn shutdown(&mut self) {
+        #[cfg(feature = "devtools")]
+        self.devtools.take();
         if let Some(u) = self.uia.take() {
             u.close();
         }
@@ -2850,6 +2867,8 @@ where
     rt.refresh_reduced();
 
     let mut backend = Box::new(Backend {
+        #[cfg(feature = "devtools")]
+        devtools: None,
         rt,
         hwnd: HWND::default(),
         peer_ctx,
@@ -2978,6 +2997,17 @@ where
     // as every later event-driven turn
     if let Err(e) = backend.guarded_turn() {
         return bail(&mut backend, e);
+    }
+
+    #[cfg(feature = "devtools")]
+    {
+        backend.devtools = match crate::devtools::client::Server::start(
+            backend.rt.mailbox.clone(),
+            backend.hwnd.0 as usize,
+        ) {
+            Ok(s) => s,
+            Err(e) => return bail(&mut backend, UiError::Platform(e.to_string())),
+        };
     }
 
     // blocking wait on BOTH authorities — the mailbox wake event AND the

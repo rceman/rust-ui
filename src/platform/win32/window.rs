@@ -295,6 +295,8 @@ pub(crate) mod wndproc {
             if let Err(e) = be.drain_reentrant() {
                 be.mark_fatal(e);
             }
+            #[cfg(feature = "devtools")]
+            be.complete_devtools_idle();
             out
         }
     }

@@ -238,6 +238,7 @@ impl Surface {
 /// Flat staged node — children are indices into `Tx.nodes`, so the whole
 /// transaction is ONE reusable flat buffer, never a persistent second tree.
 pub(crate) struct StagedNode {
+    pub automation_id: Option<Rc<str>>,
     pub key: ChildKey,
     pub data: NodeData,
     pub visibility: Visibility,
@@ -253,6 +254,7 @@ impl StagedNode {
     /// Slot placeholder while a node is moved out of the flat buffer.
     pub(crate) fn placeholder() -> Self {
         StagedNode {
+            automation_id: None,
             key: ChildKey::Static {
                 kind: 0,
                 ordinal: u32::MAX,
@@ -451,6 +453,7 @@ impl Tx<'_> {
         let data = build(retained_node);
         let idx = self.nodes.len() as u32;
         self.nodes.push(StagedNode {
+            automation_id: None,
             key,
             data,
             visibility,
@@ -532,6 +535,7 @@ impl Tx<'_> {
         // the container itself inside an action is still invalid
         let idx = self.nodes.len() as u32;
         self.nodes.push(StagedNode {
+            automation_id: None,
             key,
             data,
             visibility,
@@ -573,7 +577,20 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
         );
     }
 
-    /// Unkeyed structural containers.
+    /// Assign a stable semantic ID to exactly one child produced by `draw`.
+    /// This metadata is independent of retained/keyed identity.
+    pub fn named(&mut self, id: &str, draw: impl FnOnce(&mut Ui<'_, '_, M>)) {
+        let before = self.tx.frames.last().unwrap().children.len();
+        draw(self);
+        let children = &self.tx.frames.last().unwrap().children;
+        if children.len() != before + 1 {
+            self.tx.diagnostics.push(UiDiagnostic::InvalidComposition);
+            return;
+        }
+        let index = children[before];
+        self.tx.nodes[index as usize].automation_id = Some(Rc::from(id));
+    }
+
     pub fn column(&mut self, props: Column, draw: impl FnOnce(&mut Ui<'_, '_, M>)) {
         self.tx.stage_container(
             crate::node::KIND_COLUMN,
@@ -646,6 +663,7 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
     /// is unchanged, so borrowed strings cost no copy.
     pub fn label<'a, T: AsRef<str>>(&'a mut self, text: T) -> LabelBuilder<'a, 'ui, T, M> {
         LabelBuilder {
+            automation_id: None,
             tx: self.tx,
             text,
             wrap: false,
@@ -660,6 +678,7 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
 
     pub fn button<'a>(&'a mut self, text: &'a str) -> ButtonBuilder<'a, 'ui, M> {
         ButtonBuilder {
+            automation_id: None,
             tx: self.tx,
             text,
             variant: ButtonVariant::default(),
@@ -680,6 +699,7 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
         value: &'b TextValue,
     ) -> TextInputBuilder<'a, 'ui, 'b, M> {
         TextInputBuilder {
+            automation_id: None,
             tx: self.tx,
             value,
             multiline: false,
@@ -702,6 +722,7 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
         value: &'b TextValue,
     ) -> TextInputBuilder<'a, 'ui, 'b, M> {
         TextInputBuilder {
+            automation_id: None,
             tx: self.tx,
             value,
             multiline: true,
@@ -721,6 +742,7 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
 
     pub fn custom(&mut self, render: Rc<dyn CustomRender>) -> CustomBuilder<'_, 'ui, M> {
         CustomBuilder {
+            automation_id: None,
             tx: self.tx,
             render,
             frame_events: false,
@@ -787,6 +809,7 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
         let child_frame = self.tx.frames.pop().unwrap();
         let idx = self.tx.nodes.len() as u32;
         self.tx.nodes.push(StagedNode {
+            automation_id: None,
             key,
             data: NodeData::Container {
                 kind: crate::node::KIND_SCOPE,
@@ -906,6 +929,7 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
     /// the same renderer.
     pub fn text<'a, T: AsRef<str>>(&'a mut self, text: T) -> TextBuilder<'a, 'ui, T, M> {
         TextBuilder {
+            automation_id: None,
             tx: self.tx,
             text,
             wrap: false,
@@ -938,6 +962,7 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
 /// Every builder stages on `Drop` — `.on_*(...)` setters register factories
 /// retained at commit only.
 pub struct LabelBuilder<'a, 'ui, T: AsRef<str>, M: 'static> {
+    automation_id: Option<Rc<str>>,
     tx: &'a mut Tx<'ui>,
     text: T,
     wrap: bool,
@@ -950,6 +975,11 @@ pub struct LabelBuilder<'a, 'ui, T: AsRef<str>, M: 'static> {
 }
 
 impl<'a, 'ui, T: AsRef<str>, M: 'static> LabelBuilder<'a, 'ui, T, M> {
+    pub fn automation_id(mut self, id: &str) -> Self {
+        self.automation_id = Some(Rc::from(id));
+        self
+    }
+
     pub fn wrap(mut self, wrap: bool) -> Self {
         self.wrap = wrap;
         self
@@ -992,6 +1022,7 @@ impl<'a, 'ui, T: AsRef<str>, M: 'static> LabelBuilder<'a, 'ui, T, M> {
 
 impl<'a, 'ui, T: AsRef<str>, M: 'static> Drop for LabelBuilder<'a, 'ui, T, M> {
     fn drop(&mut self) {
+        let before = self.tx.frames.last().unwrap().children.len();
         let text = self.text.as_ref();
         let wrap = self.wrap;
         let role = self.color_role;
@@ -1025,10 +1056,17 @@ impl<'a, 'ui, T: AsRef<str>, M: 'static> Drop for LabelBuilder<'a, 'ui, T, M> {
                 }
             },
         );
+        if let Some(id) = self.automation_id.take()
+            && self.tx.frames.last().unwrap().children.len() > before
+            && let Some(index) = self.tx.frames.last().unwrap().children.last().copied()
+        {
+            self.tx.nodes[index as usize].automation_id = Some(id);
+        }
     }
 }
 
 pub struct ButtonBuilder<'a, 'ui, M: 'static> {
+    automation_id: Option<Rc<str>>,
     tx: &'a mut Tx<'ui>,
     text: &'a str,
     variant: ButtonVariant,
@@ -1044,6 +1082,11 @@ pub struct ButtonBuilder<'a, 'ui, M: 'static> {
 }
 
 impl<'a, 'ui, M: 'static> ButtonBuilder<'a, 'ui, M> {
+    pub fn automation_id(mut self, id: &str) -> Self {
+        self.automation_id = Some(Rc::from(id));
+        self
+    }
+
     pub fn variant(mut self, v: ButtonVariant) -> Self {
         self.variant = v;
         self
@@ -1123,6 +1166,7 @@ impl<'a, 'ui, M: 'static> ButtonBuilder<'a, 'ui, M> {
 
 impl<'a, 'ui, M: 'static> Drop for ButtonBuilder<'a, 'ui, M> {
     fn drop(&mut self) {
+        let before = self.tx.frames.last().unwrap().children.len();
         let text = self.text;
         let (variant, style, disabled, size, motion, tooltip) = (
             self.variant,
@@ -1157,11 +1201,18 @@ impl<'a, 'ui, M: 'static> Drop for ButtonBuilder<'a, 'ui, M> {
                 }
             },
         );
+        if let Some(id) = self.automation_id.take()
+            && self.tx.frames.last().unwrap().children.len() > before
+            && let Some(index) = self.tx.frames.last().unwrap().children.last().copied()
+        {
+            self.tx.nodes[index as usize].automation_id = Some(id);
+        }
     }
 }
 
 /// `text_input`/`text_area` share one builder — `multiline` picks the peer.
 pub struct TextInputBuilder<'a, 'ui, 'b, M: 'static> {
+    automation_id: Option<Rc<str>>,
     tx: &'a mut Tx<'ui>,
     value: &'b TextValue,
     multiline: bool,
@@ -1181,6 +1232,11 @@ pub struct TextInputBuilder<'a, 'ui, 'b, M: 'static> {
 }
 
 impl<'a, 'ui, 'b, M: 'static> TextInputBuilder<'a, 'ui, 'b, M> {
+    pub fn automation_id(mut self, id: &str) -> Self {
+        self.automation_id = Some(Rc::from(id));
+        self
+    }
+
     /// capability-limited patch — chrome (`background`/`border`/`radii`/
     /// `padding`/`shadow`) paints the frame; `foreground` is routed to the
     /// peer through the typed adapter. Repeated `.style(..)` merges
@@ -1252,6 +1308,7 @@ impl<'a, 'ui, 'b, M: 'static> TextInputBuilder<'a, 'ui, 'b, M> {
 
 impl<'a, 'ui, 'b, M: 'static> Drop for TextInputBuilder<'a, 'ui, 'b, M> {
     fn drop(&mut self) {
+        let before = self.tx.frames.last().unwrap().children.len();
         let kind = if self.multiline {
             crate::node::KIND_TEXT_AREA
         } else {
@@ -1298,11 +1355,18 @@ impl<'a, 'ui, 'b, M: 'static> Drop for TextInputBuilder<'a, 'ui, 'b, M> {
                 sync: Default::default(),
             },
         );
+        if let Some(id) = self.automation_id.take()
+            && self.tx.frames.last().unwrap().children.len() > before
+            && let Some(index) = self.tx.frames.last().unwrap().children.last().copied()
+        {
+            self.tx.nodes[index as usize].automation_id = Some(id);
+        }
     }
 }
 
 /// Custom leaf — immutable `Rc<dyn CustomRender>` snapshot.
 pub struct CustomBuilder<'a, 'ui, M: 'static> {
+    automation_id: Option<Rc<str>>,
     tx: &'a mut Tx<'ui>,
     render: Rc<dyn CustomRender>,
     frame_events: bool,
@@ -1313,6 +1377,11 @@ pub struct CustomBuilder<'a, 'ui, M: 'static> {
 }
 
 impl<'a, 'ui, M: 'static> CustomBuilder<'a, 'ui, M> {
+    pub fn automation_id(mut self, id: &str) -> Self {
+        self.automation_id = Some(Rc::from(id));
+        self
+    }
+
     /// decorative frame demand — gated by visibility + reduced motion
     pub fn frame_events(mut self, on: bool) -> Self {
         self.frame_events = on;
@@ -1351,6 +1420,7 @@ impl<'a, 'ui, M: 'static> CustomBuilder<'a, 'ui, M> {
 
 impl<'a, 'ui, M: 'static> Drop for CustomBuilder<'a, 'ui, M> {
     fn drop(&mut self) {
+        let before = self.tx.frames.last().unwrap().children.len();
         let render = self.render.clone();
         let frame_events = self.frame_events;
         self.tx.stage_leaf(
@@ -1364,6 +1434,12 @@ impl<'a, 'ui, M: 'static> Drop for CustomBuilder<'a, 'ui, M> {
                 frame_events,
             },
         );
+        if let Some(id) = self.automation_id.take()
+            && self.tx.frames.last().unwrap().children.len() > before
+            && let Some(index) = self.tx.frames.last().unwrap().children.last().copied()
+        {
+            self.tx.nodes[index as usize].automation_id = Some(id);
+        }
     }
 }
 
@@ -1378,6 +1454,12 @@ pub struct ActionBuilder<'a, 'ui, M: 'static> {
 }
 
 impl<'a, 'ui, M: 'static> ActionBuilder<'a, 'ui, M> {
+    pub fn automation_id(self, id: &str) -> Self {
+        if let Some(i) = self.staged {
+            self.tx.nodes[i as usize].automation_id = Some(Rc::from(id));
+        }
+        self
+    }
     fn set(&mut self, f: impl FnOnce(&mut EventFactorySet)) {
         if let Some(i) = self.staged {
             f(&mut self.tx.nodes[i as usize].factories);
@@ -1411,6 +1493,7 @@ impl<'a, 'ui, M: 'static> ActionBuilder<'a, 'ui, M> {
 
 /// `ui.text` — styled text leaf with a full authored `TextStyle`.
 pub struct TextBuilder<'a, 'ui, T: AsRef<str>, M: 'static> {
+    automation_id: Option<Rc<str>>,
     tx: &'a mut Tx<'ui>,
     text: T,
     wrap: bool,
@@ -1421,6 +1504,11 @@ pub struct TextBuilder<'a, 'ui, T: AsRef<str>, M: 'static> {
 }
 
 impl<'a, 'ui, T: AsRef<str>, M: 'static> TextBuilder<'a, 'ui, T, M> {
+    pub fn automation_id(mut self, id: &str) -> Self {
+        self.automation_id = Some(Rc::from(id));
+        self
+    }
+
     /// full authored style — primitives want complete styles, not patches
     pub fn style(mut self, s: crate::style::TextStyle) -> Self {
         self.style = s;
@@ -1446,6 +1534,7 @@ impl<'a, 'ui, T: AsRef<str>, M: 'static> TextBuilder<'a, 'ui, T, M> {
 
 impl<'a, 'ui, T: AsRef<str>, M: 'static> Drop for TextBuilder<'a, 'ui, T, M> {
     fn drop(&mut self) {
+        let before = self.tx.frames.last().unwrap().children.len();
         // authored full style lands as a patch over the label recipe — the
         // staged label shape is shared with `ui.label`
         let mut patch = crate::style::TextStylePatch::default();
@@ -1478,5 +1567,11 @@ impl<'a, 'ui, T: AsRef<str>, M: 'static> Drop for TextBuilder<'a, 'ui, T, M> {
                 }
             },
         );
+        if let Some(id) = self.automation_id.take()
+            && self.tx.frames.last().unwrap().children.len() > before
+            && let Some(index) = self.tx.frames.last().unwrap().children.last().copied()
+        {
+            self.tx.nodes[index as usize].automation_id = Some(id);
+        }
     }
 }
