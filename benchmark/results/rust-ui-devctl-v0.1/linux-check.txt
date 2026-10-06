@@ -1,0 +1,1514 @@
+warning: fields `state`, `update`, and `view` are never read
+  --> src/app.rs:14:16
+   |
+13 | pub struct App<S, M, U, V> {
+   |            --- fields in this struct
+14 |     pub(crate) state: S,
+   |                ^^^^^
+15 |     _m: std::marker::PhantomData<fn() -> M>,
+16 |     pub(crate) update: U,
+   |                ^^^^^^
+17 |     pub(crate) view: V,
+   |                ^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: field `free` is never read
+ --> src/arena.rs:9:5
+  |
+6 | pub(crate) struct Arena {
+  |                   ----- field in this struct
+...
+9 |     free: Vec<u32>,
+  |     ^^^^
+
+warning: multiple associated items are never used
+   --> src/arena.rs:13:19
+    |
+ 12 | impl Arena {
+    | ---------- associated items in this implementation
+ 13 |     pub(crate) fn new() -> Self {
+    |                   ^^^
+...
+ 23 |     pub(crate) fn alloc(&mut self, node: Node) -> NodeId {
+    |                   ^^^^^
+...
+ 44 |     pub(crate) fn invalidate(&mut self, id: NodeId) {
+    |                   ^^^^^^^^^^
+...
+ 56 |     pub(crate) fn slot_mut(&mut self, slot: u32) -> Option<&mut Node> {
+    |                   ^^^^^^^^
+...
+ 60 |     pub(crate) fn slot_len(&self) -> usize {
+    |                   ^^^^^^^^
+...
+ 65 |     pub(crate) fn slot(&self, slot: u32) -> Option<&Node> {
+    |                   ^^^^
+...
+ 70 |     pub(crate) fn free(&mut self, id: NodeId) {
+    |                   ^^^^
+...
+ 87 |     pub(crate) fn get_mut(&mut self, id: NodeId) -> Option<&mut Node> {
+    |                   ^^^^^^^
+...
+ 97 |     pub(crate) fn is_live(&self, id: NodeId) -> bool {
+    |                   ^^^^^^^
+...
+105 |     pub(crate) fn slot_count(&self) -> usize {
+    |                   ^^^^^^^^^^
+
+warning: constant `EVENT_QUEUE_CAP` is never used
+  --> src/event.rs:11:18
+   |
+11 | pub(crate) const EVENT_QUEUE_CAP: usize = 128;
+   |                  ^^^^^^^^^^^^^^^
+
+warning: field `on_open_change` is never read
+  --> src/event.rs:94:9
+   |
+80 | pub(crate) struct EventFactorySet {
+   |                   --------------- field in this struct
+...
+94 |     pub on_open_change: Option<Box<dyn Fn(bool) -> Box<dyn Any>>>,
+   |         ^^^^^^^^^^^^^^
+
+warning: method `dispatch` is never used
+   --> src/event.rs:101:19
+    |
+ 98 | impl EventFactorySet {
+    | -------------------- method in this implementation
+...
+101 |     pub(crate) fn dispatch(&self, ev: NodeEvent) -> Option<Box<dyn Any>> {
+    |                   ^^^^^^^^
+
+warning: struct `EventQueue` is never constructed
+   --> src/event.rs:131:19
+    |
+131 | pub(crate) struct EventQueue {
+    |                   ^^^^^^^^^^
+
+warning: multiple associated items are never used
+   --> src/event.rs:136:19
+    |
+135 | impl EventQueue {
+    | --------------- associated items in this implementation
+136 |     pub(crate) fn new() -> Self {
+    |                   ^^^
+...
+140 |     pub(crate) fn push(&mut self, ev: QueuedEvent) -> Result<(), QueueOverflow> {
+    |                   ^^^^
+...
+148 |     pub(crate) fn pop(&mut self) -> Option<QueuedEvent> {
+    |                   ^^^
+...
+153 |     pub(crate) fn drain(&mut self) {
+    |                   ^^^^^
+...
+157 |     pub(crate) fn is_empty(&self) -> bool {
+    |                   ^^^^^^^^
+...
+162 |     pub(crate) fn purge_node(&mut self, slot: u32) -> u64 {
+    |                   ^^^^^^^^^^
+...
+168 |     pub(crate) fn len(&self) -> usize {
+    |                   ^^^
+
+warning: struct `QueueOverflow` is never constructed
+   --> src/event.rs:174:19
+    |
+174 | pub(crate) struct QueueOverflow;
+    |                   ^^^^^^^^^^^^^
+
+warning: struct `ClientPhysicalPoint` is never constructed
+   --> src/geom.rs:222:12
+    |
+222 | pub struct ClientPhysicalPoint(pub PhysicalPoint);
+    |            ^^^^^^^^^^^^^^^^^^^
+
+warning: struct `ScreenPhysicalPoint` is never constructed
+   --> src/geom.rs:226:12
+    |
+226 | pub struct ScreenPhysicalPoint(pub PhysicalPoint);
+    |            ^^^^^^^^^^^^^^^^^^^
+
+warning: struct `PeerLocalPoint` is never constructed
+   --> src/geom.rs:232:12
+    |
+232 | pub struct PeerLocalPoint(pub PhysicalPoint);
+    |            ^^^^^^^^^^^^^^
+
+warning: struct `PeerOrigin` is never constructed
+   --> src/geom.rs:243:12
+    |
+243 | pub struct PeerOrigin(pub PhysicalPoint);
+    |            ^^^^^^^^^^
+
+warning: associated items `from_logical`, `to_local`, and `to_client` are never used
+   --> src/geom.rs:249:12
+    |
+245 | impl PeerOrigin {
+    | --------------- associated items in this implementation
+...
+249 |     pub fn from_logical(bounds: Rect, s: ScaleFactor) -> Option<PeerOrigin> {
+    |            ^^^^^^^^^^^^
+...
+258 |     pub fn to_local(self, p: ClientPhysicalPoint) -> Option<PeerLocalPoint> {
+    |            ^^^^^^^^
+...
+266 |     pub fn to_client(self, p: PeerLocalPoint) -> Option<ClientPhysicalPoint> {
+    |            ^^^^^^^^^
+
+warning: method `fingerprint` is never used
+  --> src/key.rs:51:19
+   |
+39 | impl ErasedKey {
+   | -------------- method in this implementation
+...
+51 |     pub(crate) fn fingerprint(&self) -> u64 {
+   |                   ^^^^^^^^^^^
+
+warning: struct `FillItem` is never constructed
+  --> src/layout.rs:21:12
+   |
+21 | pub struct FillItem {
+   |            ^^^^^^^^
+
+warning: function `waterfill` is never used
+  --> src/layout.rs:32:8
+   |
+32 | pub fn waterfill(avail: f32, items: &[FillItem]) -> Vec<f32> {
+   |        ^^^^^^^^^
+
+warning: function `editor_chrome` is never used
+  --> src/layout.rs:89:8
+   |
+89 | pub fn editor_chrome(patch: &TextInputStylePatch) -> BoxStyle {
+   |        ^^^^^^^^^^^^^
+
+warning: function `editor_inset` is never used
+   --> src/layout.rs:100:8
+    |
+100 | pub fn editor_inset(c: &BoxStyle) -> Insets {
+    |        ^^^^^^^^^^^^
+
+warning: function `editor_content_rect` is never used
+   --> src/layout.rs:120:8
+    |
+120 | pub fn editor_content_rect(r: Rect, c: &BoxStyle) -> Rect {
+    |        ^^^^^^^^^^^^^^^^^^^
+
+warning: struct `Interaction` is never constructed
+   --> src/layout.rs:137:12
+    |
+137 | pub struct Interaction {
+    |            ^^^^^^^^^^^
+
+warning: function `node_insets` is never used
+   --> src/layout.rs:149:8
+    |
+149 | pub fn node_insets(id: NodeId, n: &crate::node::Node, ix: &Interaction) -> Insets {
+    |        ^^^^^^^^^^^
+
+warning: struct `PeerSpec` is never constructed
+  --> src/node.rs:35:12
+   |
+35 | pub struct PeerSpec {
+   |            ^^^^^^^^
+
+warning: multiple methods are never used
+  --> src/node.rs:48:8
+   |
+46 | pub(crate) trait TextPeer {
+   |                  -------- methods in this trait
+47 |     /// Opaque peer identity (survives reconciles, dies with the node).
+48 |     fn peer_id(&self) -> u64;
+   |        ^^^^^^^
+...
+52 |     fn initialize(
+   |        ^^^^^^^^^^
+...
+62 |     fn set_text(
+   |        ^^^^^^^^
+...
+71 |     fn apply_foreground(&mut self, _fg: crate::style::Color) {}
+   |        ^^^^^^^^^^^^^^^^
+...
+76 |     fn set_read_only(&mut self, _ro: bool) {}
+   |        ^^^^^^^^^^^^^
+77 |     /// Teardown — called exactly once per peer.
+78 |     fn release(&mut self);
+   |        ^^^^^^^
+...
+81 |     fn attach(&mut self, node: NodeId) {
+   |        ^^^^^^
+
+warning: multiple fields are never read
+   --> src/node.rs:102:9
+    |
+101 | pub(crate) struct TextPeerSync {
+    |                   ------------ fields in this struct
+102 |     pub binding: Option<BindingToken>,
+    |         ^^^^^^^
+103 |     /// latest committed/applied revision the peer reports
+104 |     pub peer_revision: TextRevision,
+    |         ^^^^^^^^^^^^^
+105 |     /// last applied (set-text or validated native-committed) snapshot
+106 |     pub applied_text: String,
+    |         ^^^^^^^^^^^^
+107 |     pub applied_revision: TextRevision,
+    |         ^^^^^^^^^^^^^^^^
+...
+110 |     pub in_flight: Option<TextRevision>,
+    |         ^^^^^^^^^
+111 |     pub in_flight_base: Option<TextRevision>,
+    |         ^^^^^^^^^^^^^^
+112 |     /// a proposal arrived while composition was active — resolved at end
+113 |     pub queued_while_composing: bool,
+    |         ^^^^^^^^^^^^^^^^^^^^^^
+114 |     pub composing: bool,
+    |         ^^^^^^^^^
+...
+117 |     pub last_rejected: Option<TextRevision>,
+    |         ^^^^^^^^^^^^^
+118 |     pub mounted: bool,
+    |         ^^^^^^^
+    |
+    = note: `TextPeerSync` has a derived impl for the trait `Debug`, but this is intentionally ignored during dead code analysis
+
+warning: enum `PeerDecision` is never used
+   --> src/node.rs:123:17
+    |
+123 | pub(crate) enum PeerDecision {
+    |                 ^^^^^^^^^^^^
+
+warning: methods `mount`, `accept_native`, `commit`, and `composition_end` are never used
+   --> src/node.rs:136:19
+    |
+131 | impl TextPeerSync {
+    | ----------------- methods in this implementation
+...
+136 |     pub(crate) fn mount(
+    |                   ^^^^^
+...
+170 |     pub(crate) fn accept_native(&mut self, edit: &TextEdit) -> Option<Option<TextRevision>> {
+    |                   ^^^^^^^^^^^^^
+...
+210 |     pub(crate) fn commit(
+    |                   ^^^^^^
+...
+253 |     pub(crate) fn composition_end(
+    |                   ^^^^^^^^^^^^^^^
+
+warning: method `resolved_box` is never used
+   --> src/node.rs:300:19
+    |
+297 | impl ContainerProps {
+    | ------------------- method in this implementation
+...
+300 |     pub(crate) fn resolved_box(&self, kind: u8) -> Option<crate::style::BoxStyle> {
+    |                   ^^^^^^^^^^^^
+
+warning: field `props` is never read
+   --> src/node.rs:319:9
+    |
+317 |     Container {
+    |     --------- field in this variant
+318 |         kind: u8,
+319 |         props: ContainerProps,
+    |         ^^^^^
+
+warning: fields `wrap`, `color_role`, and `patch` are never read
+   --> src/node.rs:323:9
+    |
+321 |     Label {
+    |     ----- fields in this variant
+322 |         text: Rc<str>,
+323 |         wrap: bool,
+    |         ^^^^
+324 |         color_role: crate::theme::ColorRole,
+    |         ^^^^^^^^^^
+...
+327 |         patch: crate::style::TextStylePatch,
+    |         ^^^^^
+
+warning: fields `variant`, `style`, `disabled`, `size`, `motion`, and `tooltip` are never read
+   --> src/node.rs:331:9
+    |
+329 |     Button {
+    |     ------ fields in this variant
+330 |         text: Rc<str>,
+331 |         variant: ButtonVariant,
+    |         ^^^^^^^
+332 |         style: ButtonStylePatch,
+    |         ^^^^^
+333 |         disabled: bool,
+    |         ^^^^^^^^
+334 |         size: crate::theme::ControlSize,
+    |         ^^^^
+335 |         motion: Option<MotionToken>,
+    |         ^^^^^^
+336 |         tooltip: Option<Rc<str>>,
+    |         ^^^^^^^
+
+warning: multiple fields are never read
+   --> src/node.rs:340:9
+    |
+338 |     Editor {
+    |     ------ fields in this variant
+339 |         /// immutable staged snapshot of the bound TextValue this view
+340 |         snapshot: TextSnapshot,
+    |         ^^^^^^^^
+341 |         multiline: bool,
+342 |         read_only: bool,
+    |         ^^^^^^^^^
+343 |         disabled: bool,
+    |         ^^^^^^^^
+344 |         submit: SubmitPolicy,
+    |         ^^^^^^
+345 |         max_lines: Option<u32>,
+    |         ^^^^^^^^^
+346 |         placeholder: Option<Rc<str>>,
+    |         ^^^^^^^^^^^
+347 |         accessible_label: Option<Rc<str>>,
+    |         ^^^^^^^^^^^^^^^^
+...
+350 |         patch: crate::style::TextInputStylePatch,
+    |         ^^^^^
+351 |         sync: TextPeerSync,
+    |         ^^^^
+
+warning: fields `render` and `frame_events` are never read
+   --> src/node.rs:354:9
+    |
+353 |     Custom {
+    |     ------ fields in this variant
+354 |         render: Rc<dyn crate::ui::CustomRender>,
+    |         ^^^^^^
+355 |         frame_events: bool,
+    |         ^^^^^^^^^^^^
+
+warning: fields `label`, `style`, and `disabled` are never read
+   --> src/node.rs:360:9
+    |
+359 |     Action {
+    |     ------ fields in this variant
+360 |         label: Rc<str>,
+    |         ^^^^^
+361 |         style: crate::style::ActionStyle,
+    |         ^^^^^
+362 |         disabled: bool,
+    |         ^^^^^^^^
+
+warning: variant `Empty` is never constructed
+   --> src/node.rs:316:5
+    |
+314 | pub(crate) enum NodeData {
+    |                 -------- variant in this enum
+315 |     /// placeholder while a staged node is being moved out of the flat buffer
+316 |     Empty,
+    |     ^^^^^
+
+warning: multiple fields are never read
+   --> src/node.rs:371:9
+    |
+370 | pub(crate) struct Node {
+    |                   ---- fields in this struct
+371 |     pub automation_id: Option<Rc<str>>,
+    |         ^^^^^^^^^^^^^
+372 |     pub key: ChildKey,
+373 |     pub parent: Option<u32>,
+    |         ^^^^^^
+...
+376 |     pub visibility: Visibility,
+    |         ^^^^^^^^^^
+377 |     /// explicit sizing hints (validated at stage time)
+378 |     pub layout: LayoutSpec,
+    |         ^^^^^^
+...
+381 |     pub factories: EventFactorySet,
+    |         ^^^^^^^^^
+382 |     /// message adapters installed by enclosing `ui.scope` calls
+383 |     pub adapters: MsgAdapters,
+    |         ^^^^^^^^
+384 |     /// native peer for editable text nodes (opaque to the core)
+385 |     pub peer: Option<Box<dyn TextPeer>>,
+    |         ^^^^
+...
+388 |     pub dirty: u8,
+    |         ^^^^^
+
+warning: method `state_metric_affecting` is never used
+   --> src/node.rs:395:19
+    |
+391 | impl Node {
+    | --------- method in this implementation
+...
+395 |     pub(crate) fn state_metric_affecting(&self) -> bool {
+    |                   ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `box_dirty` is never used
+   --> src/node.rs:408:15
+    |
+408 | pub(crate) fn box_dirty(
+    |               ^^^^^^^^^
+
+warning: function `visual_dirty` is never used
+   --> src/node.rs:445:15
+    |
+445 | pub(crate) fn visual_dirty(
+    |               ^^^^^^^^^^^^
+
+warning: function `dirty_diff` is never used
+   --> src/node.rs:471:15
+    |
+471 | pub(crate) fn dirty_diff(
+    |               ^^^^^^^^^^
+
+warning: methods `visual_clone` and `layout_clone` are never used
+   --> src/node.rs:737:8
+    |
+736 | impl ContainerProps {
+    | ------------------- methods in this implementation
+737 |     fn visual_clone(&self) -> (crate::style::BoxStylePatch, Option<crate::style::BoxStyle>) {
+    |        ^^^^^^^^^^^^
+...
+740 |     fn layout_clone(&self) -> (Option<Space>, Option<Align>, Option<Justify>, Option<Space>) {
+    |        ^^^^^^^^^^^^
+
+warning: methods `interactive` and `lease` are never used
+   --> src/node.rs:766:19
+    |
+745 | impl Node {
+    | --------- methods in this implementation
+...
+766 |     pub(crate) fn interactive(&self) -> bool {
+    |                   ^^^^^^^^^^^
+...
+779 |     pub(crate) fn lease(&self) -> Option<LeaseCell> {
+    |                   ^^^^^
+
+warning: enum `NodeEvent` is never used
+   --> src/node.rs:788:17
+    |
+788 | pub(crate) enum NodeEvent {
+    |                 ^^^^^^^^^
+
+warning: enum `PointerPhase` is never used
+   --> src/node.rs:804:17
+    |
+804 | pub(crate) enum PointerPhase {
+    |                 ^^^^^^^^^^^^
+
+warning: struct `QueuedEvent` is never constructed
+   --> src/node.rs:812:19
+    |
+812 | pub(crate) struct QueuedEvent {
+    |                   ^^^^^^^^^^^
+
+warning: struct `Runtime` is never constructed
+   --> src/runtime.rs:103:19
+    |
+103 | pub(crate) struct Runtime<S, M, U, V>
+    |                   ^^^^^^^
+
+warning: multiple associated items are never used
+    --> src/runtime.rs:162:19
+     |
+ 156 | / impl<S, M, U, V> Runtime<S, M, U, V>
+ 157 | | where
+ 158 | |     M: 'static,
+ 159 | |     U: Fn(&mut S, M, &mut UpdateCtx<M>),
+ 160 | |     V: Fn(&S, &mut Ui<'_, '_, M>),
+     | |__________________________________- associated items in this implementation
+ 161 |   {
+ 162 |       pub(crate) fn new(
+     |                     ^^^
+...
+ 232 |       pub(crate) fn pump(&mut self) -> UiResult<bool> {
+     |                     ^^^^
+...
+ 283 |       pub(crate) fn set_appearance(&mut self, a: Appearance) {
+     |                     ^^^^^^^^^^^^^^
+...
+ 293 |       fn review(&mut self) -> UiResult {
+     |          ^^^^^^
+...
+ 403 |       fn commit_children(
+     |          ^^^^^^^^^^^^^^^
+...
+ 521 |       pub(crate) fn drain_dirty(&mut self) -> Vec<(NodeId, u8)> {
+     |                     ^^^^^^^^^^^
+...
+ 539 |       fn create_node(
+     |          ^^^^^^^^^^^
+...
+ 659 |       pub(crate) const DIRTY_REMOVED: u8 = 0b0000_0100;
+     |                        ^^^^^^^^^^^^^
+ 660 |       /// Layout-affecting change (props/layout/visibility/container props).
+ 661 |       pub(crate) const DIRTY_LAYOUT: u8 = 0b0000_0001;
+     |                        ^^^^^^^^^^^^
+ 662 |       /// Paint-only change (text content, colors).
+ 663 |       pub(crate) const DIRTY_PAINT: u8 = 0b0000_0010;
+     |                        ^^^^^^^^^^^
+ 664 |       /// Semantics/accessibility-affecting change (labels, disabled, role).
+ 665 |       pub(crate) const DIRTY_SEMANTICS: u8 = 0b0000_1000;
+     |                        ^^^^^^^^^^^^^^^
+ 666 |
+ 667 |       fn update_node(
+     |          ^^^^^^^^^^^
+...
+ 792 |       fn remove_node(&mut self, id: NodeId) {
+     |          ^^^^^^^^^^^
+...
+ 854 |       fn dispatch_event(&mut self, ev: QueuedEvent) -> UiResult<bool> {
+     |          ^^^^^^^^^^^^^^
+...
+ 955 |       fn deliver_envelope(&mut self, env: Envelope) -> UiResult<bool> {
+     |          ^^^^^^^^^^^^^^^^
+...
+ 976 |       fn emit_conflict_for_request(&mut self, id: NodeId, rejected: TextRevision) {
+     |          ^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+1021 |       fn emit_conflict(&mut self, id: NodeId, snapshot: &crate::text::TextSnapshot) {
+     |          ^^^^^^^^^^^^^
+...
+1069 |       pub(crate) fn edit_event(&mut self, node: NodeId, edit: TextEdit) -> UiResult {
+     |                     ^^^^^^^^^^
+...
+1079 |       pub(crate) fn selection_event(&mut self, node: NodeId, sel: crate::TextSelection) -> UiResult {
+     |                     ^^^^^^^^^^^^^^^
+...
+1089 |       pub(crate) fn composition_start(&mut self, node: NodeId) {
+     |                     ^^^^^^^^^^^^^^^^^
+...
+1102 |       pub(crate) fn composition_active(&self, node: NodeId) -> bool {
+     |                     ^^^^^^^^^^^^^^^^^^
+...
+1111 |       pub(crate) fn committed_editor(&self, node: NodeId) -> Option<(String, TextRevision)> {
+     |                     ^^^^^^^^^^^^^^^^
+...
+1120 |       pub(crate) fn composition_clear(&mut self, node: NodeId) {
+     |                     ^^^^^^^^^^^^^^^^^
+...
+1129 |       pub(crate) fn composition_end(&mut self, node: NodeId) -> UiResult {
+     |                     ^^^^^^^^^^^^^^^
+...
+1172 |       pub(crate) fn pump_sched(&mut self, now: std::time::Instant) -> UiResult<Vec<SchedEvent>> {
+     |                     ^^^^^^^^^^
+...
+1196 |       pub(crate) fn next_deadline(&self) -> Option<std::time::Instant> {
+     |                     ^^^^^^^^^^^^^
+...
+1201 |       pub(crate) fn sched_arm_tooltip(&mut self, node: NodeId) {
+     |                     ^^^^^^^^^^^^^^^^^
+...
+1204 |       pub(crate) fn sched_unarm_tooltip(&mut self, node: NodeId) {
+     |                     ^^^^^^^^^^^^^^^^^^^
+...
+1207 |       pub(crate) fn node_has_tooltip(&self, node: NodeId) -> bool {
+     |                     ^^^^^^^^^^^^^^^^
+...
+1221 |       pub(crate) fn set_motion_resolver(&mut self, f: Box<dyn Fn() -> bool>) {
+     |                     ^^^^^^^^^^^^^^^^^^^
+...
+1227 |       pub(crate) fn refresh_reduced(&mut self) {
+     |                     ^^^^^^^^^^^^^^^
+...
+1230 |       fn apply_reduced(&mut self) {
+     |          ^^^^^^^^^^^^^
+...
+1244 |       pub(crate) fn set_forced_resolver(
+     |                     ^^^^^^^^^^^^^^^^^^^
+...
+1250 |       pub(crate) fn appearance(&self) -> crate::theme::Appearance {
+     |                     ^^^^^^^^^^
+...
+1256 |       pub(crate) fn forced_resolver(&self) -> Option<&dyn Fn(crate::style::SystemColor) -> [f32; 4]> {
+     |                     ^^^^^^^^^^^^^^^
+...
+1266 |       pub(crate) fn shutdown(&mut self) {
+     |                     ^^^^^^^^
+...
+1341 |       pub(crate) fn root_children(&self) -> Vec<NodeId> {
+     |                     ^^^^^^^^^^^^^
+
+warning: function `validate_bindings` is never used
+    --> src/runtime.rs:1371:4
+     |
+1371 | fn validate_bindings(tx: &Tx) -> Option<UiDiagnostic> {
+     |    ^^^^^^^^^^^^^^^^^
+
+warning: function `validate_styles` is never used
+    --> src/runtime.rs:1387:4
+     |
+1387 | fn validate_styles(tx: &Tx, dark: bool) -> Option<UiError> {
+     |    ^^^^^^^^^^^^^^^
+
+warning: constant `FRAME_STEP` is never used
+ --> src/sched.rs:8:18
+  |
+8 | pub(crate) const FRAME_STEP: Duration = Duration::from_millis(16);
+  |                  ^^^^^^^^^^
+
+warning: constant `TRANSITION_MS` is never used
+ --> src/sched.rs:9:18
+  |
+9 | pub(crate) const TRANSITION_MS: u64 = 150;
+  |                  ^^^^^^^^^^^^^
+
+warning: constant `TOOLTIP_DELAY` is never used
+  --> src/sched.rs:10:18
+   |
+10 | pub(crate) const TOOLTIP_DELAY: Duration = Duration::from_millis(500);
+   |                  ^^^^^^^^^^^^^
+
+warning: struct `Scheduler` is never constructed
+  --> src/sched.rs:15:19
+   |
+15 | pub(crate) struct Scheduler {
+   |                   ^^^^^^^^^
+
+warning: struct `Transition` is never constructed
+  --> src/sched.rs:22:8
+   |
+22 | struct Transition {
+   |        ^^^^^^^^^^
+
+warning: struct `FrameDemand` is never constructed
+  --> src/sched.rs:30:8
+   |
+30 | struct FrameDemand {
+   |        ^^^^^^^^^^^
+
+warning: struct `Tooltip` is never constructed
+  --> src/sched.rs:40:8
+   |
+40 | struct Tooltip {
+   |        ^^^^^^^
+
+warning: enum `SchedEvent` is never used
+  --> src/sched.rs:49:17
+   |
+49 | pub(crate) enum SchedEvent {
+   |                 ^^^^^^^^^^
+
+warning: multiple methods are never used
+   --> src/sched.rs:69:19
+    |
+ 65 | impl Scheduler {
+    | -------------- methods in this implementation
+...
+ 69 |     pub(crate) fn start_transition(
+    |                   ^^^^^^^^^^^^^^^^
+...
+ 93 |     pub(crate) fn arm_tooltip(&mut self, node: NodeId, now: Instant) {
+    |                   ^^^^^^^^^^^
+...
+107 |     pub(crate) fn frame_demand(&mut self, node: NodeId, on: bool, now: Instant) {
+    |                   ^^^^^^^^^^^^
+...
+121 |     pub(crate) fn cancel_tooltip(&mut self, node: NodeId) {
+    |                   ^^^^^^^^^^^^^^
+...
+129 |     pub(crate) fn set_suspended(&mut self, node: NodeId, suspended: bool, now: Instant) {
+    |                   ^^^^^^^^^^^^^
+...
+144 |     pub(crate) fn cancel_node(&mut self, node: NodeId) {
+    |                   ^^^^^^^^^^^
+...
+153 |     pub(crate) fn set_reduced(&mut self, reduced: bool, now: Instant) -> Vec<SchedEvent> {
+    |                   ^^^^^^^^^^^
+...
+183 |     pub(crate) fn next_deadline(&self) -> Option<Instant> {
+    |                   ^^^^^^^^^^^^^
+...
+211 |     pub(crate) fn is_idle(&self) -> bool {
+    |                   ^^^^^^^
+...
+215 |     pub(crate) fn has_frame_demand(&self) -> bool {
+    |                   ^^^^^^^^^^^^^^^^
+...
+221 |     pub(crate) fn poll(&mut self, now: Instant) -> Vec<SchedEvent> {
+    |                   ^^^^
+...
+287 |     pub(crate) fn reset(&mut self) {
+    |                   ^^^^^
+
+warning: function `side_resolved_eq` is never used
+   --> src/style.rs:587:4
+    |
+587 | fn side_resolved_eq(a: &BorderSide, b: &BorderSide, dark: bool) -> bool {
+    |    ^^^^^^^^^^^^^^^^
+
+warning: function `shadow_resolved_eq` is never used
+   --> src/style.rs:591:4
+    |
+591 | fn shadow_resolved_eq(a: &Option<Shadow>, b: &Option<Shadow>, dark: bool) -> bool {
+    |    ^^^^^^^^^^^^^^^^^^
+
+warning: function `box_resolved_eq` is never used
+   --> src/style.rs:607:15
+    |
+607 | pub(crate) fn box_resolved_eq(a: &BoxStyle, b: &BoxStyle, dark: bool) -> bool {
+    |               ^^^^^^^^^^^^^^^
+
+warning: function `visual_resolved_eq` is never used
+   --> src/style.rs:619:15
+    |
+619 | pub(crate) fn visual_resolved_eq(a: &VisualStyle, b: &VisualStyle, dark: bool) -> bool {
+    |               ^^^^^^^^^^^^^^^^^^
+
+warning: function `role_color` is never used
+   --> src/style.rs:991:8
+    |
+991 | pub fn role_color(role: ColorRole, dark: bool) -> [f32; 4] {
+    |        ^^^^^^^^^^
+
+warning: function `resolve_color` is never used
+    --> src/style.rs:1018:8
+     |
+1018 | pub fn resolve_color(c: Color, dark: bool) -> [f32; 4] {
+     |        ^^^^^^^^^^^^^
+
+warning: function `button_recipe` is never used
+    --> src/style.rs:1039:8
+     |
+1039 | pub fn button_recipe(
+     |        ^^^^^^^^^^^^^
+
+warning: function `state_delta` is never used
+    --> src/style.rs:1138:4
+     |
+1138 | fn state_delta(from: &VisualStyle, to: &VisualStyle) -> VisualStylePatch {
+     |    ^^^^^^^^^^^
+
+warning: function `resolve_button` is never used
+    --> src/style.rs:1200:8
+     |
+1200 | pub fn resolve_button(
+     |        ^^^^^^^^^^^^^^
+
+warning: function `text_input_chrome_recipe` is never used
+    --> src/style.rs:1252:8
+     |
+1252 | pub fn text_input_chrome_recipe() -> BoxStyle {
+     |        ^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `resolve_text_input_chrome` is never used
+    --> src/style.rs:1270:8
+     |
+1270 | pub fn resolve_text_input_chrome(patch: &TextInputStylePatch) -> BoxStyle {
+     |        ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `surface_recipe` is never used
+    --> src/style.rs:1277:8
+     |
+1277 | pub fn surface_recipe() -> BoxStyle {
+     |        ^^^^^^^^^^^^^^
+
+warning: function `label_recipe` is never used
+    --> src/style.rs:1288:8
+     |
+1288 | pub fn label_recipe() -> TextStyle {
+     |        ^^^^^^^^^^^^
+
+warning: function `dp_ok` is never used
+    --> src/style.rs:1297:4
+     |
+1297 | fn dp_ok(d: &Dp) -> bool {
+     |    ^^^^^
+
+warning: function `insets_ok` is never used
+    --> src/style.rs:1300:4
+     |
+1300 | fn insets_ok(i: &Insets) -> bool {
+     |    ^^^^^^^^^
+
+warning: function `radii_ok` is never used
+    --> src/style.rs:1303:4
+     |
+1303 | fn radii_ok(r: &CornerRadii) -> bool {
+     |    ^^^^^^^^
+
+warning: function `border_ok` is never used
+    --> src/style.rs:1306:4
+     |
+1306 | fn border_ok(b: &Border) -> bool {
+     |    ^^^^^^^^^
+
+warning: function `shadow_ok` is never used
+    --> src/style.rs:1311:4
+     |
+1311 | fn shadow_ok(s: &Shadow) -> bool {
+     |    ^^^^^^^^^
+
+warning: function `text_ok` is never used
+    --> src/style.rs:1317:4
+     |
+1317 | fn text_ok(t: &TextStyle) -> bool {
+     |    ^^^^^^^
+
+warning: function `box_style_ok` is never used
+    --> src/style.rs:1325:15
+     |
+1325 | pub(crate) fn box_style_ok(s: &BoxStyle) -> bool {
+     |               ^^^^^^^^^^^^
+
+warning: function `visual_style_ok` is never used
+    --> src/style.rs:1332:15
+     |
+1332 | pub(crate) fn visual_style_ok(s: &VisualStyle) -> bool {
+     |               ^^^^^^^^^^^^^^^
+
+warning: function `box_patch_ok` is never used
+    --> src/style.rs:1336:15
+     |
+1336 | pub(crate) fn box_patch_ok(p: &BoxStylePatch) -> bool {
+     |               ^^^^^^^^^^^^
+
+warning: function `text_patch_ok` is never used
+    --> src/style.rs:1369:15
+     |
+1369 | pub(crate) fn text_patch_ok(p: &TextStylePatch) -> bool {
+     |               ^^^^^^^^^^^^^
+
+warning: function `visual_patch_ok` is never used
+    --> src/style.rs:1373:15
+     |
+1373 | pub(crate) fn visual_patch_ok(p: &VisualStylePatch) -> bool {
+     |               ^^^^^^^^^^^^^^^
+
+warning: function `button_patch_ok` is never used
+    --> src/style.rs:1377:15
+     |
+1377 | pub(crate) fn button_patch_ok(p: &ButtonStylePatch) -> bool {
+     |               ^^^^^^^^^^^^^^^
+
+warning: function `text_input_patch_ok` is never used
+    --> src/style.rs:1390:15
+     |
+1390 | pub(crate) fn text_input_patch_ok(p: &TextInputStylePatch) -> bool {
+     |               ^^^^^^^^^^^^^^^^^^^
+
+warning: function `text_input_opaque` is never used
+    --> src/style.rs:1397:15
+     |
+1397 | pub(crate) fn text_input_opaque(b: &BoxStyle, fg: Color, dark: bool) -> bool {
+     |               ^^^^^^^^^^^^^^^^^
+
+warning: function `action_style_ok` is never used
+    --> src/style.rs:1402:15
+     |
+1402 | pub(crate) fn action_style_ok(s: &ActionStyle) -> bool {
+     |               ^^^^^^^^^^^^^^^
+
+warning: enum `SystemColor` is never used
+    --> src/style.rs:1418:10
+     |
+1418 | pub enum SystemColor {
+     |          ^^^^^^^^^^^
+
+warning: function `system_slot` is never used
+    --> src/style.rs:1438:8
+     |
+1438 | pub fn system_slot(role: crate::theme::ColorRole) -> SystemColor {
+     |        ^^^^^^^^^^^
+
+warning: function `enforce_color` is never used
+    --> src/style.rs:1455:4
+     |
+1455 | fn enforce_color(c: &mut Color, sys: &dyn Fn(SystemColor) -> [f32; 4]) {
+     |    ^^^^^^^^^^^^^
+
+warning: function `enforce_box_colors` is never used
+    --> src/style.rs:1467:4
+     |
+1467 | fn enforce_box_colors(b: &mut BoxStyle, sys: &dyn Fn(SystemColor) -> [f32; 4]) {
+     |    ^^^^^^^^^^^^^^^^^^
+
+warning: function `os_enforce_box` is never used
+    --> src/style.rs:1485:15
+     |
+1485 | pub(crate) fn os_enforce_box(
+     |               ^^^^^^^^^^^^^^
+
+warning: function `os_enforce_visual` is never used
+    --> src/style.rs:1494:15
+     |
+1494 | pub(crate) fn os_enforce_visual(
+     |               ^^^^^^^^^^^^^^^^^
+
+warning: function `patch_touches_layout` is never used
+    --> src/style.rs:1507:15
+     |
+1507 | pub(crate) fn patch_touches_layout(p: &BoxStylePatch) -> bool {
+     |               ^^^^^^^^^^^^^^^^^^^^
+
+warning: field `owed` is never read
+   --> src/tasks.rs:211:19
+    |
+211 |     Uninstalled { owed: bool },
+    |     -----------   ^^^^
+    |     |
+    |     field in this variant
+
+warning: variant `Idle` is never constructed
+   --> src/tasks.rs:213:5
+    |
+204 | enum WakeState {
+    |      --------- variant in this enum
+...
+213 |     Idle,
+    |     ^^^^
+
+warning: type alias `WakeCb` is never used
+   --> src/tasks.rs:314:6
+    |
+314 | type WakeCb = Arc<dyn Fn() -> bool + Send + Sync>;
+    |      ^^^^^^
+
+warning: multiple methods are never used
+   --> src/tasks.rs:336:19
+    |
+316 | impl Mailbox {
+    | ------------ methods in this implementation
+...
+336 |     pub(crate) fn install_wake(&self, wake: WakeCb) -> Result<(), ProxySendError> {
+    |                   ^^^^^^^^^^^^
+...
+379 |     pub(crate) fn take_wake_failure(&self) -> bool {
+    |                   ^^^^^^^^^^^^^^^^^
+...
+415 |     pub(crate) fn wake_seen(&self) {
+    |                   ^^^^^^^^^
+...
+521 |     pub(crate) fn pop(&self) -> Option<Envelope> {
+    |                   ^^^
+...
+568 |     pub(crate) fn purge_reg(&self, reg: u64) {
+    |                   ^^^^^^^^^
+...
+577 |     pub(crate) fn close(&self) {
+    |                   ^^^^^
+...
+594 |     pub(crate) fn queue_len(&self) -> usize {
+    |                   ^^^^^^^^^
+
+warning: field `cancel_waiters` is never read
+   --> src/tasks.rs:625:5
+    |
+616 | struct ChanCore {
+    |        -------- field in this struct
+...
+625 |     cancel_waiters: Arc<WakerSet>,
+    |     ^^^^^^^^^^^^^^
+
+warning: associated function `root` is never used
+   --> src/tasks.rs:837:19
+    |
+836 | impl ScopePath {
+    | -------------- associated function in this implementation
+837 |     pub(crate) fn root() -> Self {
+    |                   ^^^^
+
+warning: fields `pending_envs` and `lift` are never read
+   --> src/tasks.rs:869:5
+    |
+865 | struct Registration {
+    |        ------------ fields in this struct
+...
+869 |     pending_envs: Arc<AtomicU64>,
+    |     ^^^^^^^^^^^^
+870 |     cancel_waiters: Arc<WakerSet>,
+871 |     lift: Box<dyn Fn(Box<dyn Any>) -> Option<Box<dyn Any>>>,
+    |     ^^^^
+
+warning: struct `Dequeued` is never constructed
+   --> src/tasks.rs:874:19
+    |
+874 | pub(crate) struct Dequeued {
+    |                   ^^^^^^^^
+
+warning: methods `live_count`, `resolve`, `reap_completed`, and `fence_all` are never used
+    --> src/tasks.rs:888:19
+     |
+ 887 | impl TaskRegistry {
+     | ----------------- methods in this implementation
+ 888 |     pub(crate) fn live_count(&self) -> usize {
+     |                   ^^^^^^^^^^
+...
+ 989 |     pub(crate) fn resolve(&mut self, env: Envelope) -> Option<Dequeued> {
+     |                   ^^^^^^^
+...
+1011 |     pub(crate) fn reap_completed(&mut self) {
+     |                   ^^^^^^^^^^^^^^
+...
+1047 |     pub(crate) fn fence_all(&mut self, mailbox: &Arc<Mailbox>) {
+     |                   ^^^^^^^^^
+
+warning: method `raw_val` is never used
+  --> src/text.rs:34:19
+   |
+24 | impl TextRevision {
+   | ----------------- method in this implementation
+...
+34 |     pub(crate) fn raw_val(&self) -> u64 {
+   |                   ^^^^^^^
+
+warning: associated function `mint` is never used
+  --> src/text.rs:40:19
+   |
+39 | impl BindingToken {
+   | ----------------- associated function in this implementation
+40 |     pub(crate) fn mint() -> Self {
+   |                   ^^^^
+
+warning: fields `base` and `text` are never read
+   --> src/text.rs:132:9
+    |
+130 | pub(crate) struct Proposal {
+    |                   -------- fields in this struct
+131 |     /// revision the app observed when it issued the request
+132 |     pub base: TextRevision,
+    |         ^^^^
+...
+135 |     pub text: Rc<str>,
+    |         ^^^^
+    |
+    = note: `Proposal` has a derived impl for the trait `Debug`, but this is intentionally ignored during dead code analysis
+
+warning: fields `lease`, `committed`, `revision`, and `pending` are never read
+   --> src/text.rs:147:9
+    |
+146 | pub(crate) struct TextSnapshot {
+    |                   ------------ fields in this struct
+147 |     pub lease: LeaseCell,
+    |         ^^^^^
+148 |     pub committed: Rc<str>,
+    |         ^^^^^^^^^
+149 |     pub revision: TextRevision,
+    |         ^^^^^^^^
+150 |     pub pending: Option<Rc<Proposal>>,
+    |         ^^^^^^^
+    |
+    = note: `TextSnapshot` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: associated items `pending`, `is_tombstoned`, `acquire_binding`, `acquire_lease`, `release_lease`, and `lease_cell` are never used
+   --> src/text.rs:239:19
+    |
+172 | impl TextValue {
+    | -------------- associated items in this implementation
+...
+239 |     pub(crate) fn pending(&self) -> Option<&Proposal> {
+    |                   ^^^^^^^
+...
+284 |     pub(crate) fn is_tombstoned(&self, requested: TextRevision) -> bool {
+    |                   ^^^^^^^^^^^^^
+...
+290 |     pub(crate) fn acquire_binding(&self) -> Option<BindingToken> {
+    |                   ^^^^^^^^^^^^^^^
+...
+301 |     pub(crate) fn acquire_lease(lease: &LeaseCell) -> Option<BindingToken> {
+    |                   ^^^^^^^^^^^^^
+...
+310 |     pub(crate) fn release_lease(lease: &LeaseCell, token: BindingToken) {
+    |                   ^^^^^^^^^^^^^
+...
+316 |     pub(crate) fn lease_cell(&self) -> LeaseCell {
+    |                   ^^^^^^^^^^
+
+warning: enum `TextPeerError` is never used
+   --> src/text.rs:332:17
+    |
+332 | pub(crate) enum TextPeerError {
+    |                 ^^^^^^^^^^^^^
+
+warning: function `utf16_to_utf8` is never used
+   --> src/text.rs:337:15
+    |
+337 | pub(crate) fn utf16_to_utf8(units: &[u16]) -> Result<String, TextPeerError> {
+    |               ^^^^^^^^^^^^^
+
+warning: function `utf16_index_to_utf8` is never used
+   --> src/text.rs:343:15
+    |
+343 | pub(crate) fn utf16_index_to_utf8(text: &str, utf16_index: usize) -> Option<usize> {
+    |               ^^^^^^^^^^^^^^^^^^^
+
+warning: function `utf8_index_to_utf16` is never used
+   --> src/text.rs:362:15
+    |
+362 | pub(crate) fn utf8_index_to_utf16(text: &str, byte_index: usize) -> Option<usize> {
+    |               ^^^^^^^^^^^^^^^^^^^
+
+warning: function `validate_selection` is never used
+   --> src/text.rs:378:15
+    |
+378 | pub(crate) fn validate_selection(
+    |               ^^^^^^^^^^^^^^^^^^
+
+warning: function `lease_id_of` is never used
+   --> src/text.rs:395:15
+    |
+395 | pub(crate) fn lease_id_of(lease: &LeaseCell) -> usize {
+    |               ^^^^^^^^^^^
+
+warning: fields `key`, `data`, `visibility`, `layout`, `adapters`, and `children` are never read
+   --> src/ui.rs:242:9
+    |
+240 | pub(crate) struct StagedNode {
+    |                   ---------- fields in this struct
+241 |     pub automation_id: Option<Rc<str>>,
+242 |     pub key: ChildKey,
+    |         ^^^
+243 |     pub data: NodeData,
+    |         ^^^^
+244 |     pub visibility: Visibility,
+    |         ^^^^^^^^^^
+245 |     pub layout: LayoutSpec,
+    |         ^^^^^^
+...
+248 |     pub adapters: MsgAdapters,
+    |         ^^^^^^^^
+249 |     /// indices into `Tx.nodes`
+250 |     pub children: Vec<u32>,
+    |         ^^^^^^^^
+
+warning: associated items `placeholder`, `kind_tag`, and `lease_id` are never used
+   --> src/ui.rs:255:19
+    |
+253 | impl StagedNode {
+    | --------------- associated items in this implementation
+254 |     /// Slot placeholder while a node is moved out of the flat buffer.
+255 |     pub(crate) fn placeholder() -> Self {
+    |                   ^^^^^^^^^^^
+...
+271 |     pub(crate) fn kind_tag(&self) -> u8 {
+    |                   ^^^^^^^^
+...
+290 |     pub(crate) fn lease_id(&self) -> Option<usize> {
+    |                   ^^^^^^^^
+
+warning: method `slot` is never used
+  --> src/arena.rs:65:19
+   |
+12 | impl Arena {
+   | ---------- method in this implementation
+...
+65 |     pub(crate) fn slot(&self, slot: u32) -> Option<&Node> {
+   |                   ^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: method `len` is never used
+   --> src/event.rs:168:19
+    |
+135 | impl EventQueue {
+    | --------------- method in this implementation
+...
+168 |     pub(crate) fn len(&self) -> usize {
+    |                   ^^^
+
+warning: fields `read_only`, `disabled`, and `foreground` are never read
+  --> src/node.rs:37:9
+   |
+35 | pub struct PeerSpec {
+   |            -------- fields in this struct
+36 |     pub multiline: bool,
+37 |     pub read_only: bool,
+   |         ^^^^^^^^^
+38 |     pub disabled: bool,
+   |         ^^^^^^^^
+...
+41 |     pub foreground: crate::style::Color,
+   |         ^^^^^^^^^^
+   |
+   = note: `PeerSpec` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+warning: method `visual_clone` is never used
+   --> src/node.rs:737:8
+    |
+736 | impl ContainerProps {
+    | ------------------- method in this implementation
+737 |     fn visual_clone(&self) -> (crate::style::BoxStylePatch, Option<crate::style::BoxStyle>) {
+    |        ^^^^^^^^^^^^
+
+warning: variants `Submit`, `Key`, `Pointer`, `OpenChange`, and `Scroll` are never constructed
+   --> src/node.rs:792:5
+    |
+788 | pub(crate) enum NodeEvent {
+    |                 --------- variants in this enum
+...
+792 |     Submit,
+    |     ^^^^^^
+...
+795 |     Key(crate::event::KeyEvent),
+    |     ^^^
+796 |     Conflict(TextConflict),
+797 |     Pointer(crate::event::PointerEvent, PointerPhase),
+    |     ^^^^^^^
+798 |     Focus(bool),
+799 |     OpenChange(bool),
+    |     ^^^^^^^^^^
+800 |     Scroll(crate::event::ScrollOffset),
+    |     ^^^^^^
+
+warning: variants `Enter`, `Leave`, `Down`, and `Up` are never constructed
+   --> src/node.rs:805:5
+    |
+804 | pub(crate) enum PointerPhase {
+    |                 ------------ variants in this enum
+805 |     Enter,
+    |     ^^^^^
+806 |     Leave,
+    |     ^^^^^
+807 |     Down,
+    |     ^^^^
+808 |     Up,
+    |     ^^
+    |
+    = note: `PointerPhase` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+warning: multiple associated items are never used
+    --> src/runtime.rs:283:19
+     |
+ 156 | / impl<S, M, U, V> Runtime<S, M, U, V>
+ 157 | | where
+ 158 | |     M: 'static,
+ 159 | |     U: Fn(&mut S, M, &mut UpdateCtx<M>),
+ 160 | |     V: Fn(&S, &mut Ui<'_, '_, M>),
+     | |__________________________________- associated items in this implementation
+...
+ 283 |       pub(crate) fn set_appearance(&mut self, a: Appearance) {
+     |                     ^^^^^^^^^^^^^^
+...
+ 521 |       pub(crate) fn drain_dirty(&mut self) -> Vec<(NodeId, u8)> {
+     |                     ^^^^^^^^^^^
+...
+ 659 |       pub(crate) const DIRTY_REMOVED: u8 = 0b0000_0100;
+     |                        ^^^^^^^^^^^^^
+...
+1079 |       pub(crate) fn selection_event(&mut self, node: NodeId, sel: crate::TextSelection) -> UiResult {
+     |                     ^^^^^^^^^^^^^^^
+...
+1102 |       pub(crate) fn composition_active(&self, node: NodeId) -> bool {
+     |                     ^^^^^^^^^^^^^^^^^^
+...
+1111 |       pub(crate) fn committed_editor(&self, node: NodeId) -> Option<(String, TextRevision)> {
+     |                     ^^^^^^^^^^^^^^^^
+...
+1201 |       pub(crate) fn sched_arm_tooltip(&mut self, node: NodeId) {
+     |                     ^^^^^^^^^^^^^^^^^
+...
+1204 |       pub(crate) fn sched_unarm_tooltip(&mut self, node: NodeId) {
+     |                     ^^^^^^^^^^^^^^^^^^^
+...
+1207 |       pub(crate) fn node_has_tooltip(&self, node: NodeId) -> bool {
+     |                     ^^^^^^^^^^^^^^^^
+...
+1221 |       pub(crate) fn set_motion_resolver(&mut self, f: Box<dyn Fn() -> bool>) {
+     |                     ^^^^^^^^^^^^^^^^^^^
+...
+1227 |       pub(crate) fn refresh_reduced(&mut self) {
+     |                     ^^^^^^^^^^^^^^^
+...
+1244 |       pub(crate) fn set_forced_resolver(
+     |                     ^^^^^^^^^^^^^^^^^^^
+...
+1250 |       pub(crate) fn appearance(&self) -> crate::theme::Appearance {
+     |                     ^^^^^^^^^^
+...
+1256 |       pub(crate) fn forced_resolver(&self) -> Option<&dyn Fn(crate::style::SystemColor) -> [f32; 4]> {
+     |                     ^^^^^^^^^^^^^^^
+
+warning: fields `node`, `token`, and `elapsed` are never read
+  --> src/sched.rs:52:9
+   |
+51 |     TransitionStep {
+   |     -------------- fields in this variant
+52 |         node: NodeId,
+   |         ^^^^
+53 |         token: MotionToken,
+   |         ^^^^^
+54 |         elapsed: Duration,
+   |         ^^^^^^^
+   |
+   = note: `SchedEvent` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+
+warning: fields `node` and `token` are never read
+  --> src/sched.rs:57:22
+   |
+57 |     TransitionDone { node: NodeId, token: MotionToken },
+   |     --------------   ^^^^          ^^^^^
+   |     |
+   |     fields in this variant
+   |
+   = note: `SchedEvent` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+
+warning: field `node` is never read
+  --> src/sched.rs:62:19
+   |
+62 |     TooltipShow { node: NodeId },
+   |     -----------   ^^^^
+   |     |
+   |     field in this variant
+   |
+   = note: `SchedEvent` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+
+warning: methods `cancel_tooltip` and `has_frame_demand` are never used
+   --> src/sched.rs:121:19
+    |
+ 65 | impl Scheduler {
+    | -------------- methods in this implementation
+...
+121 |     pub(crate) fn cancel_tooltip(&mut self, node: NodeId) {
+    |                   ^^^^^^^^^^^^^^
+...
+215 |     pub(crate) fn has_frame_demand(&self) -> bool {
+    |                   ^^^^^^^^^^^^^^^^
+
+warning: variant `HotTrack` is never constructed
+    --> src/style.rs:1432:5
+     |
+1418 | pub enum SystemColor {
+     |          ----------- variant in this enum
+...
+1432 |     HotTrack,
+     |     ^^^^^^^^
+     |
+     = note: `SystemColor` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+warning: methods `purge_reg` and `clone_wake_cb` are never used
+   --> src/tasks.rs:568:19
+    |
+316 | impl Mailbox {
+    | ------------ methods in this implementation
+...
+568 |     pub(crate) fn purge_reg(&self, reg: u64) {
+    |                   ^^^^^^^^^
+...
+601 |     pub(crate) fn clone_wake_cb(&self) -> Option<Arc<dyn Fn() -> bool + Send + Sync>> {
+    |                   ^^^^^^^^^^^^^
+
+warning: field `reg` is never read
+   --> src/tasks.rs:876:16
+    |
+874 | pub(crate) struct Dequeued {
+    |                   -------- field in this struct
+875 |     pub(crate) msg: Box<dyn Any>,
+876 |     pub(crate) reg: u64,
+    |                ^^^
+
+warning: methods `is_tombstoned`, `acquire_binding`, and `lease_cell` are never used
+   --> src/text.rs:284:19
+    |
+172 | impl TextValue {
+    | -------------- methods in this implementation
+...
+284 |     pub(crate) fn is_tombstoned(&self, requested: TextRevision) -> bool {
+    |                   ^^^^^^^^^^^^^
+...
+290 |     pub(crate) fn acquire_binding(&self) -> Option<BindingToken> {
+    |                   ^^^^^^^^^^^^^^^
+...
+316 |     pub(crate) fn lease_cell(&self) -> LeaseCell {
+    |                   ^^^^^^^^^^
+
+warning: variant `OutOfBounds` is never constructed
+   --> src/text.rs:334:5
+    |
+332 | pub(crate) enum TextPeerError {
+    |                 ------------- variant in this enum
+333 |     InvalidUtf16,
+334 |     OutOfBounds,
+    |     ^^^^^^^^^^^
+    |
+    = note: `TextPeerError` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+
+warning: field `id` is never read
+  --> src/tests.rs:36:5
+   |
+35 | struct PeerRec {
+   |        ------- field in this struct
+36 |     id: u64,
+   |     ^^
+   |
+   = note: `PeerRec` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: field `next` is never read
+  --> src/tests.rs:45:5
+   |
+43 | struct PeerLog {
+   |        ------- field in this struct
+44 |     recs: Arc<Mutex<HashMap<u64, PeerRec>>>,
+45 |     next: Arc<Mutex<u64>>,
+   |     ^^^^
+   |
+   = note: `PeerLog` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: method `map` is never used
+  --> src/tests.rs:50:8
+   |
+48 | impl PeerLog {
+   | ------------ method in this implementation
+49 |     /// poison-tolerant — a panicked test still cleans up its peers
+50 |     fn map(&self) -> std::sync::MutexGuard<'_, HashMap<u64, PeerRec>> {
+   |        ^^^
+
+warning: method `live` is never used
+   --> src/tests.rs:198:8
+    |
+173 | impl TestExecutor {
+    | ----------------- method in this implementation
+...
+198 |     fn live(&self) -> usize {
+    |        ^^^^
+
+warning: variants `Selection` and `Focus` are never constructed
+   --> src/tests.rs:217:5
+    |
+212 | enum Msg {
+    |      --- variants in this enum
+...
+217 |     Selection(TextSelection),
+    |     ^^^^^^^^^
+218 |     Chunk(u32),
+219 |     Focus(bool),
+    |     ^^^^^
+    |
+    = note: `Msg` has a derived impl for the trait `Debug`, but this is intentionally ignored during dead code analysis
+
+warning: field `views` is never read
+    --> src/tests.rs:2132:9
+     |
+2131 |     struct S {
+     |            - field in this struct
+2132 |         views: u64,
+     |         ^^^^^
+
+warning: field `show` is never read
+    --> src/tests.rs:3604:9
+     |
+3601 |     struct S {
+     |            - field in this struct
+...
+3604 |         show: bool,
+     |         ^^^^
+
+warning: `rust-ui` (lib) generated 115 warnings
+warning: `rust-ui` (lib test) generated 35 warnings (12 duplicates)
+    Checking rust-ui v0.1.0 (/mnt/w/devin_folder/rust-ui-devctl-261006-0850)
+warning: field `app_args` is never read
+  --> src/bin/rust-ui-devctl.rs:12:5
+   |
+ 8 | struct Args {
+   |        ---- field in this struct
+...
+12 |     app_args: Vec<String>,
+   |     ^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `rust-ui` (bin "rust-ui-devctl") generated 1 warning
+warning: `rust-ui` (bin "rust-ui-devctl" test) generated 1 warning (1 duplicate)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 3.43s

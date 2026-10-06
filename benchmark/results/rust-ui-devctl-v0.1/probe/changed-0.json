@@ -1,0 +1,188 @@
+{
+  "schema": "rust-ui.devctl.snapshot-layout/0.1",
+  "scale_factor": 1.25,
+  "client_dp": {
+    "x": 0.0,
+    "y": 0.0,
+    "width": 769.5999755859375,
+    "height": 682.4000244140625
+  },
+  "client_px": {
+    "x": 0.0,
+    "y": 0.0,
+    "width": 962.0,
+    "height": 853.0
+  },
+  "root": {
+    "automation_id": null,
+    "kind": "container",
+    "label": "",
+    "rect_dp": {
+      "x": 0.0,
+      "y": 0.0,
+      "width": 769.5999755859375,
+      "height": 682.4000244140625
+    },
+    "rect_px": {
+      "x": 0.0,
+      "y": 0.0,
+      "width": 962.0,
+      "height": 853.0
+    },
+    "visible": true,
+    "enabled": true,
+    "focused": false,
+    "focus_visible": false,
+    "hovered": false,
+    "pressed": false,
+    "children": [
+      {
+        "automation_id": "probe.root",
+        "kind": "container",
+        "label": "",
+        "rect_dp": {
+          "x": 16.0,
+          "y": 16.0,
+          "width": 737.5999755859375,
+          "height": 197.4210968017578
+        },
+        "rect_px": {
+          "x": 20.0,
+          "y": 20.0,
+          "width": 922.0,
+          "height": 247.0
+        },
+        "visible": true,
+        "enabled": true,
+        "focused": false,
+        "focus_visible": false,
+        "hovered": false,
+        "pressed": false,
+        "children": [
+          {
+            "automation_id": "probe.surface",
+            "kind": "container",
+            "label": "",
+            "rect_dp": {
+              "x": 32.0,
+              "y": 32.0,
+              "width": 705.5999755859375,
+              "height": 165.4210968017578
+            },
+            "rect_px": {
+              "x": 40.0,
+              "y": 40.0,
+              "width": 882.0,
+              "height": 207.0
+            },
+            "visible": true,
+            "enabled": true,
+            "focused": false,
+            "focus_visible": false,
+            "hovered": false,
+            "pressed": false,
+            "children": [
+              {
+                "automation_id": null,
+                "kind": "container",
+                "label": "",
+                "rect_dp": {
+                  "x": 45.0,
+                  "y": 45.0,
+                  "width": 679.5999755859375,
+                  "height": 139.4210968017578
+                },
+                "rect_px": {
+                  "x": 56.0,
+                  "y": 56.0,
+                  "width": 850.0,
+                  "height": 175.0
+                },
+                "visible": true,
+                "enabled": true,
+                "focused": false,
+                "focus_visible": false,
+                "hovered": false,
+                "pressed": false,
+                "children": [
+                  {
+                    "automation_id": "probe.label",
+                    "kind": "label",
+                    "label": "Clicks: 3",
+                    "rect_dp": {
+                      "x": 53.0,
+                      "y": 53.0,
+                      "width": 49.232421875,
+                      "height": 18.62109375
+                    },
+                    "rect_px": {
+                      "x": 66.0,
+                      "y": 66.0,
+                      "width": 62.0,
+                      "height": 24.0
+                    },
+                    "visible": true,
+                    "enabled": true,
+                    "focused": false,
+                    "focus_visible": false,
+                    "hovered": false,
+                    "pressed": false,
+                    "children": []
+                  },
+                  {
+                    "automation_id": "probe.button",
+                    "kind": "button",
+                    "label": "Count",
+                    "rect_dp": {
+                      "x": 54.0,
+                      "y": 83.62109375,
+                      "width": 69.4609375,
+                      "height": 36.0
+                    },
+                    "rect_px": {
+                      "x": 66.0,
+                      "y": 105.0,
+                      "width": 87.0,
+                      "height": 45.0
+                    },
+                    "visible": true,
+                    "enabled": true,
+                    "focused": true,
+                    "focus_visible": true,
+                    "hovered": true,
+                    "pressed": false,
+                    "children": []
+                  },
+                  {
+                    "automation_id": "probe.input",
+                    "kind": "text-input",
+                    "label": "Calibration tex",
+                    "rect_dp": {
+                      "x": 53.0,
+                      "y": 131.62109375,
+                      "width": 663.5999755859375,
+                      "height": 44.79999923706055
+                    },
+                    "rect_px": {
+                      "x": 66.0,
+                      "y": 165.0,
+                      "width": 830.0,
+                      "height": 56.0
+                    },
+                    "visible": true,
+                    "enabled": true,
+                    "focused": false,
+                    "focus_visible": false,
+                    "hovered": false,
+                    "pressed": false,
+                    "children": []
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

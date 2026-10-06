@@ -1,0 +1,3 @@
+# Keep devctl evidence hashes reproducible across Windows and Linux checkouts.
+benchmark/results/rust-ui-devctl-v0.1/** text eol=lf
+benchmark/results/rust-ui-devctl-v0.1/**/*.png binary

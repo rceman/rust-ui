@@ -1,0 +1,18 @@
+{
+  "ok": false,
+  "result": {
+    "comparisons": [
+      {
+        "id": "button.default",
+        "missing": true,
+        "pass": false
+      }
+    ],
+    "failed": 0,
+    "matched": 0,
+    "missing": 1,
+    "mode": "size-only",
+    "pass": false,
+    "unexpected": []
+  }
+}

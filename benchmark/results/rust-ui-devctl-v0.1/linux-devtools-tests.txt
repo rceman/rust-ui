@@ -1,0 +1,492 @@
+warning: method `slot` is never used
+  --> src/arena.rs:65:19
+   |
+12 | impl Arena {
+   | ---------- method in this implementation
+...
+65 |     pub(crate) fn slot(&self, slot: u32) -> Option<&Node> {
+   |                   ^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: method `len` is never used
+   --> src/event.rs:168:19
+    |
+135 | impl EventQueue {
+    | --------------- method in this implementation
+...
+168 |     pub(crate) fn len(&self) -> usize {
+    |                   ^^^
+
+warning: struct `ScreenPhysicalPoint` is never constructed
+   --> src/geom.rs:226:12
+    |
+226 | pub struct ScreenPhysicalPoint(pub PhysicalPoint);
+    |            ^^^^^^^^^^^^^^^^^^^
+
+warning: method `fingerprint` is never used
+  --> src/key.rs:51:19
+   |
+39 | impl ErasedKey {
+   | -------------- method in this implementation
+...
+51 |     pub(crate) fn fingerprint(&self) -> u64 {
+   |                   ^^^^^^^^^^^
+
+warning: struct `FillItem` is never constructed
+  --> src/layout.rs:21:12
+   |
+21 | pub struct FillItem {
+   |            ^^^^^^^^
+
+warning: function `waterfill` is never used
+  --> src/layout.rs:32:8
+   |
+32 | pub fn waterfill(avail: f32, items: &[FillItem]) -> Vec<f32> {
+   |        ^^^^^^^^^
+
+warning: function `editor_chrome` is never used
+  --> src/layout.rs:89:8
+   |
+89 | pub fn editor_chrome(patch: &TextInputStylePatch) -> BoxStyle {
+   |        ^^^^^^^^^^^^^
+
+warning: function `editor_inset` is never used
+   --> src/layout.rs:100:8
+    |
+100 | pub fn editor_inset(c: &BoxStyle) -> Insets {
+    |        ^^^^^^^^^^^^
+
+warning: function `editor_content_rect` is never used
+   --> src/layout.rs:120:8
+    |
+120 | pub fn editor_content_rect(r: Rect, c: &BoxStyle) -> Rect {
+    |        ^^^^^^^^^^^^^^^^^^^
+
+warning: struct `Interaction` is never constructed
+   --> src/layout.rs:137:12
+    |
+137 | pub struct Interaction {
+    |            ^^^^^^^^^^^
+
+warning: function `node_insets` is never used
+   --> src/layout.rs:149:8
+    |
+149 | pub fn node_insets(id: NodeId, n: &crate::node::Node, ix: &Interaction) -> Insets {
+    |        ^^^^^^^^^^^
+
+warning: fields `read_only`, `disabled`, and `foreground` are never read
+  --> src/node.rs:37:9
+   |
+35 | pub struct PeerSpec {
+   |            -------- fields in this struct
+36 |     pub multiline: bool,
+37 |     pub read_only: bool,
+   |         ^^^^^^^^^
+38 |     pub disabled: bool,
+   |         ^^^^^^^^
+...
+41 |     pub foreground: crate::style::Color,
+   |         ^^^^^^^^^^
+   |
+   = note: `PeerSpec` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+warning: method `state_metric_affecting` is never used
+   --> src/node.rs:395:19
+    |
+391 | impl Node {
+    | --------- method in this implementation
+...
+395 |     pub(crate) fn state_metric_affecting(&self) -> bool {
+    |                   ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: method `visual_clone` is never used
+   --> src/node.rs:737:8
+    |
+736 | impl ContainerProps {
+    | ------------------- method in this implementation
+737 |     fn visual_clone(&self) -> (crate::style::BoxStylePatch, Option<crate::style::BoxStyle>) {
+    |        ^^^^^^^^^^^^
+
+warning: variants `Submit`, `Key`, `Pointer`, `OpenChange`, and `Scroll` are never constructed
+   --> src/node.rs:792:5
+    |
+788 | pub(crate) enum NodeEvent {
+    |                 --------- variants in this enum
+...
+792 |     Submit,
+    |     ^^^^^^
+...
+795 |     Key(crate::event::KeyEvent),
+    |     ^^^
+796 |     Conflict(TextConflict),
+797 |     Pointer(crate::event::PointerEvent, PointerPhase),
+    |     ^^^^^^^
+798 |     Focus(bool),
+799 |     OpenChange(bool),
+    |     ^^^^^^^^^^
+800 |     Scroll(crate::event::ScrollOffset),
+    |     ^^^^^^
+
+warning: variants `Enter`, `Leave`, `Down`, and `Up` are never constructed
+   --> src/node.rs:805:5
+    |
+804 | pub(crate) enum PointerPhase {
+    |                 ------------ variants in this enum
+805 |     Enter,
+    |     ^^^^^
+806 |     Leave,
+    |     ^^^^^
+807 |     Down,
+    |     ^^^^
+808 |     Up,
+    |     ^^
+    |
+    = note: `PointerPhase` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+warning: multiple associated items are never used
+    --> src/runtime.rs:283:19
+     |
+ 156 | / impl<S, M, U, V> Runtime<S, M, U, V>
+ 157 | | where
+ 158 | |     M: 'static,
+ 159 | |     U: Fn(&mut S, M, &mut UpdateCtx<M>),
+ 160 | |     V: Fn(&S, &mut Ui<'_, '_, M>),
+     | |__________________________________- associated items in this implementation
+...
+ 283 |       pub(crate) fn set_appearance(&mut self, a: Appearance) {
+     |                     ^^^^^^^^^^^^^^
+...
+ 521 |       pub(crate) fn drain_dirty(&mut self) -> Vec<(NodeId, u8)> {
+     |                     ^^^^^^^^^^^
+...
+ 659 |       pub(crate) const DIRTY_REMOVED: u8 = 0b0000_0100;
+     |                        ^^^^^^^^^^^^^
+...
+1079 |       pub(crate) fn selection_event(&mut self, node: NodeId, sel: crate::TextSelection) -> UiResult {
+     |                     ^^^^^^^^^^^^^^^
+...
+1102 |       pub(crate) fn composition_active(&self, node: NodeId) -> bool {
+     |                     ^^^^^^^^^^^^^^^^^^
+...
+1111 |       pub(crate) fn committed_editor(&self, node: NodeId) -> Option<(String, TextRevision)> {
+     |                     ^^^^^^^^^^^^^^^^
+...
+1201 |       pub(crate) fn sched_arm_tooltip(&mut self, node: NodeId) {
+     |                     ^^^^^^^^^^^^^^^^^
+...
+1204 |       pub(crate) fn sched_unarm_tooltip(&mut self, node: NodeId) {
+     |                     ^^^^^^^^^^^^^^^^^^^
+...
+1207 |       pub(crate) fn node_has_tooltip(&self, node: NodeId) -> bool {
+     |                     ^^^^^^^^^^^^^^^^
+...
+1221 |       pub(crate) fn set_motion_resolver(&mut self, f: Box<dyn Fn() -> bool>) {
+     |                     ^^^^^^^^^^^^^^^^^^^
+...
+1227 |       pub(crate) fn refresh_reduced(&mut self) {
+     |                     ^^^^^^^^^^^^^^^
+...
+1244 |       pub(crate) fn set_forced_resolver(
+     |                     ^^^^^^^^^^^^^^^^^^^
+...
+1250 |       pub(crate) fn appearance(&self) -> crate::theme::Appearance {
+     |                     ^^^^^^^^^^
+...
+1256 |       pub(crate) fn forced_resolver(&self) -> Option<&dyn Fn(crate::style::SystemColor) -> [f32; 4]> {
+     |                     ^^^^^^^^^^^^^^^
+
+warning: fields `node`, `token`, and `elapsed` are never read
+  --> src/sched.rs:52:9
+   |
+51 |     TransitionStep {
+   |     -------------- fields in this variant
+52 |         node: NodeId,
+   |         ^^^^
+53 |         token: MotionToken,
+   |         ^^^^^
+54 |         elapsed: Duration,
+   |         ^^^^^^^
+   |
+   = note: `SchedEvent` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+
+warning: fields `node` and `token` are never read
+  --> src/sched.rs:57:22
+   |
+57 |     TransitionDone { node: NodeId, token: MotionToken },
+   |     --------------   ^^^^          ^^^^^
+   |     |
+   |     fields in this variant
+   |
+   = note: `SchedEvent` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+
+warning: field `node` is never read
+  --> src/sched.rs:62:19
+   |
+62 |     TooltipShow { node: NodeId },
+   |     -----------   ^^^^
+   |     |
+   |     field in this variant
+   |
+   = note: `SchedEvent` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+
+warning: methods `cancel_tooltip` and `has_frame_demand` are never used
+   --> src/sched.rs:121:19
+    |
+ 65 | impl Scheduler {
+    | -------------- methods in this implementation
+...
+121 |     pub(crate) fn cancel_tooltip(&mut self, node: NodeId) {
+    |                   ^^^^^^^^^^^^^^
+...
+215 |     pub(crate) fn has_frame_demand(&self) -> bool {
+    |                   ^^^^^^^^^^^^^^^^
+
+warning: function `state_delta` is never used
+    --> src/style.rs:1138:4
+     |
+1138 | fn state_delta(from: &VisualStyle, to: &VisualStyle) -> VisualStylePatch {
+     |    ^^^^^^^^^^^
+
+warning: variant `HotTrack` is never constructed
+    --> src/style.rs:1432:5
+     |
+1418 | pub enum SystemColor {
+     |          ----------- variant in this enum
+...
+1432 |     HotTrack,
+     |     ^^^^^^^^
+     |
+     = note: `SystemColor` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+warning: methods `purge_reg` and `clone_wake_cb` are never used
+   --> src/tasks.rs:568:19
+    |
+316 | impl Mailbox {
+    | ------------ methods in this implementation
+...
+568 |     pub(crate) fn purge_reg(&self, reg: u64) {
+    |                   ^^^^^^^^^
+...
+601 |     pub(crate) fn clone_wake_cb(&self) -> Option<Arc<dyn Fn() -> bool + Send + Sync>> {
+    |                   ^^^^^^^^^^^^^
+
+warning: field `cancel_waiters` is never read
+   --> src/tasks.rs:625:5
+    |
+616 | struct ChanCore {
+    |        -------- field in this struct
+...
+625 |     cancel_waiters: Arc<WakerSet>,
+    |     ^^^^^^^^^^^^^^
+
+warning: field `reg` is never read
+   --> src/tasks.rs:876:16
+    |
+874 | pub(crate) struct Dequeued {
+    |                   -------- field in this struct
+875 |     pub(crate) msg: Box<dyn Any>,
+876 |     pub(crate) reg: u64,
+    |                ^^^
+
+warning: methods `is_tombstoned`, `acquire_binding`, and `lease_cell` are never used
+   --> src/text.rs:284:19
+    |
+172 | impl TextValue {
+    | -------------- methods in this implementation
+...
+284 |     pub(crate) fn is_tombstoned(&self, requested: TextRevision) -> bool {
+    |                   ^^^^^^^^^^^^^
+...
+290 |     pub(crate) fn acquire_binding(&self) -> Option<BindingToken> {
+    |                   ^^^^^^^^^^^^^^^
+...
+316 |     pub(crate) fn lease_cell(&self) -> LeaseCell {
+    |                   ^^^^^^^^^^
+
+warning: variant `OutOfBounds` is never constructed
+   --> src/text.rs:334:5
+    |
+332 | pub(crate) enum TextPeerError {
+    |                 ------------- variant in this enum
+333 |     InvalidUtf16,
+334 |     OutOfBounds,
+    |     ^^^^^^^^^^^
+    |
+    = note: `TextPeerError` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+
+warning: field `id` is never read
+  --> src/tests.rs:36:5
+   |
+35 | struct PeerRec {
+   |        ------- field in this struct
+36 |     id: u64,
+   |     ^^
+   |
+   = note: `PeerRec` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: field `next` is never read
+  --> src/tests.rs:45:5
+   |
+43 | struct PeerLog {
+   |        ------- field in this struct
+44 |     recs: Arc<Mutex<HashMap<u64, PeerRec>>>,
+45 |     next: Arc<Mutex<u64>>,
+   |     ^^^^
+   |
+   = note: `PeerLog` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: method `map` is never used
+  --> src/tests.rs:50:8
+   |
+48 | impl PeerLog {
+   | ------------ method in this implementation
+49 |     /// poison-tolerant — a panicked test still cleans up its peers
+50 |     fn map(&self) -> std::sync::MutexGuard<'_, HashMap<u64, PeerRec>> {
+   |        ^^^
+
+warning: method `live` is never used
+   --> src/tests.rs:198:8
+    |
+173 | impl TestExecutor {
+    | ----------------- method in this implementation
+...
+198 |     fn live(&self) -> usize {
+    |        ^^^^
+
+warning: variants `Selection` and `Focus` are never constructed
+   --> src/tests.rs:217:5
+    |
+212 | enum Msg {
+    |      --- variants in this enum
+...
+217 |     Selection(TextSelection),
+    |     ^^^^^^^^^
+218 |     Chunk(u32),
+219 |     Focus(bool),
+    |     ^^^^^
+    |
+    = note: `Msg` has a derived impl for the trait `Debug`, but this is intentionally ignored during dead code analysis
+
+warning: field `views` is never read
+    --> src/tests.rs:2132:9
+     |
+2131 |     struct S {
+     |            - field in this struct
+2132 |         views: u64,
+     |         ^^^^^
+
+warning: field `show` is never read
+    --> src/tests.rs:3604:9
+     |
+3601 |     struct S {
+     |            - field in this struct
+...
+3604 |         show: bool,
+     |         ^^^^
+
+warning: `rust-ui` (lib test) generated 35 warnings
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.38s
+     Running unittests src/lib.rs (target/debug/deps/rust_ui-796c3d0b598490fd)
+
+running 98 tests
+test devtools::tests::image_invalid_extent_rejected ... ok
+test devtools::tests::crop_visible_bounds_and_padding ... ok
+test devtools::tests::oversized_and_malformed_frames_fail ... ok
+test devtools::tests::frozen_reference_adapter_uses_capture_identity ... ok
+test devtools::tests::deterministic_snapshot_and_strict_duplicates ... ok
+test devtools::tests::image_self_and_one_pixel_bbox ... ok
+test devtools::tests::layout_self_and_one_dp_mutation ... ok
+test devtools::tests::protocol_round_trip_and_json_escaping ... ok
+test devtools::tests::response_error_code_preserved ... ok
+test devtools::tests::png_round_trip ... ok
+test devtools::tests::unequal_dimensions_produce_diff_without_resizing ... ok
+test tests::action_stages_and_rejects_nested_actionable ... ok
+test tests::a_hundred_replacements_leave_zero_tombstones ... ok
+test tests::automation_duplicate_aborts_and_semantic_id_survives_reconcile ... ok
+test tests::adjacent_keyed_lists_are_independent ... ok
+test tests::callback_destructor_runs_outside_the_state_lock ... ok
+test tests::bounded_mailbox_64_then_65th_waits ... ok
+test tests::cancel_wakes_all_consumers_and_reentrant_waker_is_safe ... ok
+test tests::completed_registration_reclaims_after_drain ... ok
+test tests::confirmed_edge_coalesces_across_pushes ... ok
+test tests::counter_example_documented_shape_compiles ... ok
+test tests::consumer_must_accept_for_committed_to_change ... ok
+test tests::counter_example_executes_press ... ok
+test tests::disabled_node_gets_no_callback ... ok
+test tests::duplicate_sibling_keys_are_typed_and_no_commit ... ok
+test tests::duplicate_text_binding_is_typed ... ok
+test tests::empty_pump_never_reviews ... ok
+test tests::executor_rejection_fences_registration ... ok
+test tests::final_composition_commit_acknowledged_before_proposal ... ok
+test tests::foreign_and_stale_edits_never_reach_app ... ok
+test tests::frame_demand_deltas_and_unchanged_view ... ok
+test tests::geometry_contract_logical_to_physical ... ok
+test tests::geometry_contract_rect_conversion ... ok
+test tests::geometry_contract_round_trip ... ok
+test tests::geometry_contract_scale_change_is_pure ... ok
+test tests::geometry_contract_scale_identity ... ok
+test tests::group_toggle_does_not_remount_sibling ... ok
+test tests::hash_collision_unequal_keys_stay_distinct ... ok
+test tests::hidden_editor_still_receives_committed_edits ... ok
+test tests::hidden_node_gets_no_callback ... ok
+test tests::initial_reduce_custom_never_schedules ... ok
+test tests::install_wake_fires_for_earlier_proxy_send ... ok
+test tests::install_wake_fires_for_lifecycle_pending ... ok
+test tests::hundred_move_cycles_keep_structure_consistent ... ok
+test tests::hundred_mount_remove_cycles_reclaim_all ... ok
+test tests::install_with_no_obligation_does_not_pulse ... ok
+test tests::int_width_keys_are_distinct ... ok
+test tests::invalid_style_rejected_at_commit ... ok
+test tests::keep_native_clears_matching_request_only ... ok
+test tests::keyed_reorder_keeps_ids_and_peers ... ok
+test tests::last_envelope_charge_drop_lifecycle_wakes_reap ... ok
+test tests::lifecycle_owed_survives_wake_seen_until_install ... ok
+test tests::moved_textvalue_unmounts_old_before_new ... ok
+test tests::multiple_in_order_native_edits_batch_accept ... ok
+test tests::native_commit_during_pending_conflicts ... ok
+test tests::old_conflict_cannot_erase_newer_replace ... ok
+test tests::patch_merge_and_resolution_order ... ok
+test tests::patch_removal_restores_recipe_without_remount ... ok
+test tests::peer_factory_failure_tears_down_orderly ... ok
+test tests::peer_origin_single_snapped_transform ... ok
+test tests::pending_applies_on_first_mount ... ok
+test tests::preinstall_owed_then_failing_install_reports_wake ... ok
+test tests::programmatic_ack_wrong_base_rejected ... ok
+test tests::programmatic_replace_applies_once_and_acks ... ok
+test tests::proposal_queued_during_composition ... ok
+test tests::proxy_reports_typed_full_and_closed ... ok
+test tests::purge_and_close_release_charges_outside_the_lock ... ok
+test tests::radii_normalize_proportionally ... ok
+test tests::remount_rejects_old_binding_edits ... ok
+test tests::removal_fences_events_and_releases_peer_once ... ok
+test tests::repeated_style_setters_merge_fieldwise ... ok
+test tests::resolved_dirty_classification ... ok
+test tests::scheduler_deadline_lifecycle ... ok
+test tests::scheduler_hidden_then_resume_resets_delta ... ok
+test tests::scheduler_initial_hidden_custom_no_deadline ... ok
+test tests::scheduler_reduce_during_activity_settles ... ok
+test tests::scheduler_reduced_motion_settles_and_stays_quiet ... ok
+test tests::scheduler_tooltip_delay_semantic_under_reduce ... ok
+test tests::scheduler_transition_steps_and_done ... ok
+test tests::scope_adapter_captures_rc_and_root_msg_need_not_send ... ok
+test tests::scoped_task_namespaces_are_independent ... ok
+test tests::send_stop_resend_late_chunks_fenced ... ok
+test tests::sends_after_cancel_return_err ... ok
+test tests::shadow_patch_is_atomic_set_remove ... ok
+test tests::spawn_without_executor_is_typed_error ... ok
+test tests::stale_conflict_behind_newer_commits_is_ignored ... ok
+test tests::surgical_patch_changes_only_authored_fields ... ok
+test tests::swap_two_bound_values_releases_each_peer_once ... ok
+test tests::task_cancel_replacement_fences ... ok
+test tests::unchanged_text_never_resets_peer ... ok
+test tests::unhandled_conflict_is_typed_diagnostic_once ... ok
+test tests::unique_spawn_keys_leave_zero_registrations ... ok
+test tests::utf16_conversions_are_checked ... ok
+test tests::value_moves_to_earlier_parent_release_once ... ok
+test tests::lifecycle_inflight_failure_serializes_overlap_async_send ... ok
+test tests::lifecycle_inflight_failure_serializes_overlap_send_closed ... ok
+test tests::lifecycle_inflight_success_serializes_then_overlap_async_send_ok ... ok
+test tests::lifecycle_inflight_success_serializes_then_overlap_send_ok ... ok
+
+test result: ok. 98 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.29s

@@ -1,0 +1,128 @@
+{
+  "ok": true,
+  "result": {
+    "comparisons": [
+      {
+        "actual": {
+          "height": 36.0,
+          "width": 69.4609375,
+          "x": 53.0,
+          "y": 83.62109375
+        },
+        "delta": {
+          "height": 0.0,
+          "width": 0.0,
+          "x": 0.0,
+          "y": 0.0
+        },
+        "expected": {
+          "height": 36.0,
+          "width": 69.4609375,
+          "x": 53.0,
+          "y": 83.62109375
+        },
+        "id": "probe.button",
+        "pass": true,
+        "tolerance": 0.0
+      },
+      {
+        "actual": {
+          "height": 44.79999923706055,
+          "width": 663.5999755859375,
+          "x": 53.0,
+          "y": 131.62109375
+        },
+        "delta": {
+          "height": 0.0,
+          "width": 0.0,
+          "x": 0.0,
+          "y": 0.0
+        },
+        "expected": {
+          "height": 44.79999923706055,
+          "width": 663.5999755859375,
+          "x": 53.0,
+          "y": 131.62109375
+        },
+        "id": "probe.input",
+        "pass": true,
+        "tolerance": 0.0
+      },
+      {
+        "actual": {
+          "height": 18.62109375,
+          "width": 49.232421875,
+          "x": 53.0,
+          "y": 53.0
+        },
+        "delta": {
+          "height": 0.0,
+          "width": 0.0,
+          "x": 0.0,
+          "y": 0.0
+        },
+        "expected": {
+          "height": 18.62109375,
+          "width": 49.232421875,
+          "x": 53.0,
+          "y": 53.0
+        },
+        "id": "probe.label",
+        "pass": true,
+        "tolerance": 0.0
+      },
+      {
+        "actual": {
+          "height": 197.4210968017578,
+          "width": 737.5999755859375,
+          "x": 16.0,
+          "y": 16.0
+        },
+        "delta": {
+          "height": 0.0,
+          "width": 0.0,
+          "x": 0.0,
+          "y": 0.0
+        },
+        "expected": {
+          "height": 197.4210968017578,
+          "width": 737.5999755859375,
+          "x": 16.0,
+          "y": 16.0
+        },
+        "id": "probe.root",
+        "pass": true,
+        "tolerance": 0.0
+      },
+      {
+        "actual": {
+          "height": 165.4210968017578,
+          "width": 705.5999755859375,
+          "x": 32.0,
+          "y": 32.0
+        },
+        "delta": {
+          "height": 0.0,
+          "width": 0.0,
+          "x": 0.0,
+          "y": 0.0
+        },
+        "expected": {
+          "height": 165.4210968017578,
+          "width": 705.5999755859375,
+          "x": 32.0,
+          "y": 32.0
+        },
+        "id": "probe.surface",
+        "pass": true,
+        "tolerance": 0.0
+      }
+    ],
+    "failed": 0,
+    "matched": 5,
+    "missing": 0,
+    "mode": "absolute",
+    "pass": true,
+    "unexpected": []
+  }
+}

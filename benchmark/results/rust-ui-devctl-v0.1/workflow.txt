@@ -1,0 +1,729 @@
+cargo.exe : warning[E0133]: call to unsafe function `windows::Win32::System::Ole::SafeArrayCreateVector` is unsafe and
+requires unsafe block
+At W:\devin_folder\rui-devctl-final.ps1:17 char:1
++ & cargo test --locked --features devtools --test devctl_windows -- -- ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (warning[E0133]:...es unsafe block:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+
+  --> src\platform\win32\uia.rs:69:14
+   |
+69 |     let sa = SafeArrayCreateVector(VT_I4, 0, 3);
+   |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ call to unsafe function
+   |
+   = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+   = note: consult the function's documentation for information on how to avoid undefined behavior
+note: an unsafe function restricts its caller, but its body is safe by default
+  --> src\platform\win32\uia.rs:68:1
+   |
+68 | unsafe fn runtime_id_variant(id: NodeId) -> VARIANT {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = note: `#[warn(unsafe_op_in_unsafe_fn)]` (part of `#[warn(rust_2024_compatibility)]`) on by default
+
+warning[E0133]: call to unsafe function `windows::Win32::System::Ole::SafeArrayPutElement` is unsafe and requires unsaf
+e block
+  --> src\platform\win32\uia.rs:79:17
+   |
+79 |         let _ = SafeArrayPutElement(sa, &(i as i32), v as *const i32 as *const c_void);
+   |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ call to unsafe function
+   |
+   = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+   = note: consult the function's documentation for information on how to avoid undefined behavior
+
+warning[E0133]: dereference of raw pointer is unsafe and requires unsafe block
+  --> src\platform\win32\uia.rs:83:5
+   |
+83 |     (*(&mut var as *mut VARIANT as *mut VARIANT_MANUAL)).vt = (VT_I4 | VT_ARRAY).0;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ dereference of raw pointer
+   |
+   = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+   = note: raw pointers may be null, dangling or unaligned; they can violate aliasing rules and cause data races: all o
+f these are undefined behavior
+
+warning[E0133]: dereference of raw pointer is unsafe and requires unsafe block
+  --> src\platform\win32\uia.rs:84:5
+   |
+84 |     (*(&mut var as *mut VARIANT as *mut VARIANT_MANUAL)).parray = sa;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ dereference of raw pointer
+   |
+   = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+   = note: raw pointers may be null, dangling or unaligned; they can violate aliasing rules and cause data races: all o
+f these are undefined behavior
+
+warning[E0133]: call to unsafe function `windows::Win32::System::Ole::SafeArrayGetLBound` is unsafe and requires unsafe
+ block
+   --> src\platform\win32\uia.rs:627:14
+    |
+627 |     let lo = SafeArrayGetLBound(sa, 1)?;
+    |              ^^^^^^^^^^^^^^^^^^^^^^^^^ call to unsafe function
+    |
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+    = note: consult the function's documentation for information on how to avoid undefined behavior
+note: an unsafe function restricts its caller, but its body is safe by default
+   --> src\platform\win32\uia.rs:601:1
+    |
+601 | / unsafe fn fence_range_array(
+602 | |     sa: *mut SAFEARRAY,
+603 | |     snap: &Arc<Snapshot>,
+604 | |     node: NodeId,
+605 | | ) -> Result<*mut SAFEARRAY> {
+    | |___________________________^
+
+warning[E0133]: call to unsafe function `windows::Win32::System::Ole::SafeArrayGetUBound` is unsafe and requires unsafe
+ block
+   --> src\platform\win32\uia.rs:628:14
+    |
+628 |     let hi = SafeArrayGetUBound(sa, 1)?;
+    |              ^^^^^^^^^^^^^^^^^^^^^^^^^ call to unsafe function
+    |
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+    = note: consult the function's documentation for information on how to avoid undefined behavior
+
+warning[E0133]: call to unsafe function `windows::Win32::System::Ole::SafeArrayCreateVector` is unsafe and requires uns
+afe block
+   --> src\platform\win32\uia.rs:630:15
+    |
+630 |     let out = SafeArrayCreateVector(VT_UNKNOWN, 0, n);
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ call to unsafe function
+    |
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+    = note: consult the function's documentation for information on how to avoid undefined behavior
+
+warning[E0133]: call to unsafe function `windows::Win32::System::Ole::SafeArrayGetElement` is unsafe and requires unsaf
+e block
+   --> src\platform\win32\uia.rs:640:9
+    |
+640 |         SafeArrayGetElement(sa, &idx, &mut raw as *mut _ as *mut c_void)?;
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ call to unsafe function
+    |
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+    = note: consult the function's documentation for information on how to avoid undefined behavior
+
+warning[E0133]: call to unsafe function `windows_core::Interface::from_raw` is unsafe and requires unsafe block
+   --> src\platform\win32\uia.rs:644:21
+    |
+644 |         let inner = ITextRangeProvider::from_raw(raw);
+    |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ call to unsafe function
+    |
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+    = note: consult the function's documentation for information on how to avoid undefined behavior
+
+warning[E0133]: call to unsafe function `windows::Win32::System::Ole::SafeArrayPutElement` is unsafe and requires unsaf
+e block
+   --> src\platform\win32\uia.rs:652:13
+    |
+652 |             SafeArrayPutElement(out, &idx, ptr as *const c_void)?;
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ call to unsafe function
+    |
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+    = note: consult the function's documentation for information on how to avoid undefined behavior
+
+warning[E0133]: call to unsafe function `windows::Win32::System::Ole::SafeArrayGetLBound` is unsafe and requires unsafe
+ block
+   --> src\platform\win32\uia.rs:686:14
+    |
+686 |     let lo = SafeArrayGetLBound(sa, 1)?;
+    |              ^^^^^^^^^^^^^^^^^^^^^^^^^ call to unsafe function
+    |
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+    = note: consult the function's documentation for information on how to avoid undefined behavior
+note: an unsafe function restricts its caller, but its body is safe by default
+   --> src\platform\win32\uia.rs:662:1
+    |
+662 | / pub(crate) unsafe fn fence_provider_array(
+663 | |     sa: *mut SAFEARRAY,
+664 | |     snap: &Arc<Snapshot>,
+665 | |     node: NodeId,
+666 | | ) -> Result<*mut SAFEARRAY> {
+    | |___________________________^
+
+warning[E0133]: call to unsafe function `windows::Win32::System::Ole::SafeArrayGetUBound` is unsafe and requires unsafe
+ block
+   --> src\platform\win32\uia.rs:687:14
+    |
+687 |     let hi = SafeArrayGetUBound(sa, 1)?;
+    |              ^^^^^^^^^^^^^^^^^^^^^^^^^ call to unsafe function
+    |
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+    = note: consult the function's documentation for information on how to avoid undefined behavior
+
+warning[E0133]: call to unsafe function `windows::Win32::System::Ole::SafeArrayCreateVector` is unsafe and requires uns
+afe block
+   --> src\platform\win32\uia.rs:689:15
+    |
+689 |     let out = SafeArrayCreateVector(VT_UNKNOWN, 0, n);
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ call to unsafe function
+    |
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+    = note: consult the function's documentation for information on how to avoid undefined behavior
+
+warning[E0133]: call to unsafe function `windows::Win32::System::Ole::SafeArrayGetElement` is unsafe and requires unsaf
+e block
+   --> src\platform\win32\uia.rs:697:9
+    |
+697 |         SafeArrayGetElement(sa, &idx, &mut raw as *mut _ as *mut c_void)?;
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ call to unsafe function
+    |
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+    = note: consult the function's documentation for information on how to avoid undefined behavior
+
+warning[E0133]: call to unsafe function `windows_core::Interface::from_raw` is unsafe and requires unsafe block
+   --> src\platform\win32\uia.rs:701:21
+    |
+701 |         let inner = IRawElementProviderSimple::from_raw(raw);
+    |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ call to unsafe function
+    |
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+    = note: consult the function's documentation for information on how to avoid undefined behavior
+
+warning[E0133]: call to unsafe function `windows::Win32::System::Ole::SafeArrayPutElement` is unsafe and requires unsaf
+e block
+   --> src\platform\win32\uia.rs:706:9
+    |
+706 |         SafeArrayPutElement(out, &idx, ptr as *const c_void)?;
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ call to unsafe function
+    |
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+    = note: consult the function's documentation for information on how to avoid undefined behavior
+
+warning[E0133]: call to unsafe function `windows_core::Interface::from_raw` is unsafe and requires unsafe block
+   --> src\platform\win32\uia.rs:820:16
+    |
+820 |             Ok(ITextRangeProvider::from_raw(raw))
+    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ call to unsafe function
+    |
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+    = note: consult the function's documentation for information on how to avoid undefined behavior
+note: an unsafe function restricts its caller, but its body is safe by default
+   --> src\platform\win32\uia.rs:811:1
+    |
+811 | unsafe fn unwrap_range(r: &ITextRangeProvider) -> Result<ITextRangeProvider> {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unnecessary `unsafe` block
+   --> src\platform\win32\window.rs:360:30
+    |
+331 |         unsafe {
+    |         ------ because it's nested under this `unsafe` block
+...
+360 |                     let rc = unsafe { *(lparam.0 as *const RECT) };
+    |                              ^^^^^^ unnecessary `unsafe` block
+    |
+    = note: `#[warn(unused_unsafe)]` (part of `#[warn(unused)]`) on by default
+
+warning: type `ShadowKey` is more private than the item `ShadowCache::get`
+    --> src\platform\win32\render.rs:1032:5
+     |
+1032 |     pub(crate) fn get(&self, k: &ShadowKey) -> Option<&ID2D1Bitmap> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ method `ShadowCache::get` is reachable at vi
+sibility `pub(crate)`
+     |
+note: but type `ShadowKey` is only usable at visibility `pub(self)`
+    --> src\platform\win32\render.rs:1005:1
+     |
+1005 | struct ShadowKey {
+     | ^^^^^^^^^^^^^^^^
+     = note: `#[warn(private_interfaces)]` on by default
+
+warning: type `ShadowKey` is more private than the item `ShadowCache::insert`
+    --> src\platform\win32\render.rs:1035:5
+     |
+1035 |     pub(crate) fn insert(&mut self, k: ShadowKey, bmp: ID2D1Bitmap, bytes: usize) {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ method `ShadowCache::insert` i
+s reachable at visibility `pub(crate)`
+     |
+note: but type `ShadowKey` is only usable at visibility `pub(self)`
+    --> src\platform\win32\render.rs:1005:1
+     |
+1005 | struct ShadowKey {
+     | ^^^^^^^^^^^^^^^^
+
+warning: method `len` is never used
+   --> src\event.rs:168:19
+    |
+135 | impl EventQueue {
+    | --------------- method in this implementation
+...
+168 |     pub(crate) fn len(&self) -> usize {
+    |                   ^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: method `fingerprint` is never used
+  --> src\key.rs:51:19
+   |
+39 | impl ErasedKey {
+   | -------------- method in this implementation
+...
+51 |     pub(crate) fn fingerprint(&self) -> u64 {
+   |                   ^^^^^^^^^^^
+
+warning: field `dark` is never read
+   --> src\layout.rs:141:9
+    |
+137 | pub struct Interaction {
+    |            ----------- field in this struct
+...
+141 |     pub dark: bool,
+    |         ^^^^
+    |
+    = note: `Interaction` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code
+analysis
+
+warning: method `peer_id` is never used
+  --> src\node.rs:48:8
+   |
+46 | pub(crate) trait TextPeer {
+   |                  -------- method in this trait
+47 |     /// Opaque peer identity (survives reconciles, dies with the node).
+48 |     fn peer_id(&self) -> u64;
+   |        ^^^^^^^
+
+warning: method `state_metric_affecting` is never used
+   --> src\node.rs:395:19
+    |
+391 | impl Node {
+    | --------- method in this implementation
+...
+395 |     pub(crate) fn state_metric_affecting(&self) -> bool {
+    |                   ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: method `visual_clone` is never used
+   --> src\node.rs:737:8
+    |
+736 | impl ContainerProps {
+    | ------------------- method in this implementation
+737 |     fn visual_clone(&self) -> (crate::style::BoxStylePatch, Option<crate::style::BoxStyle>) {
+    |        ^^^^^^^^^^^^
+
+warning: variants `OpenChange` and `Scroll` are never constructed
+   --> src\node.rs:799:5
+    |
+788 | pub(crate) enum NodeEvent {
+    |                 --------- variants in this enum
+...
+799 |     OpenChange(bool),
+    |     ^^^^^^^^^^
+800 |     Scroll(crate::event::ScrollOffset),
+    |     ^^^^^^
+
+warning: associated items `DIRTY_REMOVED` and `root_children` are never used
+    --> src\runtime.rs:659:22
+     |
+ 156 | / impl<S, M, U, V> Runtime<S, M, U, V>
+ 157 | | where
+ 158 | |     M: 'static,
+ 159 | |     U: Fn(&mut S, M, &mut UpdateCtx<M>),
+ 160 | |     V: Fn(&S, &mut Ui<'_, '_, M>),
+     | |__________________________________- associated items in this implementation
+...
+ 659 |       pub(crate) const DIRTY_REMOVED: u8 = 0b0000_0100;
+     |                        ^^^^^^^^^^^^^
+...
+1341 |       pub(crate) fn root_children(&self) -> Vec<NodeId> {
+     |                     ^^^^^^^^^^^^^
+
+warning: fields `token` and `elapsed` are never read
+  --> src\sched.rs:53:9
+   |
+51 |     TransitionStep {
+   |     -------------- fields in this variant
+52 |         node: NodeId,
+53 |         token: MotionToken,
+   |         ^^^^^
+54 |         elapsed: Duration,
+   |         ^^^^^^^
+   |
+   = note: `SchedEvent` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored durin
+g dead code analysis
+
+warning: field `token` is never read
+  --> src\sched.rs:57:36
+   |
+57 |     TransitionDone { node: NodeId, token: MotionToken },
+   |     --------------                 ^^^^^
+   |     |
+   |     field in this variant
+   |
+   = note: `SchedEvent` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored durin
+g dead code analysis
+
+warning: methods `start_transition`, `is_idle`, and `has_frame_demand` are never used
+   --> src\sched.rs:69:19
+    |
+ 65 | impl Scheduler {
+    | -------------- methods in this implementation
+...
+ 69 |     pub(crate) fn start_transition(
+    |                   ^^^^^^^^^^^^^^^^
+...
+211 |     pub(crate) fn is_idle(&self) -> bool {
+    |                   ^^^^^^^
+...
+215 |     pub(crate) fn has_frame_demand(&self) -> bool {
+    |                   ^^^^^^^^^^^^^^^^
+
+warning: function `state_delta` is never used
+    --> src\style.rs:1138:4
+     |
+1138 | fn state_delta(from: &VisualStyle, to: &VisualStyle) -> VisualStylePatch {
+     |    ^^^^^^^^^^^
+
+warning: variant `HotTrack` is never constructed
+    --> src\style.rs:1432:5
+     |
+1418 | pub enum SystemColor {
+     |          ----------- variant in this enum
+...
+1432 |     HotTrack,
+     |     ^^^^^^^^
+     |
+     = note: `SystemColor` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored du
+ring dead code analysis
+
+warning: method `purge_reg` is never used
+   --> src\tasks.rs:568:19
+    |
+316 | impl Mailbox {
+    | ------------ method in this implementation
+...
+568 |     pub(crate) fn purge_reg(&self, reg: u64) {
+    |                   ^^^^^^^^^
+
+warning: field `cancel_waiters` is never read
+   --> src\tasks.rs:625:5
+    |
+616 | struct ChanCore {
+    |        -------- field in this struct
+...
+625 |     cancel_waiters: Arc<WakerSet>,
+    |     ^^^^^^^^^^^^^^
+
+warning: field `reg` is never read
+   --> src\tasks.rs:876:16
+    |
+874 | pub(crate) struct Dequeued {
+    |                   -------- field in this struct
+875 |     pub(crate) msg: Box<dyn Any>,
+876 |     pub(crate) reg: u64,
+    |                ^^^
+
+warning: method `live_count` is never used
+   --> src\tasks.rs:888:19
+    |
+887 | impl TaskRegistry {
+    | ----------------- method in this implementation
+888 |     pub(crate) fn live_count(&self) -> usize {
+    |                   ^^^^^^^^^^
+
+warning: method `raw_val` is never used
+  --> src\text.rs:34:19
+   |
+24 | impl TextRevision {
+   | ----------------- method in this implementation
+...
+34 |     pub(crate) fn raw_val(&self) -> u64 {
+   |                   ^^^^^^^
+
+warning: methods `pending`, `is_tombstoned`, `acquire_binding`, and `lease_cell` are never used
+   --> src\text.rs:239:19
+    |
+172 | impl TextValue {
+    | -------------- methods in this implementation
+...
+239 |     pub(crate) fn pending(&self) -> Option<&Proposal> {
+    |                   ^^^^^^^
+...
+284 |     pub(crate) fn is_tombstoned(&self, requested: TextRevision) -> bool {
+    |                   ^^^^^^^^^^^^^
+...
+290 |     pub(crate) fn acquire_binding(&self) -> Option<BindingToken> {
+    |                   ^^^^^^^^^^^^^^^
+...
+316 |     pub(crate) fn lease_cell(&self) -> LeaseCell {
+    |                   ^^^^^^^^^^
+
+warning: enum `TextPeerError` is never used
+   --> src\text.rs:332:17
+    |
+332 | pub(crate) enum TextPeerError {
+    |                 ^^^^^^^^^^^^^
+
+warning: function `utf16_to_utf8` is never used
+   --> src\text.rs:337:15
+    |
+337 | pub(crate) fn utf16_to_utf8(units: &[u16]) -> Result<String, TextPeerError> {
+    |               ^^^^^^^^^^^^^
+
+warning: function `utf8_index_to_utf16` is never used
+   --> src\text.rs:362:15
+    |
+362 | pub(crate) fn utf8_index_to_utf16(text: &str, byte_index: usize) -> Option<usize> {
+    |               ^^^^^^^^^^^^^^^^^^^
+
+warning: variant `Selection` is never constructed
+  --> src\platform\win32\mod.rs:56:5
+   |
+54 | pub(crate) enum NativeSinkItem {
+   |                 -------------- variant in this enum
+55 |     Edit { node: NodeId, edit: TextEdit },
+56 |     Selection { node: NodeId, sel: TextSelection },
+   |     ^^^^^^^^^
+
+warning: methods `hide_tooltip`, `editor_chrome_of`, `pt`, and `focus_peer` are never used
+    --> src\platform\win32\mod.rs:1535:19
+     |
+ 663 | / impl<S, M, U, V> Backend<S, M, U, V>
+ 664 | | where
+ 665 | |     M: 'static,
+ 666 | |     U: Fn(&mut S, M, &mut UpdateCtx<'_, M>),
+ 667 | |     V: Fn(&S, &mut crate::Ui<'_, '_, M>),
+     | |_________________________________________- methods in this implementation
+...
+1535 |       pub(crate) fn hide_tooltip(&mut self) {
+     |                     ^^^^^^^^^^^^
+...
+1757 |       pub(crate) fn editor_chrome_of(&self, node: NodeId) -> crate::style::BoxStyle {
+     |                     ^^^^^^^^^^^^^^^^
+...
+2374 |       pub(crate) fn pt(&self, lp: LPARAM) -> Point {
+     |                     ^^
+...
+2381 |       pub(crate) fn focus_peer(&self) -> Option<Rc<RefCell<WindowlessPeer>>> {
+     |                     ^^^^^^^^^^
+
+warning: constant `FONT` is never used
+  --> src\platform\win32\render.rs:31:7
+   |
+31 | const FONT: &str = "Segoe UI";
+   |       ^^^^
+
+warning: function `role_color` is never used
+  --> src\platform\win32\render.rs:36:4
+   |
+36 | fn role_color(role: crate::theme::ColorRole, dark: bool) -> D2D1_COLOR_F {
+   |    ^^^^^^^^^^
+
+warning: fields `target`, `factory`, and `text` are never read
+   --> src\platform\win32\render.rs:197:5
+    |
+195 | struct Tip {
+    |        --- fields in this struct
+196 |     hwnd: HWND,
+197 |     target: Option<ID2D1HwndRenderTarget>,
+    |     ^^^^^^
+198 |     factory: Option<ID2D1Factory>,
+    |     ^^^^^^^
+199 |     text: String,
+    |     ^^^^
+
+warning: associated function `tip_paint` is never used
+   --> src\platform\win32\render.rs:705:19
+    |
+220 | impl Renderer {
+    | ------------- associated function in this implementation
+...
+705 |     pub(crate) fn tip_paint(hwnd: HWND) {
+    |                   ^^^^^^^^^
+
+warning: fields `geo_stack` and `path_geos` are never read
+   --> src\platform\win32\render.rs:745:5
+    |
+739 | struct D2dCanvas<'a> {
+    |        --------- fields in this struct
+...
+745 |     geo_stack: Vec<ID2D1PathGeometry>,
+    |     ^^^^^^^^^
+746 |     path_geos: Vec<ID2D1Geometry>,
+    |     ^^^^^^^^^
+
+warning: method `len` is never used
+    --> src\platform\win32\render.rs:1051:19
+     |
+1031 | impl ShadowCache {
+     | ---------------- method in this implementation
+...
+1051 |     pub(crate) fn len(&self) -> usize {
+     |                   ^^^
+
+warning: constant `TIMER_KIND_NATIVE` is never used
+  --> src\platform\win32\text.rs:53:18
+   |
+53 | pub(crate) const TIMER_KIND_NATIVE: u64 = 0x4e54494d_0000_0000;
+   |                  ^^^^^^^^^^^^^^^^^
+
+warning: fields `module` and `iid_text_services` are never read
+  --> src\platform\win32\text.rs:71:9
+   |
+70 | pub(crate) struct Msftedit {
+   |                   -------- fields in this struct
+71 |     pub module: HMODULE,
+   |         ^^^^^^
+72 |     create_text_services: CreateTextServicesFn,
+73 |     pub iid_text_services: GUID,
+   |         ^^^^^^^^^^^^^^^^^
+
+warning: variant `GrabFocus` is never constructed
+   --> src\platform\win32\text.rs:134:5
+    |
+122 | pub(crate) enum HostEvent {
+    |                 --------- variant in this enum
+...
+134 |     GrabFocus,
+    |     ^^^^^^^^^
+    |
+    = note: `HostEvent` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored durin
+g dead code analysis
+
+warning: function `bools` is never used
+   --> src\platform\win32\text.rs:193:4
+    |
+193 | fn bools(v: bool) -> BOOL {
+    |    ^^^^^
+
+warning: fields `id` and `multiline` are never read
+   --> src\platform\win32\text.rs:778:5
+    |
+774 | pub(crate) struct WindowlessPeer {
+    |                   -------------- fields in this struct
+...
+778 |     id: u64,
+    |     ^^
+...
+789 |     multiline: bool,
+    |     ^^^^^^^^^
+
+warning: methods `activation_state` and `native_timers` are never used
+    --> src\platform\win32\text.rs:1195:19
+     |
+ 809 | impl WindowlessPeer {
+     | ------------------- methods in this implementation
+...
+1195 |     pub(crate) fn activation_state(&self) -> Activation {
+     |                   ^^^^^^^^^^^^^^^^
+...
+1451 |     pub(crate) fn native_timers(&self) -> Vec<u32> {
+     |                   ^^^^^^^^^^^^^
+
+warning: field `hwnd` is never read
+  --> src\platform\win32\uia.rs:55:5
+   |
+45 | pub(crate) struct Snapshot {
+   |                   -------- field in this struct
+...
+55 |     hwnd: HWND,
+   |     ^^^^
+
+warning: constant in pattern `NavigateDirection_Parent` should have an upper case name
+   --> src\platform\win32\uia.rs:145:13
+    |
+145 |             NavigateDirection_Parent => {
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^ help: convert the identifier to upper case: `NAVIGATE_DIRECTION_PARENT`
+    |
+    = note: `#[warn(non_upper_case_globals)]` (part of `#[warn(nonstandard_style)]`) on by default
+
+warning: constant in pattern `NavigateDirection_NextSibling` should have an upper case name
+   --> src\platform\win32\uia.rs:157:13
+    |
+157 |             NavigateDirection_NextSibling | NavigateDirection_PreviousSibling => {
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: convert the identifier to upper case: `NAVIGATE_DIRECTION_NEXT_SI
+BLING`
+
+warning: constant in pattern `NavigateDirection_PreviousSibling` should have an upper case name
+   --> src\platform\win32\uia.rs:157:45
+    |
+157 |             NavigateDirection_NextSibling | NavigateDirection_PreviousSibling => {
+    |                                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: convert the identifier to upp
+er case: `NAVIGATE_DIRECTION_PREVIOUS_SIBLING`
+
+warning: constant in pattern `NavigateDirection_Parent` should have an upper case name
+   --> src\platform\win32\uia.rs:289:13
+    |
+289 |             NavigateDirection_Parent => self
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^ help: convert the identifier to upper case: `NAVIGATE_DIRECTION_PARENT`
+
+warning: constant in pattern `NavigateDirection_NextSibling` should have an upper case name
+   --> src\platform\win32\uia.rs:295:13
+    |
+295 |             NavigateDirection_NextSibling => idx
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: convert the identifier to upper case: `NAVIGATE_DIRECTION_NEXT_SI
+BLING`
+
+warning: constant in pattern `NavigateDirection_PreviousSibling` should have an upper case name
+   --> src\platform\win32\uia.rs:299:13
+    |
+299 |             NavigateDirection_PreviousSibling => idx
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: convert the identifier to upper case: `NAVIGATE_DIRECTION_PRE
+VIOUS_SIBLING`
+
+warning: constant in pattern `NavigateDirection_Parent` should have an upper case name
+   --> src\platform\win32\uia.rs:495:13
+    |
+495 |             NavigateDirection_Parent => self
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^ help: convert the identifier to upper case: `NAVIGATE_DIRECTION_PARENT`
+
+warning: constant in pattern `NavigateDirection_NextSibling` should have an upper case name
+   --> src\platform\win32\uia.rs:504:13
+    |
+504 |             NavigateDirection_NextSibling | NavigateDirection_PreviousSibling => {
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: convert the identifier to upper case: `NAVIGATE_DIRECTION_NEXT_SI
+BLING`
+
+warning: constant in pattern `NavigateDirection_PreviousSibling` should have an upper case name
+   --> src\platform\win32\uia.rs:504:45
+    |
+504 |             NavigateDirection_NextSibling | NavigateDirection_PreviousSibling => {
+    |                                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: convert the identifier to upp
+er case: `NAVIGATE_DIRECTION_PREVIOUS_SIBLING`
+
+warning: constant in pattern `NavigateDirection_FirstChild` should have an upper case name
+    --> src\platform\win32\uia.rs:1222:13
+     |
+1222 |             NavigateDirection_FirstChild => order
+     |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: convert the identifier to upper case: `NAVIGATE_DIRECTION_FIRST_C
+HILD`
+
+warning: constant in pattern `NavigateDirection_LastChild` should have an upper case name
+    --> src\platform\win32\uia.rs:1226:13
+     |
+1226 |             NavigateDirection_LastChild => order
+     |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: convert the identifier to upper case: `NAVIGATE_DIRECTION_LAST_CHI
+LD`
+
+For more information about this error, try `rustc --explain E0133`.
+warning: `rust-ui` (lib) generated 68 warnings (run `cargo fix --lib -p rust-ui` to apply 4 suggestions)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.24s
+     Running tests\devctl_windows.rs (target\debug\deps\devctl_windows-d29deca7635eb2e6.exe)
+
+running 1 test
+cycle 0: scale=1.25, target handles before=225 after=233
+cycle 0 steady capture 0: handles=233
+cycle 0 steady capture 1: handles=233
+cycle 0 steady capture 2: handles=233
+cycle 0 steady capture 3: handles=233
+cycle 0 steady capture 4: handles=233
+cycle 0 steady capture 5: handles=233
+cycle 0 idle 2s CPU delta (100ns ticks)=0
+cycle 0 2s idle counters: before={"native_timer_fires":0,"requested_redraws":71} after={"native_timer_fires":0,"requested_redraws":71}
+cycle 1: scale=1.25, target handles before=225 after=233
+cycle 1 steady capture 0: handles=233
+cycle 1 steady capture 1: handles=233
+cycle 1 steady capture 2: handles=233
+cycle 1 steady capture 3: handles=233
+cycle 1 steady capture 4: handles=233
+cycle 1 steady capture 5: handles=233
+cycle 1 idle 2s CPU delta (100ns ticks)=0
+cycle 1 2s idle counters: before={"native_timer_fires":0,"requested_redraws":71} after={"native_timer_fires":0,"requested_redraws":71}
+cycle 2: scale=1.25, target handles before=225 after=233
+cycle 2 steady capture 0: handles=233
+cycle 2 steady capture 1: handles=233
+cycle 2 steady capture 2: handles=233
+cycle 2 steady capture 3: handles=233
+cycle 2 steady capture 4: handles=233
+cycle 2 steady capture 5: handles=233
+cycle 2 idle 2s CPU delta (100ns ticks)=0
+cycle 2 2s idle counters: before={"native_timer_fires":0,"requested_redraws":71} after={"native_timer_fires":0,"requested_redraws":71}
+native devctl workflow PASS; 3 complete launch/capture/shutdown cycles; outputs: <temporary proof directory; removed after collection>
+test native_agent_workflow_and_bounded_repetition ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 28.48s

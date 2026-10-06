@@ -1,0 +1,28 @@
+{
+  "capture_backend": "Windows.Graphics.Capture",
+  "client_crop": {
+    "height": 853,
+    "width": 962,
+    "x": 1,
+    "y": 38
+  },
+  "client_dp": {
+    "height": 682.4000244140625,
+    "width": 769.5999755859375,
+    "x": 0.0,
+    "y": 0.0
+  },
+  "client_px": {
+    "height": 853.0,
+    "width": 962.0,
+    "x": 0.0,
+    "y": 0.0
+  },
+  "coordinate_space": "client-physical-pixels",
+  "frame_height": 892,
+  "frame_width": 964,
+  "height": 853,
+  "scale_factor": 1.25,
+  "stable_retained_scene": true,
+  "width": 962
+}

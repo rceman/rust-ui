@@ -1,0 +1,28 @@
+{
+  "implementation_sha": "6375a4e537f0ec396c92154738f7bfced4324c5c",
+  "based_on": "dc70f6644c0384170f3a6929eb2caaf33fc711a0",
+  "frozen_reference_payload": "2e14e417a69ef8967b8fb17120282e3de6449fae",
+  "platform_baseline": "00dc29acfeb686d6a190d91624de7ab9a48e1e92",
+  "collected_at_utc": "2026-10-06 09:34:06 UTC",
+  "os": "Microsoft Windows NT 10.0.26200.0",
+  "rustc": "rustc 1.94.0 (4a4ef493e 2026-03-02)",
+  "features": "devtools",
+  "devctl_sha256": "8fd1b6145a87432f4e6ec5c7b69dde67019f1fa5a1c4657b61ff90b63991389b",
+  "probe_sha256": "e3ac34b1bc277cc64b9a1305607eedeb8407b025a5a969573a9a6276479f23f7",
+  "checks": {
+    "fmt": 0,
+    "windows_default_check": 0,
+    "windows_default_tests": 0,
+    "windows_devtools_check": 0,
+    "windows_build": 0,
+    "windows_devtools_tests": 0,
+    "native_workflow": 0
+  },
+  "linux_checks": {
+    "default_library": "87/87 PASS",
+    "devtools_library": "98/98 PASS",
+    "devtools_all_targets_check": "PASS"
+  },
+  "linux_rustc": "rustc 1.93.1 (01f6ddf75 2026-02-11)",
+  "linux_environment": "Linux 6.18.40.1-microsoft-standard-WSL2 x86_64"
+}

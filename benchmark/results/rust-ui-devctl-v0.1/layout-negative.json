@@ -1,0 +1,36 @@
+{
+  "ok": false,
+  "result": {
+    "comparisons": [
+      {
+        "actual": {
+          "height": 36.0,
+          "width": 69.4609375,
+          "x": 54.0,
+          "y": 83.62109375
+        },
+        "delta": {
+          "height": 0.0,
+          "width": 0.0,
+          "x": 1.0,
+          "y": 0.0
+        },
+        "expected": {
+          "height": 36.0,
+          "width": 69.4609375,
+          "x": 53.0,
+          "y": 83.62109375
+        },
+        "id": "probe.button",
+        "pass": false,
+        "tolerance": 0.0
+      }
+    ],
+    "failed": 1,
+    "matched": 1,
+    "missing": 0,
+    "mode": "absolute",
+    "pass": false,
+    "unexpected": []
+  }
+}
