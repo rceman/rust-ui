@@ -241,12 +241,20 @@ fn native(a: &Args) -> Result<Value> {
         let hwnd = state["hwnd"]
             .as_u64()
             .ok_or_else(|| Error::new("PROTOCOL_ERROR", "handshake HWND"))?;
+        let scene = c::request(&session, "snapshot-layout", Value::Null, timeout)?;
         let rect = if let Some(id) = a.id() {
             Some(c::request(&session, "rect", json!({"id":id}), timeout)?)
         } else {
             None
         };
         let (mut image, mut meta) = c::capture_client(hwnd as usize)?;
+        if scene != c::request(&session, "snapshot-layout", Value::Null, timeout)? {
+            return Err(Error::new(
+                "CAPTURE_FAILED",
+                "retained semantic geometry/state changed during WGC capture; wait idle and retry",
+            ));
+        }
+        meta["stable_retained_scene"] = json!(true);
         if let Some(r) = rect {
             if r["visible"] != true {
                 return Err(Error::new("TARGET_NOT_VISIBLE", "target hidden"));

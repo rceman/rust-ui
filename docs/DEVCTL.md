@@ -99,7 +99,7 @@ This is quiescence for work already admitted. It does not promise that a future
 worker delivery or user input cannot change the UI afterward; future tasks and
 OS caret blink are not frozen. Continuously animating applications can time out.
 The timeout carries the last observed queue/dirty/deadline diagnostics. Default
-client command deadline is 5000 ms (`--timeout 1..30000`); the UI budget reserves
+client RPC deadline is 5000 ms (`--timeout 1..30000`); the UI budget reserves
 250 ms for response delivery. Requests not yet dispatched when expired are skipped.
 A timeout during an already executing mutation does not roll it back: inspect
 state before retrying a non-idempotent action.
@@ -126,7 +126,12 @@ It crops measured physical client bounds; a mismatch or geometry change fails.
 There is no PrintWindow, BitBlt or other fallback. WinRT stays initialized for the
 CLI process lifetime; frame/session/pool/D3D resources are released per capture.
 
-Screenshot waits idle itself. `--id ID` crops the physical semantic rectangle;
+Screenshot waits idle itself and checks unchanged retained semantic geometry/state
+before/after WGC. Future native caret/preedit pixels are not part of that semantic
+scene check. A changed scene fails instead of producing a stale element crop.
+Each RPC uses the requested deadline; the composite screenshot additionally has
+a five-second WGC frame bound and bounded PNG work.
+Screenshot `--id ID` crops the physical semantic rectangle;
 `--pad 0..256` adds physical pixels, requiring the entire padded rectangle to be
 visible. Partial, hidden or off-client targets fail `TARGET_NOT_VISIBLE`.
 PNG output has a sibling `.capture.json` with backend, measured frame/client crop,
