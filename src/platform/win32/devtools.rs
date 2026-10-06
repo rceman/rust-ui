@@ -31,8 +31,8 @@ where
             client_dp: Rect {
                 x: 0.,
                 y: 0.,
-                width: physical.width / scale.0 as f64,
-                height: physical.height / scale.0 as f64,
+                width: f64::from(scale.to_logical(client.right - client.left)),
+                height: f64::from(scale.to_logical(client.bottom - client.top)),
             },
             client_px: physical,
             root,
@@ -58,8 +58,8 @@ where
             LogicalRect {
                 x: 0.,
                 y: 0.,
-                width: c.right as f32 / self.peer_ctx.scale.get().0,
-                height: c.bottom as f32 / self.peer_ctx.scale.get().0,
+                width: self.peer_ctx.scale.get().to_logical(c.right - c.left),
+                height: self.peer_ctx.scale.get().to_logical(c.bottom - c.top),
             }
         } else {
             self.rects.get(&id).copied().unwrap_or_default()

@@ -229,6 +229,8 @@ fn native_agent_workflow_and_bounded_repetition() {
             true
         );
         let mut changed: Snapshot = serde_json::from_value(v.clone()).unwrap();
+        assert_eq!(changed.root.rect_dp, changed.client_dp);
+        assert_eq!(changed.root.rect_px, changed.client_px);
         fn bump(n: &mut d::Node) -> bool {
             if n.automation_id.as_deref() == Some("probe.button") {
                 n.rect_dp.x += 1.;
