@@ -127,7 +127,9 @@ There is no PrintWindow, BitBlt or other fallback. WinRT stays initialized for t
 CLI process lifetime; frame/session/pool/D3D resources are released per capture.
 
 Screenshot waits idle itself and checks unchanged retained semantic geometry/state
-before/after WGC. Future native caret/preedit pixels are not part of that semantic
+before/after WGC, and rejects an intervening successfully painted frame (including
+a semantic state changing and changing back). Native caret/preedit pixels are not
+part of the retained semantic
 scene check. A changed scene fails instead of producing a stale element crop.
 Each RPC uses the requested deadline; the composite screenshot additionally has
 a five-second WGC frame bound and bounded PNG work.

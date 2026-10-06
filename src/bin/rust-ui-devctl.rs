@@ -243,7 +243,13 @@ fn native(a: &Args) -> Result<Value> {
             .ok_or_else(|| Error::new("PROTOCOL_ERROR", "handshake HWND"))?;
         let scene = c::request(&session, "snapshot-layout", Value::Null, timeout)?;
         let rect = if let Some(id) = a.id() {
-            Some(c::request(&session, "rect", json!({"id":id}), timeout)?)
+            let snapshot: Snapshot = serde_json::from_value(scene.clone()).map_err(d::ioerr)?;
+            let index = snapshot.index()?;
+            let n = index
+                .get(id)
+                .ok_or_else(|| Error::new("TARGET_NOT_FOUND", id))?
+                .0;
+            Some(json!({"visible":n.visible,"rect_px":n.rect_px}))
         } else {
             None
         };
@@ -252,6 +258,19 @@ fn native(a: &Args) -> Result<Value> {
             return Err(Error::new(
                 "CAPTURE_FAILED",
                 "retained semantic geometry/state changed during WGC capture; wait idle and retry",
+            ));
+        }
+        let after = c::request(&session, "handshake", Value::Null, timeout)?;
+        let before_epoch = state["paint_epoch"]
+            .as_u64()
+            .ok_or_else(|| Error::new("PROTOCOL_ERROR", "missing paint epoch"))?;
+        let after_epoch = after["paint_epoch"]
+            .as_u64()
+            .ok_or_else(|| Error::new("PROTOCOL_ERROR", "missing paint epoch"))?;
+        if before_epoch != after_epoch {
+            return Err(Error::new(
+                "CAPTURE_FAILED",
+                "a native frame was painted during WGC acquisition; wait idle and retry",
             ));
         }
         meta["stable_retained_scene"] = json!(true);

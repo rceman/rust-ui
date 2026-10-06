@@ -101,6 +101,7 @@ fn native_agent_workflow_and_bounded_repetition() {
             session,
         ]);
         assert_eq!(launch["protocol"], d::PROTOCOL);
+        assert!(launch["window"]["paint_epoch"].as_u64().is_some());
         let scale = launch["window"]["scale_factor"].as_f64().unwrap();
         assert!(scale > 0.);
         action(session, "wait-idle", &[]);
@@ -205,6 +206,7 @@ fn native_agent_workflow_and_bounded_repetition() {
         let full = root.join(format!("client-{cycle}.png"));
         let meta = action(session, "screenshot", &["--out", full.to_str().unwrap()]);
         assert_eq!(meta["capture_backend"], "Windows.Graphics.Capture");
+        assert_eq!(meta["stable_retained_scene"], true);
         let image = Image::load(&full).unwrap();
         assert_eq!(
             image.width as f64,

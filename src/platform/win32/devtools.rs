@@ -189,7 +189,7 @@ where
             "handshake" => {
                 let s = self.dev_snapshot()?;
                 Ok(
-                    json!({"hwnd":self.hwnd.0 as usize,"pid":std::process::id(),"counters":{"native_timer_fires":self.counters.native_timer_fires.load(Ordering::Relaxed),"requested_redraws":self.counters.requested_redraws.load(Ordering::Relaxed)},"scale_factor":s.scale_factor,"client_dp":s.client_dp,"client_px":s.client_px,"protocol":d::PROTOCOL}),
+                    json!({"hwnd":self.hwnd.0 as usize,"pid":std::process::id(),"paint_epoch":self.paint_epoch.get(),"counters":{"native_timer_fires":self.counters.native_timer_fires.load(Ordering::Relaxed),"requested_redraws":self.counters.requested_redraws.load(Ordering::Relaxed)},"scale_factor":s.scale_factor,"client_dp":s.client_dp,"client_px":s.client_px,"protocol":d::PROTOCOL}),
                 )
             }
             "tree" | "snapshot-layout" => {

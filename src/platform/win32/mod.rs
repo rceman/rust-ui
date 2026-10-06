@@ -436,6 +436,8 @@ where
     applied_palette: std::cell::RefCell<Option<Vec<(NodeId, ([f32; 4], [f32; 4], [f32; 4]))>>>,
     #[cfg(feature = "devtools")]
     devtools: Option<crate::devtools::client::Server>,
+    #[cfg(feature = "devtools")]
+    paint_epoch: std::cell::Cell<u64>,
 }
 
 #[cfg(test)]
@@ -456,6 +458,8 @@ where
         Ok(Backend {
             #[cfg(feature = "devtools")]
             devtools: None,
+            #[cfg(feature = "devtools")]
+            paint_epoch: std::cell::Cell::new(0),
             rt,
             hwnd: HWND::default(),
             peer_ctx,
@@ -1471,6 +1475,13 @@ where
         // last-painted snapshot, and damage is consumed
         *self.committed_ink.borrow_mut() = new_ink;
         self.damage.set(None);
+        #[cfg(feature = "devtools")]
+        self.paint_epoch.set(
+            self.paint_epoch
+                .get()
+                .checked_add(1)
+                .ok_or_else(|| UiError::Platform("devtools paint epoch exhausted".into()))?,
+        );
         Ok(())
     }
 
@@ -2869,6 +2880,8 @@ where
     let mut backend = Box::new(Backend {
         #[cfg(feature = "devtools")]
         devtools: None,
+        #[cfg(feature = "devtools")]
+        paint_epoch: std::cell::Cell::new(0),
         rt,
         hwnd: HWND::default(),
         peer_ctx,
