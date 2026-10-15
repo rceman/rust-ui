@@ -42,7 +42,7 @@ impl Args {
             "launch" => &["exe", "session"],
             "shutdown" | "cleanup" => &["session"],
             "tree" | "snapshot-layout" => &["session", "timeout", "out"],
-            "wait-idle" => &["session", "timeout"],
+            "wait-idle" | "leave" => &["session", "timeout"],
             "rect" | "hover" | "press" | "release" | "click" => &["session", "timeout", "id"],
             "focus" => &["session", "timeout", "id", "modality"],
             "key" => &["session", "timeout", "key"],
@@ -54,6 +54,7 @@ impl Args {
                 "id",
                 "tolerance",
                 "mode",
+                "tier",
             ],
             "compare-image" => &[
                 "reference-image",
@@ -66,6 +67,7 @@ impl Args {
                 "capture",
                 "snapshot",
                 "id",
+                "native-id",
                 "reference-image",
                 "native-image",
                 "out-dir",
@@ -73,6 +75,7 @@ impl Args {
                 "tolerance",
                 "mode",
                 "pad",
+                "tier",
             ],
             _ => {
                 return Err(Error::new(
@@ -125,28 +128,55 @@ impl Args {
 fn snapshot(p: &str) -> Result<Snapshot> {
     serde_json::from_value(d::load_json(Path::new(p))?).map_err(d::ioerr)
 }
-fn expected(a: &Args) -> Result<BTreeMap<String, (Rect, bool)>> {
+/// Reference side of a comparison: frozen `contract/0.2` (needs `--capture`)
+/// or a native snapshot used as a calibration reference.
+fn expected(
+    a: &Args,
+) -> Result<(
+    BTreeMap<d::SemanticKey, d::ExpectedTarget>,
+    Option<Snapshot>,
+    Value,
+)> {
     let v = d::load_json(Path::new(a.required("reference")?))?;
     if v["schema"] == d::SNAPSHOT_SCHEMA {
-        let s: Snapshot = serde_json::from_value(v).map_err(d::ioerr)?;
-        Ok(s.index()?
-            .into_iter()
-            .map(|(id, (n, _))| (id, (n.rect_dp, n.visible)))
-            .collect())
+        let s: Snapshot = serde_json::from_value(v.clone()).map_err(d::ioerr)?;
+        let t = d::snapshot_targets(&s)?;
+        Ok((t, Some(s), v))
     } else {
-        d::reference_rects(&v, a.required("capture")?)
+        Ok((d::reference_targets(&v, a.required("capture")?)?, None, v))
     }
+}
+/// Integrality-checked f64 -> pixel rect for already-physical rects
+/// (`rect_px`, client bounds). Logical rects must go through `snap_rect`.
+fn exact_px(r: Rect) -> Result<d::PixelRect> {
+    let edge = |v: f64| -> Result<i32> {
+        if !v.is_finite()
+            || v.fract() != 0.
+            || v < i64::from(i32::MIN) as f64
+            || v > i64::from(i32::MAX) as f64
+        {
+            return Err(Error::new("INVALID_ARGUMENT", "non-integral pixel rect"));
+        }
+        Ok(v as i32)
+    };
+    Ok(d::PixelRect {
+        left: edge(r.x)?,
+        top: edge(r.y)?,
+        right: edge(r.x + r.width)?,
+        bottom: edge(r.y + r.height)?,
+    })
 }
 fn compare(a: &Args) -> Result<Value> {
     match a.command.as_str() {
         "compare-layout" => {
             let s = snapshot(a.required("snapshot")?)?;
             d::compare_layout(
-                &expected(a)?,
+                &expected(a)?.0,
                 &s,
                 a.number("tolerance", 0.)?,
                 a.get("mode").unwrap_or("absolute"),
                 a.id(),
+                &d::TierScope::parse(a.get("tier"))?,
             )
         }
         "compare-image" => {
@@ -162,56 +192,69 @@ fn compare(a: &Args) -> Result<Value> {
             let id = a
                 .id()
                 .ok_or_else(|| Error::new("INVALID_ARGUMENT", "--id required"))?;
+            let key = d::SemanticKey::parse(id)?;
+            let native_key = d::SemanticKey::parse(a.get("native-id").unwrap_or(id))?;
+            let tiers = d::TierScope::parse(a.get("tier"))?;
             let s = snapshot(a.required("snapshot")?)?;
-            let e = expected(a)?;
-            let &(r, _) = e
-                .get(id)
-                .ok_or_else(|| Error::new("TARGET_NOT_FOUND", "reference ID"))?;
-            let index = s.index()?;
-            let n = index
-                .get(id)
-                .ok_or_else(|| Error::new("TARGET_NOT_FOUND", "native ID"))?
-                .0;
-            if !n.visible {
-                return Err(Error::new("TARGET_NOT_VISIBLE", id));
-            }
-            let pad = a.number("pad", 0u32)?;
-            let reference_data = d::load_json(Path::new(a.required("reference")?))?;
-            let image_rect = if reference_data["schema"] == d::SNAPSHOT_SCHEMA {
-                let ref_snapshot: Snapshot =
-                    serde_json::from_value(reference_data).map_err(d::ioerr)?;
-                ref_snapshot
-                    .index()?
-                    .get(id)
-                    .ok_or_else(|| Error::new("TARGET_NOT_FOUND", "reference image ID"))?
-                    .0
-                    .rect_px
+            let (targets, reference_snapshot, reference_data) = expected(a)?;
+            let reference_image = Image::load(Path::new(a.required("reference-image")?))?;
+            let native_image = Image::load(Path::new(a.required("native-image")?))?;
+            // The reference raster's declared space: snapshot client_px, or
+            // the frozen contract page document at coordinate_space scale.
+            let (ref_scale, ref_dims) = if let Some(rs) = &reference_snapshot {
+                (rs.scale_factor, (rs.client_px.width, rs.client_px.height))
             } else {
-                r
+                let page = a.required("capture")?.split('/').next().unwrap_or_default();
+                let document = reference_data["pages"]
+                    .as_array()
+                    .and_then(|pages| {
+                        pages
+                            .iter()
+                            .find(|p| p["id"].as_str() == Some(page))
+                            .map(|p| p["document"].clone())
+                    })
+                    .ok_or_else(|| {
+                        Error::new("INVALID_ARGUMENT", "contract page document missing")
+                    })?;
+                (
+                    reference_data["coordinate_space"]["device_scale_factor"]
+                        .as_f64()
+                        .ok_or_else(|| {
+                            Error::new("INVALID_ARGUMENT", "contract device_scale_factor")
+                        })?,
+                    (
+                        document["width"].as_f64().unwrap_or(f64::NAN),
+                        document["height"].as_f64().unwrap_or(f64::NAN),
+                    ),
+                )
             };
-            let (reference, reference_crop) =
-                Image::load(Path::new(a.required("reference-image")?))?.crop(image_rect, pad)?;
-            let (native, native_crop) =
-                Image::load(Path::new(a.required("native-image")?))?.crop(n.rect_px, pad)?;
-            let out = PathBuf::from(a.required("out-dir")?);
-            std::fs::create_dir_all(&out).map_err(d::ioerr)?;
-            reference.save(&out.join("reference.png"))?;
-            native.save(&out.join("native.png"))?;
-            let (image, diff) =
-                d::compare_image(&reference, &native, a.number("channel-tolerance", 0u8)?)?;
-            if let Some(diff) = diff {
-                diff.save(&out.join("diff.png"))?
-            }
-            let layout = d::compare_layout(
-                &e,
+            let artifacts = d::compare_element(
+                &targets,
+                &key,
+                &reference_image,
+                ref_scale,
+                ref_dims,
                 &s,
+                &native_image,
+                &native_key,
+                &tiers,
+                a.number("pad", 0u32).map(f64::from)?,
                 a.number("tolerance", 0.)?,
                 a.get("mode").unwrap_or("absolute"),
-                Some(id),
+                a.number("channel-tolerance", 0u8)?,
             )?;
-            let result = json!({"id":id,"pass":layout["pass"]==true&&image["pass"]==true,"layout":layout,"image":image,"reference_crop":reference_crop,"native_crop":native_crop,"out_dir":out,"alignment":"independent semantic crops; no resize","padding_px":pad});
-            d::write_json(&out.join("comparison.json"), &result)?;
-            Ok(result)
+            let out = PathBuf::from(a.required("out-dir")?);
+            std::fs::create_dir_all(&out).map_err(d::ioerr)?;
+            artifacts.reference_crop.save(&out.join("reference.png"))?;
+            artifacts.native_raw.save(&out.join("native-raw.png"))?;
+            artifacts
+                .native_canonical
+                .save(&out.join("native-canonical.png"))?;
+            if let Some(diff) = &artifacts.diff {
+                diff.save(&out.join("diff.png"))?
+            }
+            d::write_json(&out.join("comparison.json"), &artifacts.result)?;
+            Ok(artifacts.result)
         }
         _ => Err(Error::new("NOT_SUPPORTED", &a.command)),
     }
@@ -279,9 +322,16 @@ fn native(a: &Args) -> Result<Value> {
                 return Err(Error::new("TARGET_NOT_VISIBLE", "target hidden"));
             }
             let r: Rect = serde_json::from_value(r["rect_px"].clone()).map_err(d::ioerr)?;
-            let (crop, crop_rect) = image.crop(r, a.number("pad", 0u32)?)?;
-            image = crop;
-            meta["element_crop"] = serde_json::to_value(crop_rect).unwrap();
+            let pad = a.number("pad", 0u32)?;
+            if pad > 256 {
+                return Err(Error::new("INVALID_ARGUMENT", "--pad exceeds 256"));
+            }
+            // rect_px is already snapped physical px; --pad here is physical
+            // pixels (element evidence crop, not the comparison raster).
+            let px = d::grow_px(exact_px(r)?, i64::from(pad));
+            image = image.crop(&px)?;
+            meta["element_crop"] =
+                json!({"left":px.left,"top":px.top,"right":px.right,"bottom":px.bottom});
             meta["automation_id"] = json!(a.id());
         } else if a.get("pad").is_some() {
             return Err(Error::new("INVALID_ARGUMENT", "--pad needs --id"));

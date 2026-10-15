@@ -330,19 +330,21 @@ where
                 self.scratch_nodes = tx.nodes;
                 return Err(UiError::InvalidUi(d));
             }
-            #[cfg(any(test, feature = "devtools"))]
-            {
-                let mut ids = std::collections::HashSet::new();
-                for n in &tx.nodes {
-                    if let Some(id) = &n.automation_id
-                        && (id.is_empty()
-                            || id.len() > 256
-                            || id.chars().any(char::is_control)
-                            || !ids.insert(id.clone()))
-                    {
-                        self.scratch_nodes = tx.nodes;
-                        return Err(UiError::InvalidUi(UiDiagnostic::DuplicateAutomationId));
-                    }
+            // Automation IDs are invariants in EVERY build (not only
+            // devtools): non-empty, <= 256 bytes, no control characters,
+            // unique across the staged tree. Reject BEFORE any commit.
+            let mut ids = std::collections::HashSet::new();
+            for n in &tx.nodes {
+                if let Some(id) = &n.automation_id
+                    && (id.is_empty()
+                        || id.len() > 256
+                        || id.chars().any(char::is_control)
+                        || !ids.insert(id.clone()))
+                {
+                    let d = UiDiagnostic::DuplicateAutomationId;
+                    self.diagnostics.push(d);
+                    self.scratch_nodes = tx.nodes;
+                    return Err(UiError::InvalidUi(d));
                 }
             }
             // style preflight — invalid values reject as InvalidStyle;

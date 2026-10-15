@@ -7154,7 +7154,8 @@ mod native_contract_tests {
             Box::new(|s: &ImeS, ui: &mut Ui<Msg>| {
                 ui.text_input(&s.v)
                     .on_edit(Msg::Edited)
-                    .on_conflict(Msg::Conflicted);
+                    .on_conflict(Msg::Conflicted)
+                    .automation_id("probe.editor");
             }) as Box<dyn Fn(&ImeS, &mut Ui<Msg>)>,
         );
         let rt = crate::app::runtime_for(
@@ -7174,6 +7175,48 @@ mod native_contract_tests {
         be.turn().unwrap();
         let node = be.rt.root_children()[0];
         (be, node)
+    }
+
+    /// A `text_input` peer PLUS a semantic button — the peer-vs-non-peer
+    /// focus handoff needs both on one backend.
+    fn mixed_backend(text: &str) -> (ImeBackend, NodeId, NodeId) {
+        let peer_ctx = crate::platform::win32::PeerCtx::for_test().unwrap();
+        let hwnd = probe_hwnd();
+        peer_ctx.hwnd.set(hwnd);
+        let factory = peer_ctx.make_factory();
+        let app = App::new(
+            ImeS {
+                v: TextValue::new(text),
+                conflicts: Vec::new(),
+            },
+            Box::new(|s: &mut ImeS, m: Msg, _: &mut UpdateCtx<Msg>| match m {
+                Msg::Edited(e) => {
+                    let _ = s.v.accept(e);
+                }
+                Msg::Conflicted(c) => s.conflicts.push(c),
+                _ => {}
+            }) as Box<dyn Fn(&mut ImeS, Msg, &mut UpdateCtx<Msg>)>,
+            Box::new(|s: &ImeS, ui: &mut Ui<Msg>| {
+                ui.text_input(&s.v)
+                    .on_edit(Msg::Edited)
+                    .on_conflict(Msg::Conflicted)
+                    .automation_id("probe.editor");
+                ui.button("btn").on_press(press_msg);
+            }) as Box<dyn Fn(&ImeS, &mut Ui<'_, '_, Msg>)>,
+        );
+        let rt = crate::app::runtime_for(
+            app,
+            Box::new(factory),
+            Theme::light(),
+            Appearance {
+                dark: false,
+                forced_colors: false,
+            },
+        );
+        let mut be = ImeBackend::for_test(rt, peer_ctx).unwrap();
+        be.turn().unwrap();
+        let kids = be.rt.root_children();
+        (be, kids[0], kids[1])
     }
 
     /// F05 — `ime_end` ordering against a REAL msftedit peer + real
@@ -7269,6 +7312,132 @@ mod native_contract_tests {
             drop(peer);
             be.shutdown();
         }
+    }
+
+    /// D05 audit — the OTHER `set_focus` boundaries (UIA action, Tab
+    /// traversal) must drain peer events before their turn too: a Change
+    /// notification pending when focus moves was previously routed at the
+    /// turn TAIL, leaving the edit stranded past the boundary.
+    #[test]
+    fn non_devctl_focus_paths_drain_peer_events_before_turn() {
+        use windows::Win32::UI::Input::KeyboardAndMouse::VK_TAB;
+        use windows::Win32::UI::WindowsAndMessaging::WM_KEYDOWN;
+        for path in ["uia", "tab"] {
+            let (mut be, node) = ime_backend("abc");
+            let peer = be.peer_for(node).unwrap();
+            peer.borrow().native_write_for_test("abc+native").unwrap();
+            peer.borrow().emit_change_for_test();
+            match path {
+                "uia" => be.uia_action(node.slot, node.generation, true).unwrap(),
+                _ => be.key_msg(WM_KEYDOWN, VK_TAB.0 as usize, 0).unwrap(),
+            }
+            assert_eq!(
+                &*be.rt.state.v.text(),
+                "abc+native",
+                "{path}: the pending edit must apply at this boundary"
+            );
+            assert_eq!(
+                be.peer_ctx.sink.lock().unwrap().len(),
+                0,
+                "{path}: no sink item may survive the boundary"
+            );
+            assert!(
+                be.rt.events.is_empty(),
+                "{path}: no queued event may survive the boundary"
+            );
+            drop(peer);
+            be.shutdown();
+        }
+    }
+
+    /// D05 audit — a primary pointer-Down on a NON-peer interactive node
+    /// moves framework focus off a peer (KILLFOCUS is delivered); pending
+    /// peer host events must be routed before that boundary's turn.
+    #[test]
+    fn semantic_pointer_down_drains_peer_events_before_turn() {
+        use crate::platform::win32::space::ClientPhysicalPoint;
+        let (mut be, ed, btn) = mixed_backend("abc");
+        be.set_focus(Some(ed)).unwrap();
+        be.service_peer_events().unwrap();
+        be.turn().unwrap();
+        let peer = be.peer_for(ed).unwrap();
+        peer.borrow().native_write_for_test("abc+native").unwrap();
+        peer.borrow().emit_change_for_test();
+        // a primary Down on the semantic button — KILLFOCUS goes to the peer
+        let r = be.rects.get(&btn).copied().unwrap();
+        let s = be.peer_ctx.scale.get();
+        let px = ClientPhysicalPoint(crate::geom::PhysicalPoint {
+            x: s.to_physical(r.x + r.width / 2.),
+            y: s.to_physical(r.y + r.height / 2.),
+        });
+        be.pointer(
+            crate::node::PointerPhase::Down,
+            px,
+            Some(crate::event::PointerButton::Primary),
+            0x0001, // MK_LBUTTON
+        )
+        .unwrap();
+        assert_eq!(be.focus, Some(btn), "Down moves focus to the button");
+        assert_eq!(
+            &*be.rt.state.v.text(),
+            "abc+native",
+            "the pending edit must apply at this boundary"
+        );
+        assert_eq!(be.peer_ctx.sink.lock().unwrap().len(), 0);
+        assert!(be.rt.events.is_empty());
+        drop(peer);
+        be.shutdown();
+    }
+
+    /// D05 — the focus boundary drains peer host events BEFORE the turn:
+    /// a Change notification pending when `focus` arrives (EN_CHANGE posted
+    /// mid-typing, the focus request lands first) was previously processed
+    /// at the TAIL of the turn — after the pump — leaving its routed edit
+    /// stranded in the sink: `native_notifications > 0` at wait-idle, and
+    /// the edit applied only at the NEXT boundary.
+    /// (`dev_command("focus")` itself needs a real HWND for dev_point; the
+    /// boundary it calls — `focus_and_settle` — is the tested unit.)
+    #[cfg(feature = "devtools")]
+    #[test]
+    fn devctl_focus_drains_peer_events_to_quiescence() {
+        let (mut be, node) = ime_backend("abc");
+        let peer = be.peer_for(node).unwrap();
+        // a native edit notification is pending when the focus arrives
+        peer.borrow().native_write_for_test("abc+native").unwrap();
+        peer.borrow().emit_change_for_test();
+        // the backend boundary the devctl `focus` command runs
+        be.focus_and_settle(Some(node)).unwrap();
+        assert_eq!(be.focus, Some(node));
+        // nothing remains stranded in the peer's host queue
+        assert!(
+            peer.borrow().drain().unwrap().is_empty(),
+            "focus boundary left host events queued"
+        );
+        // the pending edit was routed AND pumped this same boundary
+        assert_eq!(&*be.rt.state.v.text(), "abc+native");
+        // wait-idle's event queues see genuine quiescence (`damage`/
+        // `pending_paint` are paint-lifecycle facets a headless backend
+        // never clears — not the stranded-work signal under test)
+        let (_idle, diag) = be.dev_idle_state();
+        assert_eq!(diag["native_notifications"], 0, "{diag}");
+        assert_eq!(diag["events"], false, "{diag}");
+        assert_eq!(diag["reentrant"], 0, "{diag}");
+        assert_eq!(diag["deferred_native"], 0, "{diag}");
+        drop(peer);
+        be.shutdown();
+    }
+
+    /// D05 — `leave` runs the WM_MOUSELEAVE path through the real devctl
+    /// command: hot leaves and stays cleared after the turn settles.
+    #[cfg(feature = "devtools")]
+    #[test]
+    fn devctl_leave_clears_hot_through_backend() {
+        let (mut be, _node) = ime_backend("abc");
+        be.hot = Some(_node);
+        let v = be.dev_command("leave", &serde_json::json!({})).unwrap();
+        assert_eq!(v["performed"], "leave");
+        assert_eq!(be.hot, None);
+        be.shutdown();
     }
 
     /// F08 — effective palette refresh compares RESOLVED OUTPUT. Two
@@ -7663,6 +7832,118 @@ fn automation_duplicate_aborts_and_semantic_id_survives_reconcile() {
         Err(UiError::InvalidUi(UiDiagnostic::DuplicateAutomationId))
     ));
     assert_eq!(rig.root_children(), ids);
+    assert_eq!(
+        rig.rt.diagnostics.last(),
+        Some(&UiDiagnostic::DuplicateAutomationId),
+        "the rejection is recorded on the runtime"
+    );
+}
+
+/// D04 — the ID invariants run in EVERY build: non-empty, <= 256 bytes,
+/// no control characters. Each violation rejects atomically and records
+/// the diagnostic on the runtime.
+#[test]
+fn automation_id_invariants_reject_in_all_builds() {
+    let cases: Vec<String> = vec![String::new(), "a".repeat(300), "ctl\u{0007}char".into()];
+    for bad in cases {
+        let case = bad.clone();
+        let mut rig = Rig::new(
+            (),
+            |_: &mut (), _: Msg, _: &mut UpdateCtx<Msg>| {},
+            move |_: &(), ui: &mut Ui<Msg>| {
+                ui.label("x").automation_id(&bad);
+            },
+        );
+        assert!(
+            matches!(
+                rig.view(),
+                Err(UiError::InvalidUi(UiDiagnostic::DuplicateAutomationId))
+            ),
+            "{case:?}"
+        );
+        assert_eq!(
+            rig.rt.diagnostics.last(),
+            Some(&UiDiagnostic::DuplicateAutomationId)
+        );
+        assert!(rig.root_children().is_empty(), "rejection is atomic");
+    }
+}
+
+/// D04 — `named` never overwrites an ID the staged child already carries:
+/// identical is idempotent, different is a staged conflict whose tx
+/// diagnostic rejects the whole view before any commit.
+#[test]
+fn named_id_conflict_is_diagnostic_not_overwrite() {
+    let mut rig = Rig::new(
+        (),
+        |_: &mut (), _: Msg, _: &mut UpdateCtx<Msg>| {},
+        |_: &(), ui: &mut Ui<Msg>| {
+            ui.named("same", |ui| {
+                ui.label("x").automation_id("same");
+            });
+        },
+    );
+    rig.view().unwrap();
+    assert!(
+        !rig.rt
+            .diagnostics
+            .contains(&UiDiagnostic::DuplicateAutomationId),
+        "identical inner+outer ID must not flag a conflict"
+    );
+    let mut rig2 = Rig::new(
+        (),
+        |_: &mut (), _: Msg, _: &mut UpdateCtx<Msg>| {},
+        |_: &(), ui: &mut Ui<Msg>| {
+            ui.named("outer", |ui| {
+                ui.label("x").automation_id("inner");
+            });
+        },
+    );
+    assert!(matches!(
+        rig2.view(),
+        Err(UiError::InvalidUi(UiDiagnostic::DuplicateAutomationId))
+    ));
+    assert!(
+        rig2.rt
+            .diagnostics
+            .contains(&UiDiagnostic::DuplicateAutomationId)
+    );
+    assert!(
+        rig2.root_children().is_empty(),
+        "conflict rejects the whole staged transaction"
+    );
+}
+
+/// D04 — a view rejected for an ID violation leaves the committed arena
+/// AND mounted peers exactly as they were: the check runs before any
+/// commit/peer mutation.
+#[test]
+fn automation_rejection_leaves_arena_and_peers_untouched() {
+    let mut rig = Rig::new(
+        (false, TextValue::new("initial")),
+        |_: &mut (bool, TextValue), _: Msg, _: &mut UpdateCtx<Msg>| {},
+        |s: &(bool, TextValue), ui: &mut Ui<Msg>| {
+            ui.text_input(&s.1).automation_id("ed");
+            ui.label("l").automation_id(if s.0 { "ed" } else { "lab" });
+        },
+    );
+    rig.view().unwrap();
+    let ids = rig.root_children();
+    let ed = ids[0];
+    let peer = rig.peer_id(ed).expect("editor peer mounted");
+    let ops = rig.peer_ops(peer).len();
+    rig.rt.state.0 = true;
+    assert!(matches!(
+        rig.view(),
+        Err(UiError::InvalidUi(UiDiagnostic::DuplicateAutomationId))
+    ));
+    assert_eq!(rig.root_children(), ids, "arena unchanged");
+    assert_eq!(rig.peer_id(ed), Some(peer), "same peer still mounted");
+    assert_eq!(rig.peer_ops(peer).len(), ops, "no peer mutation");
+    assert_eq!(
+        rig.rt.diagnostics.last(),
+        Some(&UiDiagnostic::DuplicateAutomationId)
+    );
 }
 
 #[cfg(windows)]

@@ -120,6 +120,8 @@ where
             focus_visible: self.focus == Some(id),
             hovered: self.hot == Some(id),
             pressed: self.pressed == Some(id),
+            // No compound components yet: the runtime emits no semantic parts.
+            parts: vec![],
             children,
         })
     }
@@ -184,7 +186,7 @@ where
             y: self.peer_ctx.scale.get().to_physical(logical.y),
         }))
     }
-    fn dev_command(&mut self, command: &str, args: &Value) -> Result<Value> {
+    pub(crate) fn dev_command(&mut self, command: &str, args: &Value) -> Result<Value> {
         match command {
             "handshake" => {
                 let s = self.dev_snapshot()?;
@@ -264,9 +266,12 @@ where
                         "v0.1 supports keyboard focus modality",
                     ));
                 }
-                self.set_focus(Some(id)).map_err(platform)?;
-                self.turn().map_err(platform)?;
+                self.focus_and_settle(Some(id)).map_err(platform)?;
                 Ok(json!({"focused":args["id"],"modality":"keyboard"}))
+            }
+            "leave" => {
+                self.leave().map_err(platform)?;
+                Ok(json!({"performed":"leave"}))
             }
             "key" => {
                 let name = args["key"]
@@ -380,7 +385,7 @@ where
         self.devtools = Some(server);
         Ok(())
     }
-    fn dev_idle_state(&self) -> (bool, Value) {
+    pub(crate) fn dev_idle_state(&self) -> (bool, Value) {
         let dirty = (0..self.rt.arena.slot_len()).any(|i| {
             self.rt.arena.slot(i as u32).is_some_and(|n| {
                 n.dirty

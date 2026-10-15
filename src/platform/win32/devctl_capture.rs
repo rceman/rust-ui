@@ -252,20 +252,17 @@ pub fn capture_client(raw: usize) -> Result<(Image, serde_json::Value)> {
         if x < 0 || y < 0 || cw <= 0 || ch <= 0 || x + cw > i64::from(w) || y + ch > i64::from(h) {
             return Err(err("client area outside WGC frame"));
         }
-        let (image, _) = Image {
+        let image = Image {
             width: w,
             height: h,
             rgba: pixels,
         }
-        .crop(
-            crate::devtools::Rect {
-                x: x as f64,
-                y: y as f64,
-                width: cw as f64,
-                height: ch as f64,
-            },
-            0,
-        )?;
+        .crop(&crate::devtools::PixelRect {
+            left: x as i32,
+            top: y as i32,
+            right: (x + cw) as i32,
+            bottom: (y + ch) as i32,
+        })?;
         Ok((
             image,
             serde_json::json!({"capture_backend":"Windows.Graphics.Capture","coordinate_space":"client-physical-pixels","frame_width":w,"frame_height":h,"client_crop":{"x":x,"y":y,"width":cw,"height":ch}}),

@@ -1692,6 +1692,10 @@ where
             }
             if phase == crate::node::PointerPhase::Down && button == Some(PointerButton::Primary) {
                 self.set_focus(Some(id))?;
+                // KILLFOCUS on a peer old-owner queues host events —
+                // drain before this boundary's turn, same as the peer
+                // branch above
+                self.service_peer_events()?;
             }
             // semantic node events
             let ev = match phase {
@@ -1945,7 +1949,9 @@ where
                 i => (i + 1) % eligible.len(),
             }
         };
-        self.set_focus(Some(eligible[next]))
+        self.set_focus(Some(eligible[next]))?;
+        // route the focus send's host events before the caller's turn
+        self.service_peer_events()
     }
 
     /// Focus a node — blur the old (still routed even when it just hid),
@@ -1978,6 +1984,19 @@ where
             self.deliver_native(id, WM_SETFOCUS, 0, 0)?;
         }
         Ok(())
+    }
+
+    /// The complete focus boundary: WM_SETFOCUS/KILLFOCUS delivered to a
+    /// peer queues host events (caret, invalidate, selchange) — and any
+    /// Change/SelChange already pending — that must be routed into the
+    /// runtime BEFORE the turn's pump. Draining at the turn tail leaves
+    /// their sink items stranded across the boundary: wait-idle then sees
+    /// `native_notifications > 0` instead of quiescence.
+    #[cfg(feature = "devtools")]
+    pub(crate) fn focus_and_settle(&mut self, node: Option<NodeId>) -> UiResult {
+        self.set_focus(node)?;
+        self.service_peer_events()?;
+        self.turn()
     }
 
     /// The resolved interaction-state inputs — what the visual would be
@@ -2338,6 +2357,10 @@ where
         }
         if focus {
             self.set_focus(Some(id))?;
+            // focus host events (and any pending Change/SelChange) are
+            // routed before the turn's pump — same boundary as the
+            // pointer-down and devctl focus paths
+            self.service_peer_events()?;
         } else {
             self.push_input(id, NodeEvent::Press)?;
         }

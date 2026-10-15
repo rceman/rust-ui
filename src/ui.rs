@@ -588,7 +588,18 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
             return;
         }
         let index = children[before];
-        self.tx.nodes[index as usize].automation_id = Some(Rc::from(id));
+        let existing = self.tx.nodes[index as usize].automation_id.clone();
+        match existing.as_deref() {
+            // An id produced inside `draw` (e.g. a builder's `.automation_id`)
+            // stays authoritative: identical is idempotent, a different id is
+            // a staged conflict — diagnostic, never an overwrite.
+            Some(existing) if existing == id => {}
+            Some(_) => self
+                .tx
+                .diagnostics
+                .push(UiDiagnostic::DuplicateAutomationId),
+            None => self.tx.nodes[index as usize].automation_id = Some(Rc::from(id)),
+        }
     }
 
     pub fn column(&mut self, props: Column, draw: impl FnOnce(&mut Ui<'_, '_, M>)) {

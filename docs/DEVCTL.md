@@ -74,7 +74,9 @@ removes a stale receipt only if its process is gone; it never kills another PID.
 `hover`, `press`, `release` and `click` resolve the ID to a currently visible,
 enabled hit owner, then use the real backend pointer/state/event machinery at
 its center. No physical mouse movement or appearance mutation occurs. Press
-persists until release. Focus currently supports keyboard modality; the current
+persists until release. `leave` takes no target: it runs the backend's
+WM_MOUSELEAVE path — pointer left the window, hot state clears. Focus
+currently supports keyboard modality; the current
 foundation's focus ring follows focus (no new separate modality model is invented).
 
 Supported keys: `Enter Space Tab Escape Left Up Right Down Backspace Delete Home
@@ -106,10 +108,17 @@ state before retrying a non-idempotent action.
 
 ## Coordinates, snapshots and WGC
 
-Snapshot schema: `rust-ui.devctl.snapshot-layout/0.1`. Tree order is retained child
+Snapshot schema: `rust-ui.devctl.snapshot-layout/0.2` (checked with strict
+equality; 0.1 documents are rejected). Tree order is retained child
 order, not slot order. It contains client logical/physical dimensions, scale and
 nodes with optional automation_id, kind, label, rect_dp, rect_px, visible, enabled,
-focused, focus_visible, hovered, pressed, children. Labels are diagnostic prefixes
+focused, focus_visible, hovered, pressed, parts, children. `parts` is additive and
+omitted when empty: each part is `{key, rect_dp, rect_px, visible, reason?}` with
+rects in the same client-relative absolute space as `rect_dp`, addressed as
+`owner#part` (a `SemanticKey`, never a flattened fake automation id). The v0.1
+runtime emits no parts — no compound components exist yet; synthetic snapshots
+exercise the mechanism. Duplicate `(owner, part)` keys or parts on a node without
+an automation id fail `INVALID_ARGUMENT`. Labels are diagnostic prefixes
 limited to 1024 characters. No pointer, timestamp, session nonce or NodeId is
 included. Unchanged state serializes deterministically. Tree bounds: 8192 nodes,
 128 levels, 4 MiB encoded response.
@@ -118,6 +127,20 @@ included. Unchanged state serializes deterministically. Tree bounds: 8192 nodes,
 through its existing dpi/96 adapter (96/120/144/192 → 1/1.25/1.5/2).
 Physical rectangle edges use the shared rounding authority independently.
 `rect_dp` and `rect_px` are **client-relative**, never screen/non-client coordinates.
+
+**One snap authority.** Every devctl logical→physical conversion goes through
+`devtools::snap_rect`, which delegates each *edge* to
+`crate::geom::Rect::physical`/`ScaleFactor` (round half away from zero; width is
+`right-left`, never `round(width*scale)`), casting f64→f32 exactly once and
+rejecting non-finite/non-positive scales and unrepresentable edges. No other
+rounding exists in devtools or the CLI: `Image::crop` takes an already-snapped
+integer `PixelRect`, and `--pad N` in `compare-element` grows the *logical* rect
+by N Dp on each side *before* snapping (N comparison pixels at scale 1.0).
+The retired floor-origin/ceil-edge policy disagreed with the authority on
+421 of 581 frozen element-capture records (999 of 1387 including visible
+parts), e.g. `button.default` at y=300.75 h=32 snapped to 301..333 = 32 px.
+`screenshot --id --pad` keeps its existing meaning: physical pixels grown on
+the already-snapped `rect_px`.
 
 Screenshot authority is exclusively **Windows Graphics Capture**. The CLI enables
 PMv2 coordinates for capture, measures client origin through the existing Win32
@@ -147,7 +170,7 @@ Comparators run offline, including on Linux without a Linux UI backend:
 
 ```powershell
 & $ctl compare-layout --reference reference\shadcn-gallery-v0.1\contract.json --capture components/default --snapshot .devctl\native.json --id button.default --mode size-only --tolerance 0.25 --json
-& $ctl compare-element --reference reference\shadcn-gallery-v0.1\contract.json --capture components/default --id button.default --snapshot .devctl\native.json --reference-image reference\shadcn-gallery-v0.1\screenshots\light\components.png --native-image .devctl\client.png --mode size-only --tolerance 0.25 --channel-tolerance 2 --out-dir .devctl\button --json
+& $ctl compare-element --reference reference\shadcn-gallery-v0.1\contract.json --capture components/default --id button.default --native-id probe.button --snapshot .devctl\native.json --reference-image reference\shadcn-gallery-v0.1\screenshots\light\components.png --native-image .devctl\client.png --mode size-only --tolerance 0.25 --channel-tolerance 2 --out-dir .devctl\button --json
 ```
 
 Use native IDs that match the frozen reference when implementing components.
@@ -157,27 +180,85 @@ there is no manually duplicated contract. Geometry is theme independent; choose
 Light/Dark with the reference-image path. Full-document reference images need no
 matching 14,000px native window: compare a visible semantic element.
 
+**Targets and tier scope.** The adapter emits one target per element
+(`owner`) and one per capture part (`owner#part`); part x/y are relative to
+the owner's rect and are exposed absolute. Hidden parts
+(`{"visible":false,"reason":"not-rendered"}`) are explicit targets with no
+rect: they pass when the native part is absent or not visible, and fail with
+their reason when a native part renders. Visible parts compare rect like
+elements. Targets carry the element tier (`core`/`later`/`reference-only`);
+unknown tiers fail `INVALID_ARGUMENT`. `--tier` selects the scope (`all` or a
+comma-separated subset, default `core`): out-of-scope targets are excluded
+from missing accounting but counted under `scope.excluded_by_tier`, and
+native ids matching them list under `out_of_scope`, not `unexpected`. An
+explicit `--id` (`owner` or `owner#part`) bypasses the tier filter and still
+reports `tier` per row. `--native-id` lets `compare-element` bind a reference
+id to a differently named native element (no fuzzy matching).
+
 Layout inputs can also both be native snapshots for calibration. Modes:
 `absolute` (x/y/width/height) or `size-only` (width/height), plus visibility/presence.
 No implicit relative alignment is applied. Output has per-ID expected/actual/delta,
-explicit Dp tolerance and matched/missing/unexpected/failed summary. `--id` restricts
-the comparison; unrelated gallery elements do not become missing targets.
+explicit Dp tolerance and matched/missing/unexpected/out_of_scope/failed summary.
+`--id` restricts the comparison; unrelated gallery elements do not become
+missing targets.
 
+**Two raster spaces.** `RAW_NATIVE_CAPTURE` is the unaltered WGC raster at
+the native `scale_factor`, saved as evidence and never overwritten by
+normalized data. `CANONICAL_COMPARISON_RASTER` is 1.0 comparison pixel per
+logical Dp (aligned with the frozen DPR1 HTML), derived deterministically by
+resampler `area-box/1`: for each canonical pixel (i,j) of that side's own
+canonical rect `snap_rect(element_logical_rect.grow(pad), 1.0)` — the
+reference and the native element each have their own canonical lattice, so a
+position difference never mis-samples the native raster — the source box
+`[s*(C.left+i), s*(C.left+i+1)) × [s*(C.top+j), s*(C.top+j+1))` in the raw
+raster is averaged with exact fractional-coverage area weights (separable,
+straight sRGB-encoded RGBA channels, f64 row-major accumulation, round half
+up, clamp 0..255). Both canonical rasters align at their own element's
+top-left; a logical size difference then shows as honest missing pixels on
+the union canvas, never as scale noise. `source = canonical * source_scale`; no
+resize-until-dimensions-match exists. At s==1.0 the output is bit-identical
+to a plain crop. A footprint reaching outside the raw capture fails
+`TARGET_NOT_VISIBLE` (no edge clamping). `compare-image` is unchanged: a
+same-lattice raw compare of whole images with no crop or canonicalization.
 Image comparison reports exact dimensions, mismatched pixels/percentage, max
 channel delta, mean absolute channel error and a difference bounding box.
 `--channel-tolerance 0..255` is explicit (default zero); raw channel statistics
 are independent of that threshold. Diff is deterministic: red = amplified channel
 error, magenta = a missing pixel on unequal extents. Statistics use a union canvas
 with transparent absent samples; dimensions always fail when unequal. It never
-claims perceptual equivalence or resizes glyphs to fake parity.
+claims perceptual equivalence.
 
-`compare-element` writes `reference.png`, `native.png`, `diff.png`, `comparison.json`.
-Each image is cropped independently at its own authoritative rectangle. Reference
-HTML is DPR1 CSS pixels; native is current host physical pixels. At 1.25 these can
-legitimately differ: report the size mismatch, do not silently resample. A native
-snapshot used as the reference uses its own rect_px for reference-image cropping.
-Padding is physical pixels per image. Maximum decoded/diff image: 32 Mi pixels,
-enough for the frozen v0.1 All page. Failed comparisons exit 6 with the full report.
+`compare-element` writes `reference.png`, `native-raw.png`,
+`native-canonical.png`, `diff.png`, `comparison.json` (schema
+`rust-ui.devctl.compare-element/0.2`). `--native-image` must be a FULL raw WGC
+client capture whose dimensions equal the snapshot `client_px` (else
+`INVALID_ARGUMENT`); `--reference-image` for a contract reference must equal
+the contract `pages[].document` of the capture's page, and for a snapshot
+reference must equal that snapshot's `client_px` (its `scale_factor` then
+drives the same canonicalization, identity at 1.0). `diff.png` and pixel
+metrics compare the reference canonical raster against the native CANONICAL
+raster — the actionable signal — while `native-raw.png` stays unaltered.
+`comparison.json` fields: `schema`; `id` (reference key) / `native_id`;
+`pass` (geometry row AND canonical-visual pass; `false` still exits 6 with
+the full report); `scope {tiers, tier_of_target}`; `geometry` (the
+`compare-layout` row for this target — the contract/snapshot authority);
+`raster` — `reference` `{file, scale_px_per_dp, crop_rect_px,
+canonical_rect_dp, dimensions}`, `native_raw` `{file, scale_px_per_dp,
+crop_rect_px, dimensions}`, `native_canonical` `{file, scale_px_per_dp: 1.0,
+canonical_rect_dp, dimensions}`;
+`normalization {source_scale, target_scale, source_dimensions,
+canonical_dimensions, resampler:"area-box/1", identity,
+transform {mapping, canonical_rect_dp, source_footprint_px}}` — the native
+canonical lattice and its exact f64 footprint in source px; `visual_canonical`
+(compare-image metrics, canonical space); `visual_raw` (`computed:false` with
+the cross-scale reason, or real metrics when both sides share a scale);
+`evidence_classes` — `geometry` and `whole_component_raster` are `measured`;
+`flat_fills`, `borders`, `radii`, `icons`, `text_bounds_baseline` and
+`glyph_raster` are `not_measured` (Chromium and DirectWrite/D2D glyph pixels
+are not expected to be byte-identical; geometry is contract authority, the
+canonical raster is a visual signal); `padding_comparison_px`. Maximum
+decoded/diff image: 32 Mi pixels, enough for the frozen v0.1 All page.
+Failed comparisons exit 6 with the full report.
 Never place native/diff outputs into the frozen reference directory.
 
 ## Machine output and security

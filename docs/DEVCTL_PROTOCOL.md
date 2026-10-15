@@ -40,11 +40,12 @@ Runtime commands:
 | Command | Arguments / result |
 |---|---|
 | handshake | PID, HWND diagnostic identity, protocol, scale, client_dp/client_px |
-| tree / snapshot-layout | Snapshot schema in DEVCTL.md, deterministic retained child order |
+| tree / snapshot-layout | `rust-ui.devctl.snapshot-layout/0.2` (strict equality; parts are additive `owner#part` records, none emitted by the v0.1 runtime), deterministic retained child order; see DEVCTL.md |
 | rect | `id`; client-relative logical/physical rectangle + visible/enabled |
 | wait-idle | Observed quiescence + presentation barrier; bounded timeout |
 | hover / press / release / click | `id`; same native pointer/event/state route |
-| focus | `id`, optional `modality: keyboard` |
+| leave | none; WM_MOUSELEAVE path — hot clears; result `{"performed":"leave"}` |
+| focus | `id`, optional `modality: keyboard`; drains peer events before the turn |
 | key | `key`; documented bounded unmodified subset through backend normalization |
 | shutdown | Successful acknowledgement followed by mailbox-woken guarded window destruction |
 

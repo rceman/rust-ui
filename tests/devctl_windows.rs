@@ -172,6 +172,24 @@ fn native_agent_workflow_and_bounded_repetition() {
         );
         action(session, "release", &["probe.button"]);
         assert_eq!(count(&action(session, "tree", &[])), "Clicks: 1");
+        // hover/leave lifecycle: hot tracks the pointer across the real
+        // command path — hover sets it, `leave` clears it
+        action(session, "hover", &["probe.button"]);
+        action(session, "wait-idle", &[]);
+        let hovered: Snapshot = serde_json::from_value(action(session, "tree", &[])).unwrap();
+        assert_eq!(
+            hovered.index().unwrap()["probe.button"].0.hovered,
+            true,
+            "hover must report hot"
+        );
+        action(session, "leave", &[]);
+        action(session, "wait-idle", &[]);
+        let cleared: Snapshot = serde_json::from_value(action(session, "tree", &[])).unwrap();
+        assert_eq!(
+            cleared.index().unwrap()["probe.button"].0.hovered,
+            false,
+            "leave must clear hot"
+        );
         action(session, "click", &["probe.button"]);
         assert_eq!(count(&action(session, "tree", &[])), "Clicks: 2");
         action(
@@ -298,6 +316,113 @@ fn native_agent_workflow_and_bounded_repetition() {
         ]);
         assert_eq!(comparison["pass"], true);
         assert!(crops.join("diff.png").exists());
+        // Cross-authority: the FROZEN shadcn contract's button.default vs
+        // the live probe's probe.button — real reference-vs-native raster
+        // evidence at the actual host scale. The probe's own styling
+        // differs from shadcn, so exit 6 / pass:false is the honest
+        // expected outcome; what must hold is the raster/normalization
+        // model, not visual equality.
+        let reference_dir =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("reference/shadcn-gallery-v0.1");
+        let cross = root.join(format!("cross-{cycle}"));
+        let (code, cmp) = cli(&[
+            "compare-element",
+            "--reference",
+            reference_dir.join("contract.json").to_str().unwrap(),
+            "--capture",
+            "components/default",
+            "--id",
+            "button.default",
+            "--native-id",
+            "probe.button",
+            "--reference-image",
+            reference_dir
+                .join("screenshots/light/components.png")
+                .to_str()
+                .unwrap(),
+            "--native-image",
+            img,
+            "--snapshot",
+            s,
+            "--out-dir",
+            cross.to_str().unwrap(),
+        ]);
+        assert_eq!(code, 6, "{cmp}");
+        let cmp = &cmp["result"];
+        assert_eq!(cmp["pass"], false);
+        assert_eq!(cmp["schema"], "rust-ui.devctl.compare-element/0.2");
+        for f in [
+            "reference.png",
+            "native-raw.png",
+            "native-canonical.png",
+            "diff.png",
+            "comparison.json",
+        ] {
+            assert!(cross.join(f).exists(), "{f} artifact missing");
+        }
+        // reference evidence stays on the contract's 1.0 lattice
+        assert_eq!(cmp["raster"]["reference"]["dimensions"], json!([70, 32]));
+        let probe_snap: Snapshot = serde_json::from_value(v.clone()).unwrap();
+        let button = &probe_snap.index().unwrap()["probe.button"].0;
+        // raw native evidence is in PHYSICAL px at the host scale — its
+        // dims are exactly the snapshot's rect_px, not canonical numbers
+        let raw_dims: Vec<i64> = cmp["raster"]["native_raw"]["dimensions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|d| d.as_i64().unwrap())
+            .collect();
+        assert_eq!(
+            cmp["raster"]["native_raw"]["scale_px_per_dp"]
+                .as_f64()
+                .unwrap(),
+            scale
+        );
+        assert_eq!(
+            raw_dims,
+            vec![button.rect_px.width as i64, button.rect_px.height as i64],
+            "native-raw dims must equal the physical rect_px when scale != 1"
+        );
+        // the canonical lattice is the native logical rect snapped at 1.0
+        let canonical_w = (button.rect_dp.x + button.rect_dp.width).round() as i64
+            - button.rect_dp.x.round() as i64;
+        let canonical_h = (button.rect_dp.y + button.rect_dp.height).round() as i64
+            - button.rect_dp.y.round() as i64;
+        let canonical_dims: Vec<i64> = cmp["raster"]["native_canonical"]["dimensions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|d| d.as_i64().unwrap())
+            .collect();
+        assert_eq!(
+            cmp["raster"]["native_canonical"]["scale_px_per_dp"]
+                .as_f64()
+                .unwrap(),
+            1.0
+        );
+        assert_eq!(canonical_dims, vec![canonical_w, canonical_h]);
+        assert_eq!(
+            cmp["normalization"]["source_scale"].as_f64().unwrap(),
+            scale
+        );
+        assert_eq!(cmp["normalization"]["resampler"], "area-box/1");
+        if scale != 1.0 {
+            assert_eq!(
+                cmp["visual_raw"]["computed"], false,
+                "cross-scale raw diff is not meaningful"
+            );
+        }
+        // the honesty check: missing pixels come from the LOGICAL size
+        // difference only — union canvas minus the aligned intersection —
+        // never a scale artifact; 0 when canonical dims are equal
+        let (rw, rh) = (70i64, 32i64);
+        let (nw, nh) = (canonical_dims[0], canonical_dims[1]);
+        let expected_missing = rw.max(nw) * rh.max(nh) - rw.min(nw) * rh.min(nh);
+        assert_eq!(
+            cmp["visual_canonical"]["missing_pixels"].as_i64().unwrap(),
+            expected_missing,
+            "missing pixels must equal union-intersection of canonical dims"
+        );
         let after_handles = handles(launch["pid"].as_u64().unwrap() as u32);
         println!(
             "cycle {cycle}: scale={scale}, target handles before={before_handles} after={after_handles}"
