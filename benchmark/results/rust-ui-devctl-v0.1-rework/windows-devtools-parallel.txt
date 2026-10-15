@@ -1,0 +1,11 @@
+cargo test --locked --features devtools --lib
+test tests::native_probe_richedit_paints_text ... ok
+test tests::native_contract_tests::mailbox_wait_blocks_when_idle ... ok
+test tests::lifecycle_inflight_success_serializes_then_overlap_send_ok ... ok
+test tests::lifecycle_inflight_success_serializes_then_overlap_async_send_ok ... ok
+test tests::lifecycle_inflight_failure_serializes_overlap_async_send ... ok
+test tests::lifecycle_inflight_failure_serializes_overlap_send_closed ... ok
+test tests::native_contract_tests::mailbox_event_wakes_through_busy_message_queue ... ok
+
+test result: ok. 156 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.72s
+

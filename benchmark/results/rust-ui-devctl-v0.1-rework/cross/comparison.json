@@ -1,0 +1,161 @@
+{
+  "evidence_classes": {
+    "borders": "not_measured",
+    "flat_fills": "not_measured",
+    "geometry": "measured",
+    "glyph_raster": "not_measured",
+    "icons": "not_measured",
+    "note": "Chromium and DirectWrite/D2D glyph pixels are not expected to be byte-identical; geometry is contract authority; canonical raster is a visual signal",
+    "radii": "not_measured",
+    "text_bounds_baseline": "not_measured",
+    "whole_component_raster": "measured"
+  },
+  "geometry": {
+    "actual": {
+      "height": 36.0,
+      "width": 69.4609375,
+      "x": 53.0,
+      "y": 83.62109375
+    },
+    "delta": {
+      "height": 4.0,
+      "width": -0.5230624999999947,
+      "x": -220.0,
+      "y": -217.12890625
+    },
+    "expected": {
+      "height": 32.0,
+      "width": 69.984,
+      "x": 273.0,
+      "y": 300.75
+    },
+    "id": "button.default",
+    "native_id": "probe.button",
+    "pass": false,
+    "tier": "core",
+    "tolerance": 0.0
+  },
+  "id": "button.default",
+  "native_id": "probe.button",
+  "normalization": {
+    "canonical_dimensions": [
+      69,
+      36
+    ],
+    "identity": false,
+    "resampler": "area-box/1",
+    "source_dimensions": [
+      87,
+      45
+    ],
+    "source_scale": 1.25,
+    "target_scale": 1.0,
+    "transform": {
+      "canonical_rect_dp": {
+        "bottom": 120,
+        "left": 53,
+        "right": 122,
+        "top": 84
+      },
+      "mapping": "source_px = canonical_px * source_scale",
+      "source_footprint_px": {
+        "height": 45.0,
+        "width": 86.25,
+        "x": 66.25,
+        "y": 105.0
+      }
+    }
+  },
+  "padding_comparison_px": 0.0,
+  "pass": false,
+  "raster": {
+    "native_canonical": {
+      "canonical_rect_dp": {
+        "bottom": 120,
+        "left": 53,
+        "right": 122,
+        "top": 84
+      },
+      "dimensions": [
+        69,
+        36
+      ],
+      "file": "native-canonical.png",
+      "scale_px_per_dp": 1.0
+    },
+    "native_raw": {
+      "crop_rect_px": {
+        "bottom": 150,
+        "left": 66,
+        "right": 153,
+        "top": 105
+      },
+      "dimensions": [
+        87,
+        45
+      ],
+      "file": "native-raw.png",
+      "scale_px_per_dp": 1.25
+    },
+    "reference": {
+      "canonical_rect_dp": {
+        "bottom": 333,
+        "left": 273,
+        "right": 343,
+        "top": 301
+      },
+      "crop_rect_px": {
+        "bottom": 333,
+        "left": 273,
+        "right": 343,
+        "top": 301
+      },
+      "dimensions": [
+        70,
+        32
+      ],
+      "file": "reference.png",
+      "scale_px_per_dp": 1.0
+    }
+  },
+  "schema": "rust-ui.devctl.compare-element/0.2",
+  "scope": {
+    "tier_of_target": "core",
+    "tiers": [
+      "core"
+    ]
+  },
+  "visual_canonical": {
+    "actual": [
+      69,
+      36
+    ],
+    "difference_bbox": {
+      "height": 36.0,
+      "width": 70.0,
+      "x": 0.0,
+      "y": 0.0
+    },
+    "dimensions": [
+      70,
+      36
+    ],
+    "dimensions_match": false,
+    "expected": [
+      70,
+      32
+    ],
+    "max_channel_delta": 255,
+    "mean_absolute_channel_error": 58.299305555555556,
+    "mismatch_percent": 100.0,
+    "mismatched_pixels": 2520,
+    "missing_pixels": 312,
+    "pass": false,
+    "pixel_domain": "union canvas; absent samples transparent; missing pixels always mismatch",
+    "tolerance": 0
+  },
+  "visual_raw": {
+    "computed": false,
+    "reason": "raw native raster is at 1.25 px/Dp and reference at 1 px/Dp; cross-scale raw diff is not meaningful"
+  }
+}

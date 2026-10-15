@@ -1,0 +1,31 @@
+cargo test --locked --features devtools --lib systemic_frozen_contract_snap_audit -- --nocapture
+4598 |                 let _ = windows::Win32::System::Ole::SafeArrayDestroy(kids);
+     |                 +++++++
+
+warning: unused `windows_core::BOOL` that must be used
+    --> src\tests.rs:6865:17
+     |
+6865 | /                 PeekMessageW(
+6866 | |                     &mut m,
+6867 | |                     None,
+6868 | |                     0,
+6869 | |                     0,
+6870 | |                     windows::Win32::UI::WindowsAndMessaging::PM_NOREMOVE,
+6871 | |                 );
+     | |_________________^
+     |
+help: use `let _ = ...` to ignore the resulting value
+     |
+6865 |                 let _ = PeekMessageW(
+     |                 +++++++
+
+For more information about this error, try `rustc --explain E0133`.
+warning: `rust-ui` (lib test) generated 74 warnings (run `cargo fix --lib -p rust-ui --tests` to apply 6 suggestions)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.13s
+     Running unittests src\lib.rs (target\debug\deps\rust_ui-ae92461cd008bef7.exe)
+
+running 1 test
+test devtools::tests::systemic_frozen_contract_snap_audit ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 155 filtered out; finished in 0.08s
+

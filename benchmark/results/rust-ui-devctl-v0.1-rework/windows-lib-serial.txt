@@ -1,0 +1,9 @@
+cargo test --locked --lib -- --test-threads=1
+test tests::unhandled_conflict_is_typed_diagnostic_once ... ok
+test tests::unique_spawn_keys_leave_zero_registrations ... ok
+test tests::utf16_conversions_are_checked ... ok
+test tests::value_moves_to_earlier_parent_release_once ... ok
+test tests::win32_scale_from_dpi_mapping ... ok
+
+test result: ok. 128 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.94s
+

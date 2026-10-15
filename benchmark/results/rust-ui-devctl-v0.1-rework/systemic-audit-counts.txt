@@ -1,0 +1,3 @@
+element records: 581, old-vs-new disagreements: 421
+visible-part records: 806, disagreements: 578
+total records: 1387, total disagreements: 999

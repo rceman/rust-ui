@@ -1,0 +1,41 @@
+cargo test --locked --features devtools --test devctl_windows -- --nocapture
+     |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: convert the identifier to upper case: `NAVIGATE_DIRECTION_LAST_CHILD`
+
+For more information about this error, try `rustc --explain E0133`.
+warning: `rust-ui` (lib) generated 68 warnings (run `cargo fix --lib -p rust-ui` to apply 4 suggestions)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.12s
+     Running tests\devctl_windows.rs (target\debug\deps\devctl_windows-d29deca7635eb2e6.exe)
+
+running 1 test
+cycle 0: scale=1.25, target handles before=199 after=207
+cycle 0 steady capture 0: handles=207
+cycle 0 steady capture 1: handles=207
+cycle 0 steady capture 2: handles=207
+cycle 0 steady capture 3: handles=207
+cycle 0 steady capture 4: handles=207
+cycle 0 steady capture 5: handles=207
+cycle 0 idle 2s CPU delta (100ns ticks)=0
+cycle 0 2s idle counters: before={"native_timer_fires":0,"requested_redraws":71} after={"native_timer_fires":0,"requested_redraws":71}
+cycle 1: scale=1.25, target handles before=199 after=207
+cycle 1 steady capture 0: handles=207
+cycle 1 steady capture 1: handles=207
+cycle 1 steady capture 2: handles=207
+cycle 1 steady capture 3: handles=207
+cycle 1 steady capture 4: handles=207
+cycle 1 steady capture 5: handles=207
+cycle 1 idle 2s CPU delta (100ns ticks)=0
+cycle 1 2s idle counters: before={"native_timer_fires":0,"requested_redraws":71} after={"native_timer_fires":0,"requested_redraws":71}
+cycle 2: scale=1.25, target handles before=199 after=207
+cycle 2 steady capture 0: handles=207
+cycle 2 steady capture 1: handles=207
+cycle 2 steady capture 2: handles=207
+cycle 2 steady capture 3: handles=207
+cycle 2 steady capture 4: handles=207
+cycle 2 steady capture 5: handles=207
+cycle 2 idle 2s CPU delta (100ns ticks)=0
+cycle 2 2s idle counters: before={"native_timer_fires":0,"requested_redraws":71} after={"native_timer_fires":0,"requested_redraws":71}
+native devctl workflow PASS; 3 complete launch/capture/shutdown cycles; outputs: C:\Users\THERCE~1\AppData\Local\Temp\rust-ui-devctl-proof-64a5e9f8a9ae7fda01f12da43fce9e6e38430f18e882a807f92e9f9cdaeb6739
+test native_agent_workflow_and_bounded_repetition ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 30.45s
+

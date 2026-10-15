@@ -1,0 +1,39 @@
+Flake characterization (H3b) - devctl_windows CAPTURE_FAILED guard
+
+Observed: one CAPTURE_FAILED ("retained semantic geometry/state changed
+during WGC capture") at "steady capture 1" in 1 of 17 runs total.
+
+Runs (cargo test --locked --features devtools --test devctl_windows):
+  current tree (cf8ab91 content):  8/8 pass   (h3b-flake/run-1..8.txt)
+  baseline 7a1ad19 (scratch worktree): 8/8 pass (h3b-flake/base-1..8.txt)
+  raw logs kept at %TEMP%\h3b-flake\ during investigation.
+
+Cause: NOT proven - no failure reproduced while instrumented.
+Mechanism analysis (code reachability, verified against 7a1ad19):
+  - The failing variant is the snapshot-mismatch CAPTURE_FAILED - the two
+    snapshot-layout calls inside `screenshot` must bracket a change in a
+    structural field (hovered/focused/pressed/rect/...).
+  - Tooltip scheduler: eliminated (probe has no tooltips; tooltips are
+    separate HWNDs, not snapshot nodes).
+  - Caret blink: eliminated for this step (focus was on probe.button;
+    caret state is not in the snapshot).
+  - OS WM_KILLFOCUS: eliminated (send_focused forwards to the focused
+    PEER only; be.focus never clears -> `focused` cannot flip).
+  - Verified reachable: a real OS WM_MOUSEMOVE/WM_MOUSELEAVE delivered to
+    the shown probe window flips `be.hot` -> `hovered` in the snapshot
+    (devtools.rs dev_node reads `self.hot`). WM_LBUTTONDOWN could flip
+    pressed/focused likewise. The probe is a real 980x900 window on a
+    live desktop; any parked-cursor jitter can deliver one mid-capture.
+    `hovered` field + the two-snapshot guard are byte-identical at
+    7a1ad19 -> the susceptibility predates this rework.
+  - The H1/H2 edits only add drains/wait-idles that shrink the unstable
+    window and `leave` reduces persistent hover state.
+
+Conclusion: pre-existing environmental flake (real OS input reaching the
+shown probe window mid-WGC-capture); 8/8 vs 8/8 runs cannot prove equal
+rates at ~6% event frequency, but no evidence of a regression.
+
+Recommended (described, not applied - out of scope): bounded retry inside
+the CLI screenshot arm (wait-idle, re-snapshot, re-capture x2) before
+failing CAPTURE_FAILED - transient input produces a one-shot mismatch
+while a genuinely mutating scene keeps mismatching.

@@ -1,0 +1,9 @@
+cargo test --locked --lib
+test tests::lifecycle_inflight_success_serializes_then_overlap_async_send_ok ... ok
+test tests::lifecycle_inflight_failure_serializes_overlap_send_closed ... ok
+test tests::lifecycle_inflight_failure_serializes_overlap_async_send ... ok
+test tests::lifecycle_inflight_success_serializes_then_overlap_send_ok ... ok
+test tests::native_contract_tests::mailbox_event_wakes_through_busy_message_queue ... ok
+
+test result: ok. 128 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.71s
+

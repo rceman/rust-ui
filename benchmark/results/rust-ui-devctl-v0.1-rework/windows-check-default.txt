@@ -1,0 +1,5 @@
+cargo check --locked
+For more information about this error, try `rustc --explain E0133`.
+warning: `rust-ui` (lib) generated 69 warnings (run `cargo fix --lib -p rust-ui` to apply 4 suggestions)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 33.77s
+exit=0

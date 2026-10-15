@@ -1,0 +1,7 @@
+cargo test --locked --features devtools --lib -- --test-threads=1
+test tests::utf16_conversions_are_checked ... ok
+test tests::value_moves_to_earlier_parent_release_once ... ok
+test tests::win32_scale_from_dpi_mapping ... ok
+
+test result: ok. 156 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.07s
+

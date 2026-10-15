@@ -1,0 +1,27 @@
+{
+ "ok": true,
+ "result": {
+  "actual": [
+   962,
+   853
+  ],
+  "difference_bbox": null,
+  "dimensions": [
+   962,
+   853
+  ],
+  "dimensions_match": true,
+  "expected": [
+   962,
+   853
+  ],
+  "max_channel_delta": 0,
+  "mean_absolute_channel_error": 0.0,
+  "mismatch_percent": 0.0,
+  "mismatched_pixels": 0,
+  "missing_pixels": 0,
+  "pass": true,
+  "pixel_domain": "union canvas; absent samples transparent; missing pixels always mismatch",
+  "tolerance": 0
+ }
+}

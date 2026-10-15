@@ -1,0 +1,7 @@
+cargo build --locked --features devtools --examples --bins
+917 |         let _ = windows::Win32::System::Console::SetConsoleOutputCP(65001);
+    |         +++++++
+
+warning: `rust-ui` (example "uia_probe") generated 3 warnings (run `cargo fix --example "uia_probe" -p rust-ui` to apply 1 suggestion)
+warning: `rust-ui` (example "native_probe") generated 32 warnings (run `cargo fix --example "native_probe" -p rust-ui` to apply 6 suggestions)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1m 05s

@@ -1,0 +1,11 @@
+frozen reference immutability (fresh clone at cf8ab919b399ca4465a17710741f1c888b84cfa0)
+
+git rev-parse HEAD:reference == dc70f66:reference:
+e0bd8eb16d38b778edab4d4ee23ca823696ceb43
+e0bd8eb16d38b778edab4d4ee23ca823696ceb43
+
+git diff dc70f66 HEAD --stat -- reference (lines):
+0
+
+PNG sha256 vs screenshots/SHA256.json:
+matched 18/18; mismatched: []

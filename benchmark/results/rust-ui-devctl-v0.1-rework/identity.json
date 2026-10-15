@@ -1,0 +1,21 @@
+{
+  "candidate": "cf8ab919b399ca4465a17710741f1c888b84cfa0",
+  "branch": "agent/rust-ui-devctl-v0.1",
+  "label": "rust-ui-devctl v0.1 correction (D01-D05)",
+  "frozen_reference": {
+    "commit": "dc70f6644c0384170f3a6929eb2caaf33fc711a0",
+    "tree_reference": "e0bd8eb16d38b778edab4d4ee23ca823696ceb43"
+  },
+  "host": {
+    "os": "Windows (native, git-bash + PowerShell)",
+    "scale_factor": 1.25,
+    "dpi": 120,
+    "rustc": "rustc 1.93.1 (01f6ddf75 2026-02-11) via rustup"
+  },
+  "linux_wsl": {
+    "distro": "Ubuntu (WSL2)",
+    "rustc": "rustc 1.93.1 (01f6ddf75 2026-02-11)",
+    "note": "ran on a WSL-local copy of the pre-commit tree; content verified byte-identical (modulo line endings) to cf8ab91 via diff -r --strip-trailing-cr"
+  },
+  "generated_by": "workflow-5cycles.ps1 + cargo test matrix in a fresh clone (C:\\Users\\therceman\\AppData\\Local\\Temp\\devctl-fresh-cf8ab91)"
+}

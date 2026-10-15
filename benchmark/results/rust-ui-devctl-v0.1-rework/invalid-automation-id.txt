@@ -1,0 +1,11 @@
+cargo test --locked --test invalid_automation_id
+warning: `rust-ui` (lib) generated 69 warnings (run `cargo fix --lib -p rust-ui` to apply 4 suggestions)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 7.39s
+     Running tests\invalid_automation_id.rs (target\debug\deps\invalid_automation_id-de0e1f26a791d95f.exe)
+
+running 2 tests
+test invalid_automation_id_rejected_by_public_run ... ok
+test duplicate_automation_id_rejected_by_public_run ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
