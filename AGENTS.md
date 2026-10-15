@@ -28,6 +28,23 @@ Available commands:
 - `cargo fmt --check`
 - `cargo run --example composer` for the native executable
 
+### UI verification cadence
+
+Full UI verification is an acceptance gate, not an inner development loop. Finish the coherent implementation first, using only cheap targeted checks during iteration (compiler/check, focused unit tests, static inspection, or a narrowly scoped capture needed to diagnose a specific observed UI problem).
+
+Required order for UI/devctl work:
+
+```text
+implement the complete task
+→ run the full UI verification once
+→ if green, run remaining final gates and finish
+→ if not green, fix the complete observed failure set
+→ run the full UI verification again
+→ repeat only until green
+```
+
+Do not repeatedly run the full native UI/WGC/screenshot/comparison workflow after every small code change. Expensive verification includes launching the native app, end-to-end devctl interaction, WGC screenshots, HTML ↔ native comparisons, visual/image diffs, multi-state screenshot sweeps, and full native UI acceptance workflows. A narrowly scoped UI/debug capture during implementation is allowed only when needed to diagnose a concrete failure; it must not turn into repeated full-suite verification.
+
 Use affected tests and short native smoke checks during iteration. A compiling native backend is not proof of input, IME, UIA, rendering, or idle behavior. Keep deterministic correctness, visual review, and performance measurements separate. Run the concise final measurement pass only after the candidate is frozen. Report unavailable keyboard/IME/display validation honestly.
 
 The owner's Universal Gates 1–20 are authoritative and are canonically defined in this repository at `docs/QUALITY_GATES.md` — there is no Gate 21 and no other numbered gate taxonomy. `docs/QUALITY_GATES.md` is self-contained; rust-ui does not require any other local repository to know its gates. Formatting, tests, visual QA, native validation, performance checks, and evidence collection are verification mechanisms used to satisfy the gates, not additional numbered gates. The external Mascot repository may be consulted only as historical/reference implementation evidence where explicitly needed; Mascot-specific tooling and assets are outside this repository's change cone. Do not copy its public UI API or substitute an unrelated tool's checks for native rust-ui evidence.
