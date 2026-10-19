@@ -14,7 +14,8 @@ plausibility (imports, cfgs, env plumbing, case matrices).
 - **Implementation / Publication Branch:** `agent/shadcn-native-gallery-slice1-opus55`
 - **Review Branch:** `review/shadcn-native-gallery-slice1-system-closure-astra`
 - **`BASED_ON`:** `8d3d27361071ee8915dd8f496ea98e8e9b005f0a`
-- **`PRODUCTION_HEAD` (code under review):** `c8aa5371f039bcb4a9b84dfa4aad61f0edfa2f78`
+- **`PRODUCTION_HEAD` (code under review):** `c8d8147f4c9a6c63a0fe9c0288f03d31ea2f40ea`
+  (`c8aa537` + one whitespace-only fmt commit `c8d8147`; verified below)
 - **Prior System Review:** `fe55115037bbe60843866de33049c67f9f729eaa`
   (`SHADCN_NATIVE_GALLERY_SLICE1_SYSTEM_REWORK_REQUIRED`, findings `S01`–`S04`)
 - **Independent Visual Approval:** `3e9ebad7feef30c517292a72b60f0d6a363d89f9`
@@ -29,8 +30,14 @@ plausibility (imports, cfgs, env plumbing, case matrices).
   **empty**; `reference/` tree at HEAD resolves to
   `e0bd8eb16d38b778edab4d4ee23ca823696ceb43`, identical to the frozen
   publication. **Frozen reference untouched — PASS.**
-- Worktree `git status` clean at HEAD; the only delta between `8d3d273` and
-  `HEAD` is the single closure commit `c8aa537`.
+- Worktree `git status` clean; the code delta between `8d3d273` and the
+  approved `PRODUCTION_HEAD` is the closure commit `c8aa537` plus the
+  whitespace-only fmt fix `c8d8147` (`git diff c8aa537..c8d8147` = one
+  formatting hunk in `tests/devctl_windows.rs`, 4 insertions/1 deletion,
+  zero semantics — the only change).
+- Prior round of this review at `c8aa537` returned
+  `SHADCN_NATIVE_GALLERY_SLICE1_SYSTEM_REWORK_REQUIRED` on finding `C01`
+  (`cargo fmt --check` failure); `c8d8147` resolves exactly that finding.
 
 ## 2. Per-Finding Verification
 
@@ -178,33 +185,32 @@ Evidence (`src/platform/win32/render.rs:1264–1269`):
 |---|---|
 | `cargo check --locked --examples` | **PASS** — 0 errors; only pre-existing cfg dead-code warnings (untouched files) |
 | `cargo test --locked --lib` | **PASS** — 108 passed / 0 failed (107 prior + new `justify_offset_is_shared_row_column_policy`; Windows-only tests cfg'd out, matching worker's 147/176 Windows counts) |
-| `cargo fmt --check` | **FAIL — 1 hunk** (`tests/devctl_windows.rs:90`, see `C01`) |
-| `git diff dc70f66..HEAD -- reference/` | empty — frozen reference intact |
+| `cargo fmt --check` | **PASS** at `c8d8147` (exit 0 — verified in `/home/therceman/git/rust-ui` checked out at `c8d8147`; was FAIL at `c8aa537`, see `C01`) |
+| `git diff dc70f66..c8d8147 -- reference/` | empty — frozen reference intact (tree `e0bd8eb`) |
 
 Windows-only gates (`cargo.exe check`/`test` default + devtools, live devctl
 semantic proof, 3-cycle integration) are evidence statements — structurally
 consistent with the code as verified, not re-runnable here.
 
-## 5. New Blocking Finding
+## 5. Closure-Round Finding — Resolved
 
-### `C01` (`BLOCKING`, trivially bounded) — `cargo fmt --check` fails at HEAD; "fmt clean" evidence claim does not reproduce
+### `C01` — `cargo fmt --check` failed at `c8aa537`; "fmt clean" evidence claim did not reproduce — **CLOSED by `c8d8147`**
 
-- **Location:** `tests/devctl_windows.rs:90` —
-  `assert!(exe.exists(), "internal devctl test fixture binary must exist");`
-  (a 76-char single-line `assert!` with a message argument).
-- **Reproduction:** `cargo fmt --check` exits 1 at `c8aa537` on
-  rustfmt 1.8.0-stable — verified identically on both installed toolchains
-  (`1.93.0`, `1.93.1`) and on all editions (2015/2021/2024) via a minimal
-  repro: current rustfmt block-formats `assert!(cond, "msg")`. The base
-  file at `8d3d273` (multi-line `assert!`) was fmt-clean — the violation was
-  **introduced by the commit under review** when the assert was collapsed.
-- **Why it blocks:** `cargo fmt --check` is a listed verification command for
-  this repository (AGENTS.md) and was explicitly claimed clean in the
-  worker's evidence — the claim is falsifiable at HEAD. Under Gates 16/19 a
-  candidate whose listed gates do not all pass cannot be certified complete.
-- **Required fix:** run `cargo fmt` (exactly one hunk reformats; no semantic
-  change), then re-state the fmt gate honestly. Nothing else is required —
-  all four prior findings are genuinely closed.
+- **Original defect (verified at `c8aa537`):** `tests/devctl_windows.rs:90`
+  carried a 76-char single-line `assert!(exe.exists(), "...")` that rustfmt
+  1.8.0-stable (verified on both installed toolchains `1.93.0`/`1.93.1`, all
+  editions, plus minimal repro) requires to be block-formatted. The
+  violation was introduced by `c8aa537` itself (base file at `8d3d273` was
+  fmt-clean) and contradicted the worker's "cargo fmt --check clean"
+  evidence claim.
+- **Fix verification at `c8d8147`:**
+  - `git diff c8aa537..c8d8147` is exactly one hunk: the assert
+    block-formatted into 4 lines in `tests/devctl_windows.rs` (+4/−1).
+    Whitespace-only, zero semantics — no other file touched.
+  - `cargo fmt --check` at `c8d8147` exits **0** (run in the authoritative
+    checkout `/home/therceman/git/rust-ui`).
+  - No semantic content changed, so every `S01`–`S04`/fixture verification
+    in Section 2–3 carries over verbatim to `c8d8147`.
 
 ## 6. Universal Gates (1–20) Evaluation
 
@@ -217,31 +223,31 @@ consistent with the code as verified, not re-runnable here.
 | **G11–G12** Failure Safety & Boundedness | **PASS** | Non-finite spread → typed no-op before all consumers; existing raster/byte bounds unchanged. |
 | **G13** Dependency & Feature Scope | **PASS** | `Win32_Graphics_Dwm` owned by base Windows deps; devtools feature no longer carries runtime-required features; fixture bin self-gates. |
 | **G14–G15** Performance & Event-Driven | **PASS** | No new loops/polling; part emission is on-demand devtool path. |
-| **G16** Verification & Test Gate | **FAIL (`C01`)** | `cargo fmt --check` fails at HEAD (1 hunk); new targeted tests exist and pass where compilable (Linux 108/0; Windows claims plausible). |
-| **G17–G18** Recovery & Artifact Identity | **PASS** | Frozen `reference/` untouched; evidence identifies exact candidate. |
-| **G19** Completion Integrity | **FAIL (`C01`)** | The "cargo fmt --check clean" evidence claim is not reproducible at HEAD; all other claimed Linux/Windows evidence is consistent with verified code. |
-| **G20** Systemic Completeness | **PASS** (given C01 fixed) | The four prior blockers closed generically; fixture hygiene complete; remaining defect is a single formatting hunk. |
+| **G16** Verification & Test Gate | **PASS** (`C01` fixed) | `cargo fmt --check` exits 0 at `c8d8147`; new targeted tests exist and pass where compilable (Linux 108/0; Windows claims plausible and consistent). |
+| **G17–G18** Recovery & Artifact Identity | **PASS** | Frozen `reference/` untouched at `c8d8147`; evidence identifies exact candidate. |
+| **G19** Completion Integrity | **PASS** (`C01` fixed) | The stale fmt evidence claim was corrected by the `c8d8147` fix; all claimed gates now reproduce as stated in this environment. |
+| **G20** Systemic Completeness | **PASS** | All four prior blockers closed generically; fixture hygiene complete; the single residual defect (`C01`) is resolved. |
 
 ## 7. Final Verdict
 
 `S01`–`S04` and devctl fixture hygiene are **genuinely closed** — the fixes
 are generic, correctly layered, contract-compatible, and covered by new
-deterministic tests. No visual rework is implied (Start→0 keeps approved
-pixels; parts/spread/Dwm changes do not alter rendering).
+deterministic tests. The sole residual finding `C01` (`cargo fmt --check`
+failure at `c8aa537`) is resolved by `c8d8147`, verified as a
+whitespace-only, zero-semantics hunk; `cargo fmt --check` exits 0 at the
+approved `PRODUCTION_HEAD`.
 
-However, the candidate is not certifiable: `cargo fmt --check` — a listed
-repository gate explicitly claimed clean — fails at HEAD on a one-line
-regression introduced by the very commit under review. Approving would
-certify a gate that falsifiably fails.
+No visual rework is implied anywhere in this closure (Start→0 keeps
+approved pixels; parts/spread/Dwm changes do not alter rendering; the fmt
+fix touches only test formatting).
 
 ```text
-SHADCN_NATIVE_GALLERY_SLICE1_SYSTEM_REWORK_REQUIRED
+SHADCN_NATIVE_GALLERY_SLICE1_SYSTEM_APPROVED
 ```
 
-Remaining work is a single mechanical step: run `cargo fmt` (one hunk at
-`tests/devctl_windows.rs:90`), confirm `cargo fmt --check` exits 0, and
-re-issue the gate evidence. On completion, the closure evidence above
-stands — no further system review deltas are anticipated.
+```text
+SLICE1_PUBLICATION_CLEARED
+```
 
 ```text
 EXECUTION FOOTER
@@ -251,10 +257,10 @@ ROLE: Astra Reviewer
 PROJECT: rceman/rust-ui
 BRANCH: review/shadcn-native-gallery-slice1-system-closure-astra
 STARTED_AT: 2026-10-19T23:47:00+03:00
-FINISHED_AT: 2026-10-20T00:06:00+03:00
+FINISHED_AT: 2026-10-20T00:38:00+03:00
 BASED_ON: 8d3d27361071ee8915dd8f496ea98e8e9b005f0a
-PRODUCTION_HEAD: c8aa5371f039bcb4a9b84dfa4aad61f0edfa2f78
+PRODUCTION_HEAD: c8d8147f4c9a6c63a0fe9c0288f03d31ea2f40ea
 REPORT_HEAD: PENDING_COMMIT_SHA
-STATUS: SHADCN_NATIVE_GALLERY_SLICE1_SYSTEM_REWORK_REQUIRED
+STATUS: SHADCN_NATIVE_GALLERY_SLICE1_SYSTEM_APPROVED + SLICE1_PUBLICATION_CLEARED
 NEXT_OWNER: Lead
 ```
