@@ -87,7 +87,10 @@ fn native_agent_workflow_and_bounded_repetition() {
     ));
     std::fs::create_dir(&root).unwrap();
     let exe = Path::new(env!("CARGO_BIN_EXE_rust-ui-devctl-test-fixture")).to_path_buf();
-    assert!(exe.exists(), "internal devctl test fixture binary must exist");
+    assert!(
+        exe.exists(),
+        "internal devctl test fixture binary must exist"
+    );
     for cycle in 0..3 {
         let file = root.join(format!("session-{cycle}.json"));
         let owner = Session { file: file.clone() };
