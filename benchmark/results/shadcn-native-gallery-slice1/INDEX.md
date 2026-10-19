@@ -43,6 +43,6 @@ canonical raster. One `el-<id>/` dir per element: `reference.png`,
 
 ## Status
 
-`SHADCN_NATIVE_GALLERY_SLICE1_READY_FOR_VISUAL_REVIEW` — implementation is
+`SHADCN_NATIVE_GALLERY_SLICE1_READY_FOR_VISUAL_CLOSURE` — implementation is
 frozen and the deterministic evidence is committed; visual approval is a
 separate review-context responsibility.
