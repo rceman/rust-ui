@@ -519,15 +519,24 @@ impl LayoutCache {
                 );
                 let mut x = inner.x;
                 for (it, sz) in items.iter().zip(sizes.iter()) {
+                    // cross axis: align — Stretch fills the row height,
+                    // Start/Center/End keep the child's natural height
+                    let (_, nh) = natural(rt, ctx, it.id, inner.width, &mut measurer);
+                    let (h, y) = cross_v(
+                        props.align.unwrap_or_default(),
+                        rt.arena.get(it.id).unwrap().layout.height,
+                        inner,
+                        nh,
+                    );
                     self.walk(
                         rt,
                         ctx,
                         it.id,
                         LogicalRect {
                             x,
-                            y: inner.y,
+                            y,
                             width: *sz,
-                            height: inner.height,
+                            height: h,
                         },
                         rects,
                         order,
@@ -582,6 +591,21 @@ fn cross(align: Align, len: Length, inner: LogicalRect, natural_w: f32) -> (f32,
         Align::Start => (want, inner.x),
         Align::Center => (want, inner.x + (inner.width - want) / 2.0),
         Align::End => (want, inner.x + inner.width - want),
+    }
+}
+
+/// Vertical cross-axis for rows — same align contract as `cross` but on
+/// `inner.y`/`inner.height` with the child's natural height.
+fn cross_v(align: Align, len: Length, inner: LogicalRect, natural_h: f32) -> (f32, f32) {
+    let want = match len {
+        Length::Fixed(d) => d.0,
+        Length::Fill(_) | Length::Content => natural_h.min(inner.height),
+    };
+    match align {
+        Align::Stretch => (inner.height, inner.y),
+        Align::Start => (want, inner.y),
+        Align::Center => (want, inner.y + (inner.height - want) / 2.0),
+        Align::End => (want, inner.y + inner.height - want),
     }
 }
 

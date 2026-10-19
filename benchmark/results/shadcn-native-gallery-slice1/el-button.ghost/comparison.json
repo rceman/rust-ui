@@ -1,0 +1,187 @@
+{
+  "evidence_classes": {
+    "borders": "not_measured",
+    "flat_fills": "not_measured",
+    "geometry": "measured",
+    "glyph_raster": "not_measured",
+    "icons": "not_measured",
+    "note": "Chromium and DirectWrite/D2D glyph pixels are not expected to be byte-identical; geometry is contract authority; canonical raster is a visual signal",
+    "radii": "not_measured",
+    "text_bounds_baseline": "not_measured",
+    "whole_component_raster": "measured"
+  },
+  "geometry": {
+    "actual": {
+      "height": 32.0,
+      "width": 63.365234375,
+      "x": 305.9169921875,
+      "y": 176.0
+    },
+    "delta": {
+      "height": 0.0,
+      "width": 2.334234375000001,
+      "x": 28.43299218750002,
+      "y": -388.75
+    },
+    "expected": {
+      "height": 32.0,
+      "width": 61.031,
+      "x": 277.484,
+      "y": 564.75
+    },
+    "id": "button.ghost",
+    "native_id": "button.ghost",
+    "pass": false,
+    "tier": "core",
+    "tolerance": 0.25
+  },
+  "id": "button.ghost",
+  "native_id": "button.ghost",
+  "normalization": {
+    "canonical_dimensions": [
+      63,
+      32
+    ],
+    "identity": true,
+    "resampler": "area-box/1",
+    "source_dimensions": [
+      63,
+      32
+    ],
+    "source_scale": 1.0,
+    "target_scale": 1.0,
+    "transform": {
+      "canonical_rect_dp": {
+        "bottom": 208,
+        "left": 306,
+        "right": 369,
+        "top": 176
+      },
+      "mapping": "source_px = canonical_px * source_scale",
+      "source_footprint_px": {
+        "height": 32.0,
+        "width": 63.0,
+        "x": 306.0,
+        "y": 176.0
+      }
+    }
+  },
+  "padding_comparison_px": 0.0,
+  "pass": false,
+  "raster": {
+    "native_canonical": {
+      "canonical_rect_dp": {
+        "bottom": 208,
+        "left": 306,
+        "right": 369,
+        "top": 176
+      },
+      "dimensions": [
+        63,
+        32
+      ],
+      "file": "native-canonical.png",
+      "scale_px_per_dp": 1.0
+    },
+    "native_raw": {
+      "crop_rect_px": {
+        "bottom": 208,
+        "left": 306,
+        "right": 369,
+        "top": 176
+      },
+      "dimensions": [
+        63,
+        32
+      ],
+      "file": "native-raw.png",
+      "scale_px_per_dp": 1.0
+    },
+    "reference": {
+      "canonical_rect_dp": {
+        "bottom": 597,
+        "left": 277,
+        "right": 339,
+        "top": 565
+      },
+      "crop_rect_px": {
+        "bottom": 597,
+        "left": 277,
+        "right": 339,
+        "top": 565
+      },
+      "dimensions": [
+        62,
+        32
+      ],
+      "file": "reference.png",
+      "scale_px_per_dp": 1.0
+    }
+  },
+  "schema": "rust-ui.devctl.compare-element/0.2",
+  "scope": {
+    "tier_of_target": "core",
+    "tiers": [
+      "core"
+    ]
+  },
+  "visual_canonical": {
+    "actual": [
+      63,
+      32
+    ],
+    "difference_bbox": {
+      "height": 32.0,
+      "width": 52.0,
+      "x": 11.0,
+      "y": 0.0
+    },
+    "dimensions": [
+      63,
+      32
+    ],
+    "dimensions_match": false,
+    "expected": [
+      62,
+      32
+    ],
+    "max_channel_delta": 255,
+    "mean_absolute_channel_error": 18.631324404761905,
+    "mismatch_percent": 18.9484126984127,
+    "mismatched_pixels": 382,
+    "missing_pixels": 32,
+    "pass": false,
+    "pixel_domain": "union canvas; absent samples transparent; missing pixels always mismatch",
+    "tolerance": 2
+  },
+  "visual_raw": {
+    "actual": [
+      63,
+      32
+    ],
+    "computed": true,
+    "difference_bbox": {
+      "height": 32.0,
+      "width": 52.0,
+      "x": 11.0,
+      "y": 0.0
+    },
+    "dimensions": [
+      63,
+      32
+    ],
+    "dimensions_match": false,
+    "expected": [
+      62,
+      32
+    ],
+    "max_channel_delta": 255,
+    "mean_absolute_channel_error": 18.631324404761905,
+    "mismatch_percent": 18.9484126984127,
+    "mismatched_pixels": 382,
+    "missing_pixels": 32,
+    "pass": false,
+    "pixel_domain": "union canvas; absent samples transparent; missing pixels always mismatch",
+    "tolerance": 2
+  }
+}

@@ -1,0 +1,187 @@
+{
+  "evidence_classes": {
+    "borders": "not_measured",
+    "flat_fills": "not_measured",
+    "geometry": "measured",
+    "glyph_raster": "not_measured",
+    "icons": "not_measured",
+    "note": "Chromium and DirectWrite/D2D glyph pixels are not expected to be byte-identical; geometry is contract authority; canonical raster is a visual signal",
+    "radii": "not_measured",
+    "text_bounds_baseline": "not_measured",
+    "whole_component_raster": "measured"
+  },
+  "geometry": {
+    "actual": {
+      "height": 32.0,
+      "width": 72.498046875,
+      "x": 48.0,
+      "y": 116.0
+    },
+    "delta": {
+      "height": 0.0,
+      "width": 2.5140468750000053,
+      "x": -225.0,
+      "y": -184.75
+    },
+    "expected": {
+      "height": 32.0,
+      "width": 69.984,
+      "x": 273.0,
+      "y": 300.75
+    },
+    "id": "button.default",
+    "native_id": "button.default",
+    "pass": false,
+    "tier": "core",
+    "tolerance": 0.0
+  },
+  "id": "button.default",
+  "native_id": "button.default",
+  "normalization": {
+    "canonical_dimensions": [
+      72,
+      32
+    ],
+    "identity": true,
+    "resampler": "area-box/1",
+    "source_dimensions": [
+      72,
+      32
+    ],
+    "source_scale": 1.0,
+    "target_scale": 1.0,
+    "transform": {
+      "canonical_rect_dp": {
+        "bottom": 148,
+        "left": 48,
+        "right": 120,
+        "top": 116
+      },
+      "mapping": "source_px = canonical_px * source_scale",
+      "source_footprint_px": {
+        "height": 32.0,
+        "width": 72.0,
+        "x": 48.0,
+        "y": 116.0
+      }
+    }
+  },
+  "padding_comparison_px": 0.0,
+  "pass": false,
+  "raster": {
+    "native_canonical": {
+      "canonical_rect_dp": {
+        "bottom": 148,
+        "left": 48,
+        "right": 120,
+        "top": 116
+      },
+      "dimensions": [
+        72,
+        32
+      ],
+      "file": "native-canonical.png",
+      "scale_px_per_dp": 1.0
+    },
+    "native_raw": {
+      "crop_rect_px": {
+        "bottom": 148,
+        "left": 48,
+        "right": 120,
+        "top": 116
+      },
+      "dimensions": [
+        72,
+        32
+      ],
+      "file": "native-raw.png",
+      "scale_px_per_dp": 1.0
+    },
+    "reference": {
+      "canonical_rect_dp": {
+        "bottom": 333,
+        "left": 273,
+        "right": 343,
+        "top": 301
+      },
+      "crop_rect_px": {
+        "bottom": 333,
+        "left": 273,
+        "right": 343,
+        "top": 301
+      },
+      "dimensions": [
+        70,
+        32
+      ],
+      "file": "reference.png",
+      "scale_px_per_dp": 1.0
+    }
+  },
+  "schema": "rust-ui.devctl.compare-element/0.2",
+  "scope": {
+    "tier_of_target": "core",
+    "tiers": [
+      "core"
+    ]
+  },
+  "visual_canonical": {
+    "actual": [
+      72,
+      32
+    ],
+    "difference_bbox": {
+      "height": 32.0,
+      "width": 72.0,
+      "x": 0.0,
+      "y": 0.0
+    },
+    "dimensions": [
+      72,
+      32
+    ],
+    "dimensions_match": false,
+    "expected": [
+      70,
+      32
+    ],
+    "max_channel_delta": 255,
+    "mean_absolute_channel_error": 37.37293836805556,
+    "mismatch_percent": 34.548611111111114,
+    "mismatched_pixels": 796,
+    "missing_pixels": 64,
+    "pass": false,
+    "pixel_domain": "union canvas; absent samples transparent; missing pixels always mismatch",
+    "tolerance": 0
+  },
+  "visual_raw": {
+    "actual": [
+      72,
+      32
+    ],
+    "computed": true,
+    "difference_bbox": {
+      "height": 32.0,
+      "width": 72.0,
+      "x": 0.0,
+      "y": 0.0
+    },
+    "dimensions": [
+      72,
+      32
+    ],
+    "dimensions_match": false,
+    "expected": [
+      70,
+      32
+    ],
+    "max_channel_delta": 255,
+    "mean_absolute_channel_error": 37.37293836805556,
+    "mismatch_percent": 34.548611111111114,
+    "mismatched_pixels": 796,
+    "missing_pixels": 64,
+    "pass": false,
+    "pixel_domain": "union canvas; absent samples transparent; missing pixels always mismatch",
+    "tolerance": 0
+  }
+}

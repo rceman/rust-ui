@@ -1,0 +1,187 @@
+{
+  "evidence_classes": {
+    "borders": "not_measured",
+    "flat_fills": "not_measured",
+    "geometry": "measured",
+    "glyph_raster": "not_measured",
+    "icons": "not_measured",
+    "note": "Chromium and DirectWrite/D2D glyph pixels are not expected to be byte-identical; geometry is contract authority; canonical raster is a visual signal",
+    "radii": "not_measured",
+    "text_bounds_baseline": "not_measured",
+    "whole_component_raster": "measured"
+  },
+  "geometry": {
+    "actual": {
+      "height": 24.0,
+      "width": 24.0,
+      "x": 48.0,
+      "y": 486.0
+    },
+    "delta": {
+      "height": 0.0,
+      "width": 0.0,
+      "x": -248.0,
+      "y": -1043.5
+    },
+    "expected": {
+      "height": 24.0,
+      "width": 24.0,
+      "x": 296.0,
+      "y": 1529.5
+    },
+    "id": "icon-button.default.size-icon-xs",
+    "native_id": "icon-button.default.size-icon-xs",
+    "pass": true,
+    "tier": "core",
+    "tolerance": 0.25
+  },
+  "id": "icon-button.default.size-icon-xs",
+  "native_id": "icon-button.default.size-icon-xs",
+  "normalization": {
+    "canonical_dimensions": [
+      24,
+      24
+    ],
+    "identity": true,
+    "resampler": "area-box/1",
+    "source_dimensions": [
+      24,
+      24
+    ],
+    "source_scale": 1.0,
+    "target_scale": 1.0,
+    "transform": {
+      "canonical_rect_dp": {
+        "bottom": 510,
+        "left": 48,
+        "right": 72,
+        "top": 486
+      },
+      "mapping": "source_px = canonical_px * source_scale",
+      "source_footprint_px": {
+        "height": 24.0,
+        "width": 24.0,
+        "x": 48.0,
+        "y": 486.0
+      }
+    }
+  },
+  "padding_comparison_px": 0.0,
+  "pass": false,
+  "raster": {
+    "native_canonical": {
+      "canonical_rect_dp": {
+        "bottom": 510,
+        "left": 48,
+        "right": 72,
+        "top": 486
+      },
+      "dimensions": [
+        24,
+        24
+      ],
+      "file": "native-canonical.png",
+      "scale_px_per_dp": 1.0
+    },
+    "native_raw": {
+      "crop_rect_px": {
+        "bottom": 510,
+        "left": 48,
+        "right": 72,
+        "top": 486
+      },
+      "dimensions": [
+        24,
+        24
+      ],
+      "file": "native-raw.png",
+      "scale_px_per_dp": 1.0
+    },
+    "reference": {
+      "canonical_rect_dp": {
+        "bottom": 1554,
+        "left": 296,
+        "right": 320,
+        "top": 1530
+      },
+      "crop_rect_px": {
+        "bottom": 1554,
+        "left": 296,
+        "right": 320,
+        "top": 1530
+      },
+      "dimensions": [
+        24,
+        24
+      ],
+      "file": "reference.png",
+      "scale_px_per_dp": 1.0
+    }
+  },
+  "schema": "rust-ui.devctl.compare-element/0.2",
+  "scope": {
+    "tier_of_target": "core",
+    "tiers": [
+      "core"
+    ]
+  },
+  "visual_canonical": {
+    "actual": [
+      24,
+      24
+    ],
+    "difference_bbox": {
+      "height": 24.0,
+      "width": 24.0,
+      "x": 0.0,
+      "y": 0.0
+    },
+    "dimensions": [
+      24,
+      24
+    ],
+    "dimensions_match": true,
+    "expected": [
+      24,
+      24
+    ],
+    "max_channel_delta": 232,
+    "mean_absolute_channel_error": 25.891927083333332,
+    "mismatch_percent": 28.993055555555557,
+    "mismatched_pixels": 167,
+    "missing_pixels": 0,
+    "pass": false,
+    "pixel_domain": "union canvas; absent samples transparent; missing pixels always mismatch",
+    "tolerance": 2
+  },
+  "visual_raw": {
+    "actual": [
+      24,
+      24
+    ],
+    "computed": true,
+    "difference_bbox": {
+      "height": 24.0,
+      "width": 24.0,
+      "x": 0.0,
+      "y": 0.0
+    },
+    "dimensions": [
+      24,
+      24
+    ],
+    "dimensions_match": true,
+    "expected": [
+      24,
+      24
+    ],
+    "max_channel_delta": 232,
+    "mean_absolute_channel_error": 25.891927083333332,
+    "mismatch_percent": 28.993055555555557,
+    "mismatched_pixels": 167,
+    "missing_pixels": 0,
+    "pass": false,
+    "pixel_domain": "union canvas; absent samples transparent; missing pixels always mismatch",
+    "tolerance": 2
+  }
+}
