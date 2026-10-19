@@ -68,7 +68,7 @@ fn natural<S, M, U, V>(
     ctx: &PeerCtx,
     id: NodeId,
     avail_w: f32,
-    measure: &mut dyn FnMut(&str, f32, f32) -> (f32, f32),
+    measure: &mut dyn FnMut(&str, f32, &crate::style::TextStyle) -> (f32, f32),
 ) -> (f32, f32)
 where
     M: 'static,
@@ -83,25 +83,59 @@ where
     }
     match &n.data {
         NodeData::Label {
-            text, wrap, patch, ..
+            text,
+            wrap,
+            patch,
+            chrome,
+            ..
         } => {
             // resolved text style drives metrics — a patched Exact size is
             // a real measurement input, not just paint
             let mut ts = crate::style::label_recipe();
             ts.patch(patch);
-            let sz = match ts.size {
-                crate::style::TextSize::Body => 14.0,
-                crate::style::TextSize::Exact(d) => d.0,
+            let w = if *wrap {
+                let ins = crate::layout::node_insets(
+                    id,
+                    n,
+                    &crate::layout::Interaction {
+                        dark: ctx.colors.borrow().1.dark,
+                        ..Default::default()
+                    },
+                );
+                (avail_w - ins.left.0 - ins.right.0).max(0.0)
+            } else {
+                f32::MAX
             };
-            let w = if *wrap { avail_w } else { f32::MAX };
-            measure(text, w, sz)
+            let (tw, th) = measure(text, w, &ts);
+            let ins = crate::layout::node_insets(
+                id,
+                n,
+                &crate::layout::Interaction {
+                    dark: ctx.colors.borrow().1.dark,
+                    ..Default::default()
+                },
+            );
+            let _ = chrome;
+            (
+                if *wrap {
+                    avail_w
+                } else {
+                    tw + ins.left.0 + ins.right.0
+                },
+                th + ins.top.0 + ins.bottom.0,
+            )
         }
+        NodeData::Icon { size, .. } => (size.0, size.0),
         NodeData::Button {
             text,
             variant,
             style,
             disabled,
             size,
+            icon_start,
+            icon_end,
+            icon_only,
+            invalid,
             ..
         } => {
             // resolved Normal-state style drives the natural size — state
@@ -114,25 +148,25 @@ where
                 crate::style::StyleState::Normal,
                 false,
                 ctx.colors.borrow().1.dark,
+                *invalid,
             );
-            let ts = vs.text_style;
-            let tsz = match ts.size {
-                crate::style::TextSize::Body => 14.0,
-                crate::style::TextSize::Exact(d) => d.0,
-            };
-            let (tw, _) = measure(text, f32::MAX, tsz);
-            let bs = &vs.box_style;
-            let (bw, bh) = border_insets(bs);
-            let h = match size {
-                ControlSize::Sm => 28.0,
-                ControlSize::Md => 36.0,
-                ControlSize::Lg => 44.0,
-            };
+            let h = size.height().0;
+            if *icon_only {
+                return (h, h);
+            }
+            let ins = crate::layout::button_content_insets(&n.data, &vs);
+            let (tw, _) = measure(text, f32::MAX, &vs.text_style);
             // +4 DIP slack: GetMetrics width is the ink advance; the draw
             // layout needs a hair more or the last glyph wraps
-            let w = tw + bs.padding.left.0 + bs.padding.right.0 + bw + 4.0;
+            let icon_w = |i: &Option<crate::icons::Icon>| {
+                i.map(|_| {
+                    crate::layout::button_icon_size(*size).0
+                        + crate::layout::button_icon_gap(*size).0
+                })
+                .unwrap_or(0.0)
+            };
+            let w = tw + ins.left.0 + ins.right.0 + icon_w(icon_start) + icon_w(icon_end) + 4.0;
             let _ = disabled;
-            let _ = bh;
             (w, h)
         }
         NodeData::Editor {

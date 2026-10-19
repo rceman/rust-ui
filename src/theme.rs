@@ -32,20 +32,75 @@ pub enum ReducedMotion {
     NoPreference,
 }
 
+/// Semantic theme roles — ONE role per frozen Shadcn semantic token
+/// (see `reference/shadcn-gallery-v0.1/tokens.json`; the concrete palette
+/// lives in `style::role_color`, the only authority). Translucent roles
+/// carry the frozen alpha baked in.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum ColorRole {
     Background,
     Foreground,
+    /// `card` — card/popover-class surfaces
+    Card,
+    CardForeground,
+    Primary,
+    PrimaryForeground,
+    /// `secondary` fill — muted control surfaces
+    Secondary,
+    SecondaryForeground,
     Muted,
     MutedForeground,
     Accent,
     AccentForeground,
     Border,
+    /// `input` — input-class border/fill (dark carries token alpha)
+    Input,
+    /// `ring` — focus-visible border color
+    Ring,
+    /// `surface` — code-block canvas
+    Surface,
+    SurfaceForeground,
+    /// `code` — inline-code surface
+    Code,
+    CodeForeground,
+    /// `code-highlight` — code-block emphasis line
+    CodeHighlight,
+    /// `code-number` — code line numbers / secondary code text
+    CodeNumber,
+    Selection,
+    SelectionForeground,
     Destructive,
     DestructiveForeground,
+    /// enforcement focus indicator — frozen `ring-50` (ring/50, 3px band)
     Focus,
     /// shadow tint — used by `Shadow` when authored via a role
     Shadow,
+    // ---- translucent tokens (frozen `translucent` table) ---------------
+    /// `foreground-10` — ring-foreground/10 card edge ring
+    Foreground10,
+    /// `foreground-60` — inactive nav/tabs text
+    Foreground60,
+    /// `muted-50` — ghost dark hover / card footer fill
+    Muted50,
+    /// `input-30-dark` — dark outline-control fill (#fff @ 4.5%)
+    Input30,
+    /// `input-50-dark` — dark outline-control hover fill (#fff @ 7.5%)
+    Input50,
+    /// `primary-80` — default-variant hover fill (primary/80)
+    Primary80,
+    /// `secondary-hover` — resolved color-mix(secondary, foreground 5%)
+    SecondaryHover,
+    /// `destructive-10-20` — destructive variant fill (light /10, dark /20)
+    DestructiveTint,
+    /// `destructive-20-30` — destructive hover fill (light /20, dark /30)
+    DestructiveTintHover,
+    /// `destructive-ring-20-40` — invalid + destructive-visible ring
+    /// (light /20, dark /40)
+    DestructiveRing,
+    /// destructive focus-visible border (`border-destructive/40`)
+    Destructive40,
+    /// `destructive-50-dark` — dark invalid border (`border-destructive/50`)
+    Destructive50,
 }
 
 #[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
@@ -86,21 +141,65 @@ pub enum MotionToken {
     Focus,
 }
 
+/// Built-in Shadcn (base-nova/neutral) button variant vocabulary.
+/// `Primary` is the frozen `default` variant.
 #[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
 pub enum ButtonVariant {
+    /// frozen `default` — bg-primary text-primary-foreground
     #[default]
     Primary,
     Secondary,
+    Outline,
     Ghost,
     Destructive,
+    Link,
 }
 
+/// Control size class — button and icon-button share the frozen control
+/// heights: xs 24 / sm 28 / default 32 / lg 36 dp.
 #[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
 pub enum ControlSize {
+    /// 24dp (`size-xs` / `icon-xs`)
+    Xs,
+    /// 28dp (`size-sm` / `icon-sm`)
     Sm,
+    /// 32dp (`default` / `icon`)
     #[default]
     Md,
+    /// 36dp (`size-lg` / `icon-lg`)
     Lg,
+}
+
+impl ControlSize {
+    /// Frozen `control_heights_px` entry for this size class.
+    pub fn height(self) -> Dp {
+        Dp(match self {
+            ControlSize::Xs => 24.0,
+            ControlSize::Sm => 28.0,
+            ControlSize::Md => 32.0,
+            ControlSize::Lg => 36.0,
+        })
+    }
+}
+
+/// Card density — frozen `--card-spacing` token: Default = 16dp,
+/// Sm = 12dp. Controls outer padding-top, part gap, and part side padding.
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
+pub enum CardSize {
+    #[default]
+    Default,
+    Sm,
+}
+
+/// Text family token — the typed family slot on `TextStyle`. Maps to the
+/// backend's registered family names (Windows: "Geist" / "Geist Mono").
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
+pub enum FontFamily {
+    /// product sans (canonical: Geist)
+    #[default]
+    Sans,
+    /// product mono (canonical: Geist Mono)
+    Mono,
 }
 
 #[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
@@ -131,6 +230,8 @@ impl Theme {
         self
     }
 
+    /// Built-in Shadcn family + light/dark selection: `Light`/`Dark`
+    /// force the token set; `System` follows the OS appearance.
     pub fn resolve(mode: ThemeMode, appearance: Appearance) -> Self {
         let dark = match mode {
             ThemeMode::Light => false,

@@ -83,6 +83,7 @@ where
                 !*disabled,
             ),
             NodeData::Custom { .. } => ("custom", String::new(), true),
+            NodeData::Icon { .. } => ("icon", String::new(), true),
         };
         let children = n
             .children
@@ -98,6 +99,74 @@ where
                 )
             })
             .collect::<Result<Vec<_>>>()?;
+        // semantic parts: `ui.part` chains inside the automation owner
+        // (nested owners bound a deeper scope), plus the button's
+        // synthetic `icon` part through the shared icon geometry
+        let mut parts = Vec::new();
+        if let Some(pk) = &n.part_key {
+            parts.push(d::PartNode {
+                key: pk.to_string(),
+                rect_dp: Rect {
+                    x: r.x as f64,
+                    y: r.y as f64,
+                    width: r.width as f64,
+                    height: r.height as f64,
+                },
+                rect_px: Rect {
+                    x: p.left as f64,
+                    y: p.top as f64,
+                    width: (p.right - p.left) as f64,
+                    height: (p.bottom - p.top) as f64,
+                },
+                visible: n.visibility == crate::Visibility::Visible,
+                reason: None,
+            });
+        }
+        self.collect_parts(id, &mut Vec::new(), &mut parts);
+        if let NodeData::Button {
+            icon_start,
+            icon_end,
+            icon_only,
+            size,
+            variant,
+            style,
+            invalid,
+            ..
+        } = &n.data
+        {
+            let has_icon = *icon_only || icon_start.is_some() || icon_end.is_some();
+            if has_icon {
+                let vs = crate::style::resolve_button(
+                    *variant,
+                    *size,
+                    style,
+                    crate::style::StyleState::Normal,
+                    false,
+                    false,
+                    *invalid,
+                );
+                if let Some(ir) = crate::layout::button_icon_rect(&n.data, &vs, &r, false) {
+                    let ip = ir.physical(self.peer_ctx.scale.get());
+                    parts.push(d::PartNode {
+                        key: "icon".into(),
+                        rect_dp: Rect {
+                            x: ir.x as f64,
+                            y: ir.y as f64,
+                            width: ir.width as f64,
+                            height: ir.height as f64,
+                        },
+                        rect_px: Rect {
+                            x: ip.left as f64,
+                            y: ip.top as f64,
+                            width: (ip.right - ip.left) as f64,
+                            height: (ip.bottom - ip.top) as f64,
+                        },
+                        visible: n.visibility == crate::Visibility::Visible,
+                        reason: None,
+                    });
+                }
+            }
+        }
         Ok(Node {
             automation_id: n.automation_id.as_deref().map(str::to_owned),
             kind: kind.into(),
@@ -120,10 +189,62 @@ where
             focus_visible: self.focus == Some(id),
             hovered: self.hot == Some(id),
             pressed: self.pressed == Some(id),
-            // No compound components yet: the runtime emits no semantic parts.
-            parts: vec![],
+            parts,
             children,
         })
+    }
+
+    /// Depth-first part walk under an automation owner — `ui.part`
+    /// chains compose `a.b[0]` keys; a nested automation_id bounds its
+    /// own part scope and is not descended into.
+    fn collect_parts(&self, id: NodeId, prefix: &mut Vec<String>, out: &mut Vec<d::PartNode>) {
+        let Some(n) = self.rt.arena.get(id) else {
+            return;
+        };
+        for slot in &n.children {
+            let cid = NodeId {
+                slot: *slot,
+                generation: self.rt.arena.generation_of(*slot),
+            };
+            let Some(c) = self.rt.arena.get(cid) else {
+                continue;
+            };
+            // nested owner starts a fresh part scope — its parts belong
+            // to itself, not to this node
+            if c.automation_id.is_some() {
+                continue;
+            }
+            let mut descend = c.part_key.is_none();
+            if let Some(pk) = &c.part_key {
+                prefix.push(pk.to_string());
+                let r = self.rects.get(&cid).copied().unwrap_or_default();
+                let p = r.physical(self.peer_ctx.scale.get());
+                out.push(d::PartNode {
+                    key: prefix.join("."),
+                    rect_dp: Rect {
+                        x: r.x as f64,
+                        y: r.y as f64,
+                        width: r.width as f64,
+                        height: r.height as f64,
+                    },
+                    rect_px: Rect {
+                        x: p.left as f64,
+                        y: p.top as f64,
+                        width: (p.right - p.left) as f64,
+                        height: (p.bottom - p.top) as f64,
+                    },
+                    visible: c.visibility == crate::Visibility::Visible,
+                    reason: None,
+                });
+                descend = true;
+            }
+            if descend {
+                self.collect_parts(cid, prefix, out);
+            }
+            if c.part_key.is_some() {
+                prefix.pop();
+            }
+        }
     }
     fn dev_target(&self, args: &Value) -> Result<NodeId> {
         let wanted = args["id"]

@@ -161,13 +161,17 @@ impl Border {
 /// v0.1's only effect primitive — one optional outer box shadow.
 /// `blur_sigma` is a Gaussian standard deviation in logical dp (not a CSS
 /// blur-radius); `offset_x`/`offset_y` are signed; `dp(0.0)` sigma is a
-/// sharp offset silhouette. No spread, no inset, no list.
+/// sharp offset silhouette. `spread` uniformly expands the shadow
+/// silhouette (the CSS `0 0 0 Npx` ring primitive — `spread:1 blur:0`
+/// is the card's ring-1 edge); negative spread contracts it. No inset,
+/// no list.
 #[derive(Copy, Clone, PartialEq, Debug)]
 pub struct Shadow {
     pub color: Color,
     pub offset_x: Dp,
     pub offset_y: Dp,
     pub blur_sigma: Dp,
+    pub spread: Dp,
 }
 
 #[derive(Copy, Clone, Default, PartialEq, Debug)]
@@ -254,11 +258,19 @@ impl BoxStyle {
     }
 }
 
+/// Frozen `typography.weight_values` — numeric CSS weights.
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum TextWeight {
+    /// 400
     Normal,
+    /// 500
     Medium,
+    /// 600
+    Semibold,
+    /// 700
     Bold,
+    /// 800
+    Extrabold,
 }
 
 /// `Body` resolves to the theme base size; `Exact(dp)` is a requested
@@ -269,11 +281,21 @@ pub enum TextSize {
     Exact(Dp),
 }
 
+/// Display text style — foreground, size, weight, family, line box and
+/// inline decorations. `line_height` is the per-line pitch in dp when set
+/// (the backend centers the glyph band inside it, matching CSS
+/// `line-height`); `letter_spacing` is a signed dp advance applied per
+/// cluster (Tailwind `tracking-*`); `underline` draws the inline
+/// decoration at the backend's underline position.
 #[derive(Copy, Clone, PartialEq, Debug)]
 pub struct TextStyle {
     pub foreground: Color,
     pub size: TextSize,
     pub weight: TextWeight,
+    pub font: crate::theme::FontFamily,
+    pub line_height: Option<Dp>,
+    pub underline: bool,
+    pub letter_spacing: f32,
 }
 
 impl TextStyle {
@@ -292,6 +314,22 @@ impl TextStyle {
         self.weight = weight;
         self
     }
+    pub fn font(mut self, font: crate::theme::FontFamily) -> Self {
+        self.font = font;
+        self
+    }
+    pub fn line_height(mut self, lh: Dp) -> Self {
+        self.line_height = Some(lh);
+        self
+    }
+    pub fn underline(mut self, on: bool) -> Self {
+        self.underline = on;
+        self
+    }
+    pub fn letter_spacing(mut self, dp: f32) -> Self {
+        self.letter_spacing = dp;
+        self
+    }
 }
 
 impl Default for TextStyle {
@@ -300,6 +338,10 @@ impl Default for TextStyle {
             foreground: Color::Role(ColorRole::Foreground),
             size: TextSize::Body,
             weight: TextWeight::Normal,
+            font: crate::theme::FontFamily::Sans,
+            line_height: None,
+            underline: false,
+            letter_spacing: 0.0,
         }
     }
 }
@@ -315,14 +357,31 @@ impl TextStyle {
         if let Some(w) = p.weight {
             self.weight = w;
         }
+        if let Some(f) = p.font {
+            self.font = f;
+        }
+        if let Some(lh) = p.line_height {
+            self.line_height = Some(lh);
+        }
+        if let Some(u) = p.underline {
+            self.underline = u;
+        }
+        if let Some(ls) = p.letter_spacing {
+            self.letter_spacing = ls;
+        }
     }
 }
 
-/// A component's resolved visual surface — box + text parts.
+/// A component's resolved visual surface — box + text parts + the
+/// required focus indicator color. `focus_ring` is the RESOLVED ring
+/// color (a recipe-set role): the painter's enforcement layer consumes it
+/// so neither recipe internals nor consumer patches can erase focus
+/// visibility.
 #[derive(Copy, Clone, Default, PartialEq, Debug)]
 pub struct VisualStyle {
     pub box_style: BoxStyle,
     pub text_style: TextStyle,
+    pub focus_ring: Color,
 }
 
 impl VisualStyle {
@@ -486,6 +545,10 @@ pub struct TextStylePatch {
     pub foreground: Option<Color>,
     pub size: Option<Dp>,
     pub weight: Option<TextWeight>,
+    pub font: Option<crate::theme::FontFamily>,
+    pub line_height: Option<Dp>,
+    pub underline: Option<bool>,
+    pub letter_spacing: Option<f32>,
 }
 
 impl TextStylePatch {
@@ -504,6 +567,22 @@ impl TextStylePatch {
         self.weight = Some(w);
         self
     }
+    pub fn font(mut self, f: crate::theme::FontFamily) -> Self {
+        self.font = Some(f);
+        self
+    }
+    pub fn line_height(mut self, lh: Dp) -> Self {
+        self.line_height = Some(lh);
+        self
+    }
+    pub fn underline(mut self, on: bool) -> Self {
+        self.underline = Some(on);
+        self
+    }
+    pub fn letter_spacing(mut self, dp: f32) -> Self {
+        self.letter_spacing = Some(dp);
+        self
+    }
     pub fn merge(&mut self, o: &TextStylePatch) {
         if o.foreground.is_some() {
             self.foreground = o.foreground;
@@ -513,6 +592,18 @@ impl TextStylePatch {
         }
         if o.weight.is_some() {
             self.weight = o.weight;
+        }
+        if o.font.is_some() {
+            self.font = o.font;
+        }
+        if o.line_height.is_some() {
+            self.line_height = o.line_height;
+        }
+        if o.underline.is_some() {
+            self.underline = o.underline;
+        }
+        if o.letter_spacing.is_some() {
+            self.letter_spacing = o.letter_spacing;
         }
     }
 }
@@ -595,6 +686,7 @@ fn shadow_resolved_eq(a: &Option<Shadow>, b: &Option<Shadow>, dark: bool) -> boo
             x.offset_x == y.offset_x
                 && x.offset_y == y.offset_y
                 && x.blur_sigma == y.blur_sigma
+                && x.spread == y.spread
                 && resolve_color(x.color, dark) == resolve_color(y.color, dark)
         }
         _ => false,
@@ -619,8 +711,13 @@ pub(crate) fn box_resolved_eq(a: &BoxStyle, b: &BoxStyle, dark: bool) -> bool {
 pub(crate) fn visual_resolved_eq(a: &VisualStyle, b: &VisualStyle, dark: bool) -> bool {
     a.text_style.size == b.text_style.size
         && a.text_style.weight == b.text_style.weight
+        && a.text_style.font == b.text_style.font
+        && a.text_style.line_height == b.text_style.line_height
+        && a.text_style.underline == b.text_style.underline
+        && a.text_style.letter_spacing == b.text_style.letter_spacing
         && resolve_color(a.text_style.foreground, dark)
             == resolve_color(b.text_style.foreground, dark)
+        && resolve_color(a.focus_ring, dark) == resolve_color(b.focus_ring, dark)
         && box_resolved_eq(&a.box_style, &b.box_style, dark)
 }
 
@@ -644,9 +741,14 @@ impl BoxStylePatch {
 }
 
 impl TextStylePatch {
-    /// font metrics — size/weight changes reflow text
+    /// font metrics — size/weight/family/line-pitch/tracking changes
+    /// reflow text
     pub fn metric_affecting(&self) -> bool {
-        self.size.is_some() || self.weight.is_some()
+        self.size.is_some()
+            || self.weight.is_some()
+            || self.font.is_some()
+            || self.line_height.is_some()
+            || self.letter_spacing.is_some()
     }
 }
 
@@ -982,35 +1084,98 @@ impl StyleState {
 // color resolution — the shared palette (renderers convert to their format)
 // ---------------------------------------------------------------------------
 
-/// shadcn neutral palette per `ColorRole` — straight sRGB floats.
-// ---------------------------------------------------------------------------
-// color resolution — the shared palette (renderers convert to their format)
-// ---------------------------------------------------------------------------
-
-/// shadcn neutral palette per `ColorRole` — straight sRGB floats.
+/// shadcn neutral palette per `ColorRole` — the frozen
+/// `reference/shadcn-gallery-v0.1/tokens.json` sRGB values, ONE authority.
+/// `rgba()` decodes `#rrggbb` + token alpha; translucent roles bake the
+/// frozen alpha in.
 pub fn role_color(role: ColorRole, dark: bool) -> [f32; 4] {
     use ColorRole::*;
+    const fn rgba(hex: u32, a: f32) -> [f32; 4] {
+        [
+            ((hex >> 16) & 0xff) as f32 / 255.0,
+            ((hex >> 8) & 0xff) as f32 / 255.0,
+            (hex & 0xff) as f32 / 255.0,
+            a,
+        ]
+    }
     match (role, dark) {
-        (Background, false) => [0.980, 0.980, 0.980, 1.0],
-        (Background, true) => [0.043, 0.043, 0.043, 1.0],
-        (Foreground, false) => [0.090, 0.090, 0.090, 1.0],
-        (Foreground, true) => [0.929, 0.929, 0.929, 1.0],
-        (Muted, false) => [0.961, 0.961, 0.961, 1.0],
-        (Muted, true) => [0.149, 0.149, 0.149, 1.0],
-        (MutedForeground, false) => [0.451, 0.451, 0.451, 1.0],
-        (MutedForeground, true) => [0.639, 0.639, 0.639, 1.0],
-        (Accent, false) => [0.094, 0.094, 0.106, 1.0],
-        (Accent, true) => [0.980, 0.980, 0.980, 1.0],
-        (AccentForeground, false) => [0.980, 0.980, 0.980, 1.0],
-        (AccentForeground, true) => [0.094, 0.094, 0.106, 1.0],
-        (Border, false) => [0.898, 0.898, 0.898, 1.0],
-        (Border, true) => [0.180, 0.180, 0.180, 1.0],
-        (Destructive, _) => [0.863, 0.149, 0.149, 1.0],
-        (DestructiveForeground, _) => [0.980, 0.980, 0.980, 1.0],
-        (Focus, false) => [0.35, 0.35, 0.40, 1.0],
-        (Focus, true) => [0.65, 0.65, 0.70, 1.0],
-        (Shadow, false) => [0.0, 0.0, 0.0, 0.16],
-        (Shadow, true) => [0.0, 0.0, 0.0, 0.35],
+        (Background, false) => rgba(0xffffff, 1.0),
+        (Background, true) => rgba(0x0a0a0a, 1.0),
+        (Foreground, false) => rgba(0x0a0a0a, 1.0),
+        (Foreground, true) => rgba(0xfafafa, 1.0),
+        (Card, false) => rgba(0xffffff, 1.0),
+        (Card, true) => rgba(0x171717, 1.0),
+        (CardForeground, false) => rgba(0x0a0a0a, 1.0),
+        (CardForeground, true) => rgba(0xfafafa, 1.0),
+        (Primary, false) => rgba(0x171717, 1.0),
+        (Primary, true) => rgba(0xe5e5e5, 1.0),
+        (PrimaryForeground, false) => rgba(0xfafafa, 1.0),
+        (PrimaryForeground, true) => rgba(0x171717, 1.0),
+        (Secondary, false) => rgba(0xf5f5f5, 1.0),
+        (Secondary, true) => rgba(0x262626, 1.0),
+        (SecondaryForeground, false) => rgba(0x171717, 1.0),
+        (SecondaryForeground, true) => rgba(0xfafafa, 1.0),
+        (Muted, false) => rgba(0xf5f5f5, 1.0),
+        (Muted, true) => rgba(0x262626, 1.0),
+        (MutedForeground, false) => rgba(0x737373, 1.0),
+        (MutedForeground, true) => rgba(0xa1a1a1, 1.0),
+        (Accent, false) => rgba(0xf5f5f5, 1.0),
+        (Accent, true) => rgba(0x262626, 1.0),
+        (AccentForeground, false) => rgba(0x171717, 1.0),
+        (AccentForeground, true) => rgba(0xfafafa, 1.0),
+        (Border, false) => rgba(0xe5e5e5, 1.0),
+        (Border, true) => rgba(0xffffff, 0.10),
+        (Input, false) => rgba(0xe5e5e5, 1.0),
+        (Input, true) => rgba(0xffffff, 0.15),
+        (Ring, false) => rgba(0xa1a1a1, 1.0),
+        (Ring, true) => rgba(0x737373, 1.0),
+        (Surface, false) => rgba(0xf8f8f8, 1.0),
+        (Surface, true) => rgba(0x161616, 1.0),
+        (SurfaceForeground, false) => rgba(0x0a0a0a, 1.0),
+        (SurfaceForeground, true) => rgba(0xa1a1a1, 1.0),
+        (Code, false) => rgba(0xf8f8f8, 1.0),
+        (Code, true) => rgba(0x161616, 1.0),
+        (CodeForeground, false) => rgba(0x0a0a0a, 1.0),
+        (CodeForeground, true) => rgba(0xa1a1a1, 1.0),
+        (CodeHighlight, false) => rgba(0xf2f2f2, 1.0),
+        (CodeHighlight, true) => rgba(0x262626, 1.0),
+        (CodeNumber, false) => rgba(0x747474, 1.0),
+        (CodeNumber, true) => rgba(0xa4a4a4, 1.0),
+        (Selection, false) => rgba(0x000000, 1.0),
+        (Selection, true) => rgba(0xe5e5e5, 1.0),
+        (SelectionForeground, false) => rgba(0xffffff, 1.0),
+        (SelectionForeground, true) => rgba(0x171717, 1.0),
+        (Destructive, false) => rgba(0xe7000b, 1.0),
+        (Destructive, true) => rgba(0xff6467, 1.0),
+        (DestructiveForeground, false) => rgba(0xfcf3f3, 1.0),
+        (DestructiveForeground, true) => rgba(0xdf2225, 1.0),
+        // enforcement focus indicator — frozen `ring-50`
+        (Focus, false) => rgba(0xa1a1a1, 0.5),
+        (Focus, true) => rgba(0x737373, 0.5),
+        (Shadow, false) => rgba(0x000000, 0.10),
+        (Shadow, true) => rgba(0x000000, 0.35),
+        // ---- translucent tokens --------------------------------------
+        (Foreground10, false) => rgba(0x0a0a0a, 0.10),
+        (Foreground10, true) => rgba(0xfafafa, 0.10),
+        (Foreground60, false) => rgba(0x0a0a0a, 0.60),
+        (Foreground60, true) => rgba(0xfafafa, 0.60),
+        (Muted50, false) => rgba(0xf5f5f5, 0.5),
+        (Muted50, true) => rgba(0x262626, 0.5),
+        (Input30, _) => rgba(0xffffff, 0.045),
+        (Input50, _) => rgba(0xffffff, 0.075),
+        (Primary80, false) => rgba(0x171717, 0.8),
+        (Primary80, true) => rgba(0xe5e5e5, 0.8),
+        (SecondaryHover, false) => rgba(0xe7e7e7, 1.0),
+        (SecondaryHover, true) => rgba(0x2f2f2f, 1.0),
+        (DestructiveTint, false) => rgba(0xe7000b, 0.10),
+        (DestructiveTint, true) => rgba(0xff6467, 0.20),
+        (DestructiveTintHover, false) => rgba(0xe7000b, 0.20),
+        (DestructiveTintHover, true) => rgba(0xff6467, 0.30),
+        (DestructiveRing, false) => rgba(0xe7000b, 0.20),
+        (DestructiveRing, true) => rgba(0xff6467, 0.40),
+        (Destructive40, false) => rgba(0xe7000b, 0.40),
+        (Destructive40, true) => rgba(0xff6467, 0.40),
+        (Destructive50, _) => rgba(0xff6467, 0.50),
     }
 }
 
@@ -1033,104 +1198,135 @@ pub fn resolve_color(c: Color, dark: bool) -> [f32; 4] {
 
 use crate::theme::{ButtonVariant, ControlSize};
 
-/// Button recipe: base `VisualStyle` per variant/size + recipe state
-/// overlays expressed as field diffs. The renderer picks the branch, applies
-/// the consumer base, then the consumer state patch.
+/// Button recipe — the frozen `cn-button` contract (base-nova/neutral):
+/// base `VisualStyle` per variant/size + recipe state overlays as full
+/// styles. Horizontal padding/radius/font per the frozen control tables;
+/// `pressed` and `disabled` carry NO color change — pressed paints the
+/// 1dp translate, disabled paints 0.5 opacity (both are whole-control
+/// effects the style can't express). Focus-visible replaces the border
+/// color (`border-ring` / `border-destructive/40`); the ring band itself
+/// is the renderer's enforcement layer.
 pub fn button_recipe(
     variant: ButtonVariant,
     size: ControlSize,
     dark: bool,
 ) -> StateStyles<VisualStyle> {
-    let (bg, fg, border) = match variant {
+    let (pad_x, radius, font_px) = match size {
+        ControlSize::Xs => (8.0, 8.0, 12.0),
+        ControlSize::Sm => (10.0, 8.0, 12.8),
+        ControlSize::Md => (10.0, 10.0, 14.0),
+        ControlSize::Lg => (10.0, 10.0, 14.0),
+    };
+    let outline_border = if dark {
+        Color::Role(ColorRole::Input)
+    } else {
+        Color::Role(ColorRole::Border)
+    };
+    let (bg, fg, border_color) = match variant {
         ButtonVariant::Primary => (
-            Color::Role(ColorRole::Accent),
-            Color::Role(ColorRole::AccentForeground),
-            Border::default(),
+            Color::Role(ColorRole::Primary),
+            Color::Role(ColorRole::PrimaryForeground),
+            Color::rgba(0, 0, 0, 0),
         ),
         ButtonVariant::Secondary => (
-            Color::Role(ColorRole::Muted),
+            Color::Role(ColorRole::Secondary),
+            Color::Role(ColorRole::SecondaryForeground),
+            Color::rgba(0, 0, 0, 0),
+        ),
+        ButtonVariant::Outline => (
+            if dark {
+                Color::Role(ColorRole::Input30)
+            } else {
+                Color::Role(ColorRole::Background)
+            },
             Color::Role(ColorRole::Foreground),
-            Border::all(BorderSide::new(Dp(1.0), Color::Role(ColorRole::Border))),
+            outline_border,
         ),
         ButtonVariant::Ghost => (
-            Color::Role(ColorRole::Background),
+            Color::rgba(0, 0, 0, 0),
             Color::Role(ColorRole::Foreground),
-            Border::default(),
+            Color::rgba(0, 0, 0, 0),
         ),
         ButtonVariant::Destructive => (
+            Color::Role(ColorRole::DestructiveTint),
             Color::Role(ColorRole::Destructive),
-            Color::Role(ColorRole::DestructiveForeground),
-            Border::default(),
+            Color::rgba(0, 0, 0, 0),
         ),
-    };
-    let pad = match size {
-        ControlSize::Sm => Insets {
-            top: Dp(4.0),
-            right: Dp(10.0),
-            bottom: Dp(4.0),
-            left: Dp(10.0),
-        },
-        ControlSize::Md => Insets {
-            top: Dp(6.0),
-            right: Dp(14.0),
-            bottom: Dp(6.0),
-            left: Dp(14.0),
-        },
-        ControlSize::Lg => Insets {
-            top: Dp(8.0),
-            right: Dp(18.0),
-            bottom: Dp(8.0),
-            left: Dp(18.0),
-        },
+        ButtonVariant::Link => (
+            Color::rgba(0, 0, 0, 0),
+            Color::Role(ColorRole::Primary),
+            Color::rgba(0, 0, 0, 0),
+        ),
     };
     let base = VisualStyle {
         box_style: BoxStyle {
             background: bg,
-            border,
-            radii: CornerRadii::all(Dp(6.0)),
-            padding: pad,
+            // `border border-transparent` — a real 1dp transparent border
+            // everywhere; outline carries the visible one
+            border: Border::all(BorderSide::new(Dp(1.0), border_color)),
+            radii: CornerRadii::all(Dp(radius)),
+            padding: Insets {
+                top: Dp(0.0),
+                right: Dp(pad_x),
+                bottom: Dp(0.0),
+                left: Dp(pad_x),
+            },
             shadow: None,
         },
         text_style: TextStyle {
             foreground: fg,
-            size: TextSize::Body,
+            size: TextSize::Exact(Dp(font_px)),
             weight: TextWeight::Medium,
+            font: crate::theme::FontFamily::Sans,
+            line_height: None,
+            underline: false,
+            letter_spacing: 0.0,
         },
+        focus_ring: Color::Role(ColorRole::Focus),
     };
-    // recipe state branches as full styles; state_delta diffs them into the
-    // shared patch vocabulary
-    let branch = |alpha: f32, fg_alpha: Option<f32>| {
-        let mut b = base;
-        let [r, g, bl, a] = resolve_color(base.box_style.background, dark);
-        b.box_style.background = Color::rgba(
-            (r * 255.0) as u8,
-            (g * 255.0) as u8,
-            (bl * 255.0) as u8,
-            (a * alpha * 255.0) as u8,
-        );
-        if let Some(fa) = fg_alpha {
-            let [r, g, bl, a] = resolve_color(base.text_style.foreground, dark);
-            b.text_style.foreground = Color::rgba(
-                (r * 255.0) as u8,
-                (g * 255.0) as u8,
-                (bl * 255.0) as u8,
-                (a * fa * 255.0) as u8,
-            );
+    // hover — full styles; the recipe state branch replaces the base
+    let mut hover = base;
+    match variant {
+        ButtonVariant::Primary => hover.box_style.background = Color::Role(ColorRole::Primary80),
+        ButtonVariant::Secondary => {
+            hover.box_style.background = Color::Role(ColorRole::SecondaryHover)
         }
-        b
+        ButtonVariant::Outline => {
+            hover.box_style.background = if dark {
+                Color::Role(ColorRole::Input50)
+            } else {
+                Color::Role(ColorRole::Muted)
+            };
+        }
+        ButtonVariant::Ghost => {
+            hover.box_style.background = if dark {
+                Color::Role(ColorRole::Muted50)
+            } else {
+                Color::Role(ColorRole::Muted)
+            };
+        }
+        ButtonVariant::Destructive => {
+            hover.box_style.background = Color::Role(ColorRole::DestructiveTintHover)
+        }
+        ButtonVariant::Link => hover.text_style.underline = true,
+    }
+    // focus-visible border swap — `border-ring`, or
+    // `border-destructive/40` on the destructive variant
+    let mut focus_visible = base;
+    let fv_border_color = match variant {
+        ButtonVariant::Destructive => Color::Role(ColorRole::Destructive40),
+        _ => Color::Role(ColorRole::Ring),
     };
+    focus_visible.box_style.border = Border::all(BorderSide::new(Dp(1.0), fv_border_color));
+    let _ = dark;
     StateStyles {
         base,
-        hover: Some(branch(0.88, None)),
-        pressed: Some(branch(0.72, None)),
-        disabled: Some(branch(0.45, Some(0.45))),
-        // focus ring is the recipe's focus overlay — a 1.5dp Focus border
-        focus_visible: Some({
-            let mut b = base;
-            b.box_style.border =
-                Border::all(BorderSide::new(Dp(1.5), Color::Role(ColorRole::Focus)));
-            b
-        }),
+        hover: Some(hover),
+        // pressed/disabled are whole-control effects (translate / opacity)
+        // — no color branch; the painter owns the visual delta
+        pressed: None,
+        disabled: None,
+        focus_visible: Some(focus_visible),
     }
 }
 
@@ -1191,12 +1387,30 @@ fn state_delta(from: &VisualStyle, to: &VisualStyle) -> VisualStylePatch {
     if from.text_style.weight != to.text_style.weight {
         p.text_style.weight = Some(to.text_style.weight);
     }
+    if from.text_style.font != to.text_style.font {
+        p.text_style.font = Some(to.text_style.font);
+    }
+    if from.text_style.line_height != to.text_style.line_height
+        && let Some(lh) = to.text_style.line_height
+    {
+        p.text_style.line_height = Some(lh);
+    }
+    if from.text_style.underline != to.text_style.underline {
+        p.text_style.underline = Some(to.text_style.underline);
+    }
+    if from.text_style.letter_spacing != to.text_style.letter_spacing {
+        p.text_style.letter_spacing = Some(to.text_style.letter_spacing);
+    }
     p
 }
 
 /// Resolved button style for one interaction state — the deterministic
 /// chain: recipe base -> recipe state overlay -> consumer base -> consumer
-/// state overlay -> consumer focus overlay. OS enforcement comes after.
+/// state overlay -> consumer focus overlay -> invalid semantic overlay.
+/// OS enforcement comes after. `invalid` is the semantic `aria-invalid`
+/// state (`border-destructive`, `ring-destructive/20` dark /40) — applied
+/// AFTER all consumer layers so it can't be restyled away; it is
+/// orthogonal to every interaction state.
 pub fn resolve_button(
     variant: ButtonVariant,
     size: ControlSize,
@@ -1204,6 +1418,7 @@ pub fn resolve_button(
     state: StyleState,
     focus_visible: bool,
     dark: bool,
+    invalid: bool,
 ) -> VisualStyle {
     let recipe = button_recipe(variant, size, dark);
     let mut v = recipe.base;
@@ -1242,6 +1457,31 @@ pub fn resolve_button(
     {
         v.patch(p);
     }
+    // invalid semantic overlay — destructive border always (light full /
+    // dark /50); the enforcement ring switches to the destructive tint so
+    // an invalid+focused control keeps the `ring-destructive/*` band.
+    if invalid {
+        let bc = if dark {
+            Color::Role(ColorRole::Destructive50)
+        } else {
+            Color::Role(ColorRole::Destructive)
+        };
+        for s in [
+            &mut v.box_style.border.top,
+            &mut v.box_style.border.right,
+            &mut v.box_style.border.bottom,
+            &mut v.box_style.border.left,
+        ] {
+            s.color = bc;
+        }
+    }
+    // required focus indicator color: destructive ring for invalid or the
+    // destructive variant (`ring-destructive/*`), ring/50 otherwise
+    v.focus_ring = if invalid || variant == ButtonVariant::Destructive {
+        Color::Role(ColorRole::DestructiveRing)
+    } else {
+        Color::Role(ColorRole::Focus)
+    };
     v
 }
 
@@ -1284,6 +1524,41 @@ pub fn surface_recipe() -> BoxStyle {
     }
 }
 
+/// Card container recipe — the frozen `cn-card` chrome: `bg-card`,
+/// `rounded-xl` (14dp), `ring-1 ring-foreground/10` expressed as a 1dp
+/// spread shadow (CSS `0 0 0 1px` — the edge ring, not a border), and
+/// top padding = `--card-spacing` (16 default / 12 sm). Side/bottom
+/// padding is 0 — the card's parts own their insets.
+pub fn card_recipe(size: crate::theme::CardSize) -> BoxStyle {
+    let spacing = card_spacing(size);
+    BoxStyle {
+        background: Color::Role(ColorRole::Card),
+        border: Border::default(),
+        radii: CornerRadii::all(Dp(14.0)),
+        padding: Insets {
+            top: spacing,
+            right: Dp(0.0),
+            bottom: Dp(0.0),
+            left: Dp(0.0),
+        },
+        shadow: Some(Shadow {
+            color: Color::Role(ColorRole::Foreground10),
+            offset_x: Dp(0.0),
+            offset_y: Dp(0.0),
+            blur_sigma: Dp(0.0),
+            spread: Dp(1.0),
+        }),
+    }
+}
+
+/// Frozen `--card-spacing` token for one card size.
+pub fn card_spacing(size: crate::theme::CardSize) -> Dp {
+    match size {
+        crate::theme::CardSize::Default => Dp(16.0),
+        crate::theme::CardSize::Sm => Dp(12.0),
+    }
+}
+
 /// Label recipe — foreground role + body text.
 pub fn label_recipe() -> TextStyle {
     TextStyle::default()
@@ -1315,10 +1590,12 @@ fn shadow_ok(s: &Shadow) -> bool {
         && s.blur_sigma.0 >= 0.0
 }
 fn text_ok(t: &TextStyle) -> bool {
-    match t.size {
+    let size_ok = match t.size {
         TextSize::Body => true,
         TextSize::Exact(d) => d.0.is_finite() && d.0 > 0.0,
-    }
+    };
+    let lh_ok = t.line_height.is_none_or(|d| d.0.is_finite() && d.0 > 0.0);
+    size_ok && lh_ok && t.letter_spacing.is_finite()
 }
 
 /// resolved `BoxStyle` — checked before paint/layout use
@@ -1438,12 +1715,40 @@ pub enum SystemColor {
 pub fn system_slot(role: crate::theme::ColorRole) -> SystemColor {
     use crate::theme::ColorRole as R;
     match role {
-        R::Background | R::Muted => SystemColor::Window,
-        R::Foreground | R::Destructive => SystemColor::WindowText,
-        R::MutedForeground | R::Shadow => SystemColor::GrayText,
-        R::Accent | R::Focus => SystemColor::Highlight,
-        R::AccentForeground | R::DestructiveForeground => SystemColor::HighlightText,
-        R::Border => SystemColor::InactiveBorder,
+        R::Background
+        | R::Muted
+        | R::Card
+        | R::Surface
+        | R::Code
+        | R::Secondary
+        | R::Muted50
+        | R::DestructiveTint
+        | R::DestructiveTintHover
+        | R::Input30
+        | R::Input50
+        | R::SecondaryHover => SystemColor::Window,
+        R::Foreground
+        | R::Destructive
+        | R::CardForeground
+        | R::SecondaryForeground
+        | R::SurfaceForeground
+        | R::CodeForeground
+        | R::CodeHighlight
+        | R::Primary
+        | R::DestructiveForeground => SystemColor::WindowText,
+        R::MutedForeground | R::CodeNumber | R::Shadow | R::Foreground60 => SystemColor::GrayText,
+        R::Accent
+        | R::Focus
+        | R::Ring
+        | R::Primary80
+        | R::Selection
+        | R::DestructiveRing
+        | R::Destructive40
+        | R::Destructive50 => SystemColor::Highlight,
+        R::AccentForeground | R::PrimaryForeground | R::SelectionForeground => {
+            SystemColor::HighlightText
+        }
+        R::Border | R::Input | R::Foreground10 => SystemColor::InactiveBorder,
     }
 }
 

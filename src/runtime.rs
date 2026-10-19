@@ -173,6 +173,7 @@ where
         // a virtual group root holds the view's children
         let root = arena.alloc(Node {
             automation_id: None,
+            part_key: None,
             key: ChildKey::Static {
                 kind: KIND_GROUP,
                 ordinal: 0,
@@ -546,6 +547,7 @@ where
     ) -> UiResult<NodeId> {
         let StagedNode {
             automation_id,
+            part_key,
             key,
             data,
             visibility,
@@ -603,6 +605,7 @@ where
 
         let id = self.arena.alloc(Node {
             automation_id,
+            part_key,
             key,
             parent,
             children: Vec::new(),
@@ -1402,6 +1405,7 @@ fn validate_styles(tx: &Tx, dark: bool) -> Option<UiError> {
                 style,
                 variant,
                 size,
+                invalid,
                 ..
             } => {
                 crate::style::button_patch_ok(style)
@@ -1412,6 +1416,7 @@ fn validate_styles(tx: &Tx, dark: bool) -> Option<UiError> {
                         crate::style::StyleState::Normal,
                         false,
                         false,
+                        *invalid,
                     ))
             }
             NodeData::Editor { patch, .. } => {

@@ -27,6 +27,8 @@ pub(crate) const KIND_GROUP: u8 = 10;
 pub(crate) const KIND_SCOPE: u8 = 11;
 pub(crate) const KIND_BOX: u8 = 12;
 pub(crate) const KIND_ACTION: u8 = 13;
+pub(crate) const KIND_ICON: u8 = 14;
+pub(crate) const KIND_CARD: u8 = 15;
 
 /// Everything the platform needs to build one native editor peer —
 /// behavior gates are part of the spec so a mounted editor never defaults
@@ -292,6 +294,8 @@ pub(crate) struct ContainerProps {
     pub patch: crate::style::BoxStylePatch,
     /// box_: full authored style (no recipe merge)
     pub full: Option<crate::style::BoxStyle>,
+    /// card: density token selecting the `--card-spacing` recipe
+    pub card_size: Option<crate::theme::CardSize>,
 }
 
 impl ContainerProps {
@@ -301,6 +305,11 @@ impl ContainerProps {
         match kind {
             KIND_SURFACE => {
                 let mut s = crate::style::surface_recipe();
+                s.patch(&self.patch);
+                Some(s)
+            }
+            KIND_CARD => {
+                let mut s = crate::style::card_recipe(self.card_size.unwrap_or_default());
                 s.patch(&self.patch);
                 Some(s)
             }
@@ -325,6 +334,9 @@ pub(crate) enum NodeData {
         /// surgical text patch — `.color_role` is a shorthand that sets only
         /// `patch.foreground = Some(Color::Role(..))`
         patch: crate::style::TextStylePatch,
+        /// optional painted chrome under the text (h2 rule, inline-code
+        /// surface) — authored full style, resolved like a `box_` frame
+        chrome: Option<crate::style::BoxStyle>,
     },
     Button {
         text: Rc<str>,
@@ -334,6 +346,26 @@ pub(crate) enum NodeData {
         size: crate::theme::ControlSize,
         motion: Option<MotionToken>,
         tooltip: Option<Rc<str>>,
+        /// decorative icons (Lucide path geometry) at the start/end edge;
+        /// both are inert — the button node owns all interaction
+        icon_start: Option<crate::icons::Icon>,
+        icon_end: Option<crate::icons::Icon>,
+        /// icon-only control (`icon_button`) — square size-class measure,
+        /// no visible text; `accessible_name` carries the UIA name
+        icon_only: bool,
+        /// accessible name when the visible text isn't the name (required
+        /// for icon-only buttons)
+        accessible_name: Option<Rc<str>>,
+        /// semantic `aria-invalid` — destructive chrome, orthogonal to
+        /// every interaction state
+        invalid: bool,
+    },
+    /// Decorative vector icon leaf (Lucide stroke geometry) — paints a
+    /// stroke path at `size`; `color` is the `currentColor` analog.
+    Icon {
+        icon: crate::icons::Icon,
+        size: crate::geom::Dp,
+        color: crate::style::Color,
     },
     Editor {
         /// immutable staged snapshot of the bound TextValue this view
@@ -369,6 +401,10 @@ pub(crate) type MsgAdapters = Rc<Vec<Rc<dyn Fn(Box<dyn Any>) -> Box<dyn Any>>>>;
 
 pub(crate) struct Node {
     pub automation_id: Option<Rc<str>>,
+    /// semantic part identity inside the owner's automation surface —
+    /// `ui.part("header", …)`/`ui.part("header.title", …)`; emitted by
+    /// devtools as `owner#part`
+    pub part_key: Option<Rc<str>>,
     pub key: ChildKey,
     pub parent: Option<u32>,
     pub children: Vec<u32>,
@@ -515,12 +551,14 @@ pub(crate) fn dirty_diff(
                 wrap: aw,
                 color_role: ac,
                 patch: ap,
+                chrome: ach,
             },
             NodeData::Label {
                 text: bt,
                 wrap: bw,
                 color_role: bc,
                 patch: bp,
+                chrome: bch,
             },
         ) => {
             if at != bt || aw != bw {
@@ -535,9 +573,32 @@ pub(crate) fn dirty_diff(
                 if ac != bc {
                     d |= PAINT;
                 }
+                if ach != bch {
+                    d |= PAINT;
+                    let ci = |c: &Option<crate::style::BoxStyle>| {
+                        c.map_or(0.0, |b| {
+                            b.border.top.width.0
+                                + b.border.bottom.width.0
+                                + b.border.left.width.0
+                                + b.border.right.width.0
+                                + b.padding.top.0
+                                + b.padding.bottom.0
+                                + b.padding.left.0
+                                + b.padding.right.0
+                        })
+                    };
+                    if ci(ach) != ci(bch) {
+                        d |= LAYOUT;
+                    }
+                }
                 if ra != rb {
                     d |= PAINT;
-                    if ra.size != rb.size || ra.weight != rb.weight {
+                    if ra.size != rb.size
+                        || ra.weight != rb.weight
+                        || ra.font != rb.font
+                        || ra.line_height != rb.line_height
+                        || ra.letter_spacing != rb.letter_spacing
+                    {
                         d |= LAYOUT;
                     }
                 }
@@ -553,6 +614,11 @@ pub(crate) fn dirty_diff(
                 size: asz,
                 motion: am,
                 tooltip: atp,
+                icon_start: ais,
+                icon_end: aie,
+                icon_only: aio,
+                accessible_name: aan,
+                invalid: ai,
             },
             NodeData::Button {
                 text: bt,
@@ -562,16 +628,21 @@ pub(crate) fn dirty_diff(
                 size: bsz,
                 motion: bm,
                 tooltip: btp,
+                icon_start: bis,
+                icon_end: bie,
+                icon_only: bio,
+                accessible_name: ban,
+                invalid: bi,
             },
         ) => {
             let mut d = 0;
-            if at != bt || asz != bsz {
+            if at != bt || asz != bsz || ais != bis || aie != bie || aio != bio {
                 d |= LAYOUT;
             }
-            if at != bt || av != bv || am != bm {
+            if at != bt || av != bv || am != bm || ais != bis || aie != bie {
                 d |= PAINT;
             }
-            if ad != bd || atp != btp {
+            if ad != bd || atp != btp || aan != ban {
                 d |= SEMANTICS;
             }
             // RESOLVED normal-state styles — recipe+patch applied, then
@@ -584,6 +655,7 @@ pub(crate) fn dirty_diff(
                 crate::style::StyleState::Normal,
                 false,
                 dark,
+                *ai,
             );
             crate::style::os_enforce_visual(&mut ra, forced);
             let mut rb = crate::style::resolve_button(
@@ -593,6 +665,7 @@ pub(crate) fn dirty_diff(
                 crate::style::StyleState::Normal,
                 false,
                 dark,
+                *bi,
             );
             crate::style::os_enforce_visual(&mut rb, forced);
             visual_dirty(&ra, &rb, dark, &mut d);
@@ -603,8 +676,8 @@ pub(crate) fn dirty_diff(
                 crate::style::StyleState::Pressed,
                 crate::style::StyleState::Disabled,
             ] {
-                let ra = crate::style::resolve_button(*av, *asz, ast, st, false, dark);
-                let rb = crate::style::resolve_button(*bv, *bsz, bst, st, false, dark);
+                let ra = crate::style::resolve_button(*av, *asz, ast, st, false, dark, *ai);
+                let rb = crate::style::resolve_button(*bv, *bsz, bst, st, false, dark, *bi);
                 if ra.box_style.padding != rb.box_style.padding
                     || ra.box_style.border.top.width != rb.box_style.border.top.width
                     || ra.box_style.border.right.width != rb.box_style.border.right.width
@@ -615,6 +688,29 @@ pub(crate) fn dirty_diff(
                 } else if ra != rb {
                     d |= PAINT;
                 }
+            }
+            d
+        }
+        (
+            NodeData::Icon {
+                icon: ai,
+                size: asz,
+                color: ac,
+            },
+            NodeData::Icon {
+                icon: bi,
+                size: bsz,
+                color: bc,
+            },
+        ) => {
+            let mut d = 0;
+            if ai != bi || asz != bsz {
+                d |= LAYOUT;
+            }
+            if ai != bi
+                || crate::style::resolve_color(*ac, dark) != crate::style::resolve_color(*bc, dark)
+            {
+                d |= PAINT;
             }
             d
         }
@@ -758,6 +854,7 @@ impl Node {
             }
             NodeData::Custom { .. } => KIND_CUSTOM,
             NodeData::Action { .. } => KIND_ACTION,
+            NodeData::Icon { .. } => KIND_ICON,
         }
     }
 

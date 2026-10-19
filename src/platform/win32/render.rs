@@ -45,9 +45,10 @@ fn role_color(role: crate::theme::ColorRole, dark: bool) -> D2D1_COLOR_F {
 struct Dwrite {
     factory: IDWriteFactory,
     formats: [Option<IDWriteTextFormat>; 3],
-    /// (size_bits, weight_ordinal) -> format — Exact sizes land here, the
-    /// fixed table covers the two base recipes (14pt normal / semibold).
-    /// Bounded FIFO: arbitrary Exact sizes cannot grow it forever.
+    /// (size_bits, weight_ordinal, family) -> format — Exact sizes land
+    /// here, the fixed table covers the two base recipes (14pt normal /
+    /// semibold). Bounded FIFO: arbitrary Exact sizes cannot grow it
+    /// forever.
     cache: std::sync::Mutex<FormatCache>,
 }
 
@@ -55,15 +56,15 @@ const FORMAT_CACHE_MAX: usize = 64;
 
 #[derive(Default)]
 struct FormatCache {
-    map: std::collections::HashMap<(u32, u32), IDWriteTextFormat>,
-    order: std::collections::VecDeque<(u32, u32)>,
+    map: std::collections::HashMap<(u32, u32, u8), IDWriteTextFormat>,
+    order: std::collections::VecDeque<(u32, u32, u8)>,
 }
 
 impl FormatCache {
-    fn get(&self, k: &(u32, u32)) -> Option<IDWriteTextFormat> {
+    fn get(&self, k: &(u32, u32, u8)) -> Option<IDWriteTextFormat> {
         self.map.get(k).cloned()
     }
-    fn insert(&mut self, k: (u32, u32), v: IDWriteTextFormat) {
+    fn insert(&mut self, k: (u32, u32, u8), v: IDWriteTextFormat) {
         if self.map.contains_key(&k) {
             self.map.insert(k, v);
             return;
@@ -113,37 +114,61 @@ fn dwrite() -> UiResult<&'static Dwrite> {
     .map_err(|e| UiError::Platform(e.to_string()))
 }
 
+/// Canonical family name for a `FontFamily` slot — the bundled Geist
+/// faces (privately registered, see `fonts.rs`). `None` = Segoe UI for
+/// apps that never needed parity; the Gallery asserts `fonts::geist()`.
+fn family_name(f: crate::theme::FontFamily) -> windows::core::PCWSTR {
+    if super::fonts::geist().sans {
+        match f {
+            crate::theme::FontFamily::Sans => {
+                windows::core::PCWSTR(super::fonts::SANS_FAMILY.as_ptr())
+            }
+            crate::theme::FontFamily::Mono => {
+                windows::core::PCWSTR(super::fonts::MONO_FAMILY.as_ptr())
+            }
+        }
+    } else {
+        w!("Segoe UI")
+    }
+}
+
 /// Resolved `TextStyle` -> DWrite format. `Body` = the theme base (14pt),
 /// `Exact` = explicit logical dp (still OS/DPI scaled by the target).
+/// Family + numeric weight ride the cache key — Geist's variable wght
+/// axis covers 400–800 directly.
 fn fmt_for(ts: &crate::style::TextStyle, _slot_hint: usize) -> UiResult<IDWriteTextFormat> {
     let d = dwrite()?;
     let size = match ts.size {
         crate::style::TextSize::Body => 14.0,
         crate::style::TextSize::Exact(dp) => dp.0.max(1.0),
     };
-    let wkey = match ts.weight {
-        crate::style::TextWeight::Normal => 0u32,
-        crate::style::TextWeight::Medium => 1,
-        crate::style::TextWeight::Bold => 2,
+    let (weight, wkey) = match ts.weight {
+        crate::style::TextWeight::Normal => (DWRITE_FONT_WEIGHT_NORMAL, 0u32),
+        crate::style::TextWeight::Medium => (DWRITE_FONT_WEIGHT_MEDIUM, 1),
+        crate::style::TextWeight::Semibold => (DWRITE_FONT_WEIGHT_SEMI_BOLD, 2),
+        crate::style::TextWeight::Bold => (DWRITE_FONT_WEIGHT_BOLD, 3),
+        crate::style::TextWeight::Extrabold => (DWRITE_FONT_WEIGHT_EXTRA_BOLD, 4),
     };
-    // base table covers (14pt, normal) and (14pt, semibold)
-    if size == 14.0 && wkey <= 1 {
+    let fam = match ts.font {
+        crate::theme::FontFamily::Sans => 0u8,
+        crate::theme::FontFamily::Mono => 1u8,
+    };
+    // base table covers (14pt, normal) and (14pt, semibold) for the
+    // historical Segoe consumers — Geist misses it and goes through the
+    // cache like every other (size, weight, family)
+    if size == 14.0 && wkey <= 1 && fam == 0 && !super::fonts::geist().sans {
         return Ok(d.formats[wkey as usize].as_ref().unwrap().clone());
     }
-    let key = (size.to_bits(), wkey);
+    let key = (size.to_bits(), wkey, fam);
     if let Some(f) = d.cache.lock().unwrap().get(&key) {
         return Ok(f);
     }
-    let weight = match ts.weight {
-        crate::style::TextWeight::Normal => DWRITE_FONT_WEIGHT_NORMAL,
-        crate::style::TextWeight::Medium => DWRITE_FONT_WEIGHT_SEMI_BOLD,
-        crate::style::TextWeight::Bold => DWRITE_FONT_WEIGHT_BOLD,
-    };
+    let collection = super::fonts::collection(&d.factory);
     let fmt = unsafe {
         d.factory
             .CreateTextFormat(
-                w!("Segoe UI"),
-                None,
+                family_name(ts.font),
+                collection.as_ref(),
                 weight,
                 DWRITE_FONT_STYLE_NORMAL,
                 DWRITE_FONT_STRETCH_NORMAL,
@@ -156,24 +181,74 @@ fn fmt_for(ts: &crate::style::TextStyle, _slot_hint: usize) -> UiResult<IDWriteT
     Ok(fmt)
 }
 
-/// Measure text at a max width — natural (w,h) in DIP.
-pub(crate) fn measure_text(text: &str, max_w: f32, size: f32) -> UiResult<(f32, f32)> {
+/// Build a text layout for `text` inside `max_w`, applying the resolved
+/// style's line pitch (`line_height` -> CSS-style centered line box),
+/// `letter_spacing` and `underline`. Measurements and paint share this —
+/// they must never drift.
+fn layout_for(
+    text: &str,
+    max_w: f32,
+    max_h: f32,
+    ts: &crate::style::TextStyle,
+) -> UiResult<IDWriteTextLayout> {
     let d = dwrite()?;
-    let ts = crate::style::TextStyle {
-        size: if (size - 14.0).abs() < f32::EPSILON {
-            crate::style::TextSize::Body
-        } else {
-            crate::style::TextSize::Exact(crate::geom::Dp(size))
-        },
-        ..Default::default()
-    };
-    let fmt = fmt_for(&ts, 0)?;
+    let fmt = fmt_for(ts, 0)?;
     let wide: Vec<u16> = text.encode_utf16().collect();
     unsafe {
         let lay = d
             .factory
-            .CreateTextLayout(&wide, &fmt, max_w.max(1.0), f32::MAX)
+            .CreateTextLayout(&wide, &fmt, max_w.max(1.0), max_h.max(1.0))
             .map_err(|e| UiError::Platform(format!("CreateTextLayout: {e}")))?;
+        // line pitch — CSS line-height: the glyph band centers inside
+        // the pitch, baseline = (pitch + ascent - descent)/2
+        if let Some(lh) = ts.line_height {
+            let mut line_metrics = DWRITE_LINE_METRICS::default();
+            let mut count = 0u32;
+            lay.GetLineMetrics(Some(&mut line_metrics), 1, &mut count)
+                .map_err(|e| UiError::Platform(format!("GetLineMetrics: {e}")))?;
+            let ascent = line_metrics.baseline;
+            let band = line_metrics.height;
+            let descent = (band - ascent).max(0.0);
+            let baseline = (lh.0 + ascent - descent) / 2.0;
+            lay.SetLineSpacing(DWRITE_LINE_SPACING_METHOD_UNIFORM, lh.0, baseline.max(0.0))
+                .map_err(|e| UiError::Platform(format!("SetLineSpacing: {e}")))?;
+        }
+        if ts.underline {
+            lay.SetUnderline(
+                DWRITE_TEXT_RANGE {
+                    startPosition: 0,
+                    length: wide.len() as u32,
+                },
+                true,
+            )
+            .map_err(|e| UiError::Platform(format!("SetUnderline: {e}")))?;
+        }
+        if ts.letter_spacing != 0.0
+            && let Ok(lay1) = lay.cast::<IDWriteTextLayout1>()
+        {
+            lay1.SetCharacterSpacing(
+                ts.letter_spacing,
+                0.0,
+                0.0,
+                DWRITE_TEXT_RANGE {
+                    startPosition: 0,
+                    length: wide.len() as u32,
+                },
+            )
+            .map_err(|e| UiError::Platform(format!("SetCharacterSpacing: {e}")))?;
+        }
+        Ok(lay)
+    }
+}
+
+/// Measure text at a max width — natural (w,h) in DIP.
+pub(crate) fn measure_text(
+    text: &str,
+    max_w: f32,
+    ts: &crate::style::TextStyle,
+) -> UiResult<(f32, f32)> {
+    let lay = layout_for(text, max_w, f32::MAX, ts)?;
+    unsafe {
         let mut m = DWRITE_TEXT_METRICS::default();
         lay.GetMetrics(&mut m)
             .map_err(|e| UiError::Platform(format!("GetMetrics: {e}")))?;
@@ -182,8 +257,8 @@ pub(crate) fn measure_text(text: &str, max_w: f32, size: f32) -> UiResult<(f32, 
 }
 
 /// The measure closure `layout` consumes.
-pub(crate) fn measure_fn() -> impl FnMut(&str, f32, f32) -> (f32, f32) {
-    |text, w, size| measure_text(text, w, size).unwrap_or((0.0, 20.0))
+pub(crate) fn measure_fn() -> impl FnMut(&str, f32, &crate::style::TextStyle) -> (f32, f32) {
+    |text, w, ts| measure_text(text, w, ts).unwrap_or((0.0, 20.0))
 }
 
 // ---------------------------------------------------------------------------
@@ -388,6 +463,7 @@ impl Renderer {
                     color_role,
                     wrap,
                     patch,
+                    chrome,
                 } => {
                     // resolved text style: recipe (role fg, body, normal)
                     // + the surgical patch (color_role already folded in)
@@ -397,32 +473,55 @@ impl Renderer {
                     if patch.foreground.is_none() {
                         ts.foreground = crate::style::Color::Role(*color_role);
                     }
-                    let wide: Vec<u16> = text.as_ref().encode_utf16().collect();
-                    let wide: Vec<u16> = if wide.is_empty() { vec![0x20] } else { wide };
-                    // size/weight map onto the DWrite format table
-                    let fi = match ts.weight {
-                        crate::style::TextWeight::Normal => 0,
-                        crate::style::TextWeight::Medium => 1,
-                        crate::style::TextWeight::Bold => 2,
-                    };
-                    if let Ok(layout) = unsafe {
-                        dwrite()?.factory.CreateTextLayout(
-                            &wide,
-                            &fmt_for(&ts, fi)?,
-                            if *wrap { r.width.max(1.0) } else { f32::MAX },
-                            r.height.max(1.0),
-                        )
-                    } {
-                        let c = resolve_render(ts.foreground, dark, forced);
-                        let brush = unsafe { target.CreateSolidColorBrush(&c, None)? };
-                        unsafe {
+                    unsafe {
+                        // framed chrome under the text — h2 rule line,
+                        // inline-code surface
+                        if let Some(c) = chrome {
+                            paint_box(
+                                &target,
+                                &clip,
+                                c,
+                                dark,
+                                forced,
+                                dpi,
+                                &self.shadow_cache,
+                                self.target_gen.get(),
+                            )?;
+                        }
+                        let ins = crate::layout::node_insets(
+                            id,
+                            n,
+                            &crate::layout::Interaction {
+                                dark,
+                                ..Default::default()
+                            },
+                        );
+                        let tx = text.as_ref();
+                        let draw_max_w = if *wrap {
+                            (r.width - ins.left.0 - ins.right.0).max(1.0)
+                        } else {
+                            f32::MAX
+                        };
+                        if let Ok(layout) = layout_for(tx, draw_max_w, r.height.max(1.0), &ts) {
+                            let c = resolve_render(ts.foreground, dark, forced);
+                            let brush = target.CreateSolidColorBrush(&c, None)?;
                             target.DrawTextLayout(
-                                Vector2 { X: r.x, Y: r.y },
+                                Vector2 {
+                                    X: r.x + ins.left.0,
+                                    Y: r.y + ins.top.0,
+                                },
                                 &layout,
                                 &brush,
                                 D2D1_DRAW_TEXT_OPTIONS_NONE,
                             );
                         }
+                    }
+                }
+                NodeData::Icon { icon, size, color } => {
+                    let c = resolve_render(*color, dark, forced);
+                    let brush = unsafe { target.CreateSolidColorBrush(&c, None)? };
+                    unsafe {
+                        draw_icon(&target, &self.factory, icon, *size, r, &brush)?;
                     }
                 }
                 NodeData::Button {
@@ -431,8 +530,13 @@ impl Renderer {
                     style,
                     disabled,
                     size,
+                    icon_start,
+                    icon_end,
+                    icon_only,
+                    invalid,
                     motion: _,
                     tooltip: _,
+                    accessible_name: _,
                 } => {
                     // deterministic chain: recipe -> consumer patch -> state
                     let state = crate::style::StyleState::classify(
@@ -447,17 +551,37 @@ impl Renderer {
                         state,
                         be.focus == Some(id),
                         dark,
+                        *invalid,
                     );
                     let bs = &vs.box_style;
-                    let pad_l = bs.padding.left.0;
-                    let pad_r = bs.padding.right.0;
+                    let pressed = be.pressed == Some(id);
+                    let ins = crate::layout::button_content_insets(&n.data, &vs);
+                    // active:translate-y-px — the whole control shifts 1dp
+                    let dy = if pressed && !*disabled { 1.0 } else { 0.0 };
                     let br = D2D_RECT_F {
                         left: r.x,
-                        top: r.y,
+                        top: r.y + dy,
                         right: r.x + r.width,
-                        bottom: r.y + r.height,
+                        bottom: r.y + r.height + dy,
                     };
                     unsafe {
+                        // disabled:opacity-50 — the whole control alpha-
+                        // fades; the layer wraps chrome + content
+                        if *disabled {
+                            target.PushLayer(
+                                &D2D1_LAYER_PARAMETERS {
+                                    contentBounds: D2D_RECT_F {
+                                        left: f32::MIN,
+                                        top: f32::MIN,
+                                        right: f32::MAX,
+                                        bottom: f32::MAX,
+                                    },
+                                    opacity: 0.5,
+                                    ..Default::default()
+                                },
+                                None,
+                            );
+                        }
                         paint_box(
                             &target,
                             &br,
@@ -468,33 +592,72 @@ impl Renderer {
                             &self.shadow_cache,
                             self.target_gen.get(),
                         )?;
-                        // focus ENFORCEMENT — independent ring layer the
-                        // style resolution can't erase (Focus role,
-                        // outside the box); see Action arm for the same
+                        // focus ring — the RESOLVED style's ring (3dp
+                        // ring/50 band outside the border); enforcement
+                        // supplies it for Focus-role colors too
                         if be.focus == Some(id) && !*disabled {
-                            paint_focus_ring(&target, &br, dark, forced)?;
+                            let rc = resolve_render(vs.focus_ring, dark, forced);
+                            let rc_brush = target.CreateSolidColorBrush(&rc, None)?;
+                            let rr = D2D1_ROUNDED_RECT {
+                                rect: D2D_RECT_F {
+                                    left: br.left - 1.5,
+                                    top: br.top - 1.5,
+                                    right: br.right + 1.5,
+                                    bottom: br.bottom + 1.5,
+                                },
+                                radiusX: bs.radii.top_left.0 + 1.5,
+                                radiusY: bs.radii.top_left.0 + 1.5,
+                            };
+                            let _ = target.DrawRoundedRectangle(&rr, &rc_brush, 3.0, None);
                         }
-                        let wide: Vec<u16> = text.as_ref().encode_utf16().collect();
-                        let fmt = fmt_for(&vs.text_style, 0)?;
-                        let lay = dwrite()?.factory.CreateTextLayout(
-                            &wide,
-                            &fmt,
-                            (br.right - br.left - pad_l - pad_r).max(1.0),
-                            (br.bottom - br.top).max(1.0),
-                        )?;
                         let fg = resolve_render(vs.text_style.foreground, dark, forced);
                         let fg_brush = target.CreateSolidColorBrush(&fg, None)?;
-                        lay.SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER)?;
-                        lay.SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER)?;
-                        target.DrawTextLayout(
-                            Vector2 {
-                                X: br.left + pad_l,
-                                Y: br.top,
-                            },
-                            &lay,
-                            &fg_brush,
-                            D2D1_DRAW_TEXT_OPTIONS_NONE,
-                        );
+                        // icon content — the part rect is shared geometry
+                        // with measure/devtools
+                        let rect_dp = crate::geom::Rect {
+                            x: r.x,
+                            y: r.y + dy,
+                            width: r.width,
+                            height: r.height,
+                        };
+                        for (edge, icon) in [(false, *icon_start), (true, *icon_end)] {
+                            if let Some(icon) = icon
+                                && let Some(ir) =
+                                    crate::layout::button_icon_rect(&n.data, &vs, &rect_dp, edge)
+                            {
+                                draw_icon_at(&target, &self.factory, &icon, &ir, &fg_brush)?;
+                            }
+                        }
+                        if *icon_only
+                            && let Some(icon) = icon_start.or(*icon_end)
+                            && let Some(ir) =
+                                crate::layout::button_icon_rect(&n.data, &vs, &rect_dp, false)
+                        {
+                            draw_icon_at(&target, &self.factory, &icon, &ir, &fg_brush)?;
+                        }
+                        if !*icon_only {
+                            let wide: Vec<u16> = text.as_ref().encode_utf16().collect();
+                            let lay = layout_for(
+                                text.as_ref(),
+                                (br.right - br.left - ins.left.0 - ins.right.0).max(1.0),
+                                (br.bottom - br.top).max(1.0),
+                                &vs.text_style,
+                            )?;
+                            lay.SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER)?;
+                            lay.SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER)?;
+                            target.DrawTextLayout(
+                                Vector2 {
+                                    X: br.left + ins.left.0,
+                                    Y: br.top,
+                                },
+                                &lay,
+                                &fg_brush,
+                                D2D1_DRAW_TEXT_OPTIONS_NONE,
+                            );
+                        }
+                        if *disabled {
+                            target.PopLayer();
+                        }
                     }
                 }
                 NodeData::Editor {
@@ -623,7 +786,15 @@ impl Renderer {
             None => self.create_tip(text),
         };
         unsafe {
-            let (w, h) = measure_text(text, 400.0, 13.0).unwrap_or((80.0, 20.0));
+            let (w, h) = measure_text(
+                text,
+                400.0,
+                &crate::style::TextStyle {
+                    size: crate::style::TextSize::Exact(crate::geom::Dp(13.0)),
+                    ..Default::default()
+                },
+            )
+            .unwrap_or((80.0, 20.0));
             let (pw, ph) = (w + 16.0, h + 10.0);
             // position: centered under the anchor's first editor rect —
             // callers pass the node rect through anchor client space; we
@@ -1628,4 +1799,173 @@ pub(crate) fn shadow_ink_rect(
 fn resolve_color_f(c: crate::style::Color, dark: bool) -> D2D1_COLOR_F {
     let [r, g, b, a] = crate::style::resolve_color(c, dark);
     D2D1_COLOR_F { r, g, b, a }
+}
+
+// ---------------------------------------------------------------------------
+// Lucide icons — stroke vector geometry, scaled from the 24x24 viewBox
+// ---------------------------------------------------------------------------
+
+/// Stroke an icon's `IconOp` list at a target rect. Geometry scales
+/// `size/24`; stroke width follows Lucide (2 user units at 24) so a 16dp
+/// icon strokes 1.33dp — matching the frozen specimens.
+unsafe fn draw_icon_at(
+    target: &ID2D1RenderTarget,
+    factory: &ID2D1Factory,
+    icon: &crate::icons::Icon,
+    r: &crate::geom::Rect,
+    brush: &ID2D1SolidColorBrush,
+) -> UiResult {
+    let scale = r.width / 24.0;
+    let geo = factory.CreatePathGeometry()?;
+    {
+        let sink = geo.Open()?;
+        let mut open = false;
+        for op in icon.ops() {
+            match *op {
+                crate::icons::IconOp::MoveTo(x, y) => {
+                    if open {
+                        sink.EndFigure(D2D1_FIGURE_END_OPEN);
+                    }
+                    sink.BeginFigure(
+                        Vector2 {
+                            X: r.x + x * scale,
+                            Y: r.y + y * scale,
+                        },
+                        D2D1_FIGURE_BEGIN_HOLLOW,
+                    );
+                    open = true;
+                }
+                crate::icons::IconOp::LineTo(x, y) => sink.AddLine(Vector2 {
+                    X: r.x + x * scale,
+                    Y: r.y + y * scale,
+                }),
+                crate::icons::IconOp::ArcTo {
+                    cx,
+                    cy,
+                    rx,
+                    ry,
+                    x_rot,
+                    large_arc,
+                    sweep,
+                    x,
+                    y,
+                } => sink.AddArc(&D2D1_ARC_SEGMENT {
+                    point: Vector2 {
+                        X: r.x + x * scale,
+                        Y: r.y + y * scale,
+                    },
+                    size: D2D_SIZE_F {
+                        width: rx * scale,
+                        height: ry * scale,
+                    },
+                    rotationAngle: x_rot,
+                    sweepDirection: if sweep {
+                        D2D1_SWEEP_DIRECTION_CLOCKWISE
+                    } else {
+                        D2D1_SWEEP_DIRECTION_COUNTER_CLOCKWISE
+                    },
+                    arcSize: if large_arc {
+                        D2D1_ARC_SIZE_LARGE
+                    } else {
+                        D2D1_ARC_SIZE_SMALL
+                    },
+                }),
+                crate::icons::IconOp::Circle(cx, cy, rad) => {
+                    if open {
+                        sink.EndFigure(D2D1_FIGURE_END_OPEN);
+                        open = false;
+                    }
+                    sink.BeginFigure(
+                        Vector2 {
+                            X: r.x + (cx + rad) * scale,
+                            Y: r.y + cy * scale,
+                        },
+                        D2D1_FIGURE_BEGIN_HOLLOW,
+                    );
+                    // two 180° arcs make the circle without ellipse ops
+                    sink.AddArc(&D2D1_ARC_SEGMENT {
+                        point: Vector2 {
+                            X: r.x + (cx - rad) * scale,
+                            Y: r.y + cy * scale,
+                        },
+                        size: D2D_SIZE_F {
+                            width: rad * scale,
+                            height: rad * scale,
+                        },
+                        rotationAngle: 0.0,
+                        sweepDirection: D2D1_SWEEP_DIRECTION_CLOCKWISE,
+                        arcSize: D2D1_ARC_SIZE_LARGE,
+                    });
+                    sink.AddArc(&D2D1_ARC_SEGMENT {
+                        point: Vector2 {
+                            X: r.x + (cx + rad) * scale,
+                            Y: r.y + cy * scale,
+                        },
+                        size: D2D_SIZE_F {
+                            width: rad * scale,
+                            height: rad * scale,
+                        },
+                        rotationAngle: 0.0,
+                        sweepDirection: D2D1_SWEEP_DIRECTION_CLOCKWISE,
+                        arcSize: D2D1_ARC_SIZE_LARGE,
+                    });
+                    sink.EndFigure(D2D1_FIGURE_END_HOLLOW);
+                }
+                crate::icons::IconOp::RoundRect { x, y, w, h, rad } => {
+                    if open {
+                        sink.EndFigure(D2D1_FIGURE_END_OPEN);
+                        open = false;
+                    }
+                    // separate geometry — a path sink can't round corners
+                    let g2 = factory.CreateRoundedRectangleGeometry(&D2D1_ROUNDED_RECT {
+                        rect: D2D_RECT_F {
+                            left: r.x + x * scale,
+                            top: r.y + y * scale,
+                            right: r.x + (x + w) * scale,
+                            bottom: r.y + (y + h) * scale,
+                        },
+                        radiusX: rad * scale,
+                        radiusY: rad * scale,
+                    })?;
+                    target.DrawGeometry(&g2, brush, 2.0 * scale, None);
+                }
+            }
+        }
+        if open {
+            sink.EndFigure(D2D1_FIGURE_END_OPEN);
+        }
+        sink.Close()?;
+    }
+    let style = factory.CreateStrokeStyle(&D2D1_STROKE_STYLE_PROPERTIES {
+        startCap: D2D1_CAP_STYLE_ROUND,
+        endCap: D2D1_CAP_STYLE_ROUND,
+        dashCap: D2D1_CAP_STYLE_ROUND,
+        lineJoin: D2D1_LINE_JOIN_ROUND,
+        ..Default::default()
+    })?;
+    target.DrawGeometry(&geo, brush, 2.0 * scale, &style);
+    Ok(())
+}
+
+/// Standalone icon leaf — the icon fills its layout rect.
+unsafe fn draw_icon(
+    target: &ID2D1RenderTarget,
+    factory: &ID2D1Factory,
+    icon: &crate::icons::Icon,
+    _size: crate::geom::Dp,
+    r: &super::space::LogicalRect,
+    brush: &ID2D1SolidColorBrush,
+) -> UiResult {
+    draw_icon_at(
+        target,
+        factory,
+        icon,
+        &crate::geom::Rect {
+            x: r.x,
+            y: r.y,
+            width: r.width,
+            height: r.height,
+        },
+        brush,
+    )
 }

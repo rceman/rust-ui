@@ -233,12 +233,55 @@ impl Surface {
     }
 }
 
+/// Card container props — `size` selects the frozen `--card-spacing`
+/// token (Default 16dp / Sm 12dp); it drives the card's top padding,
+/// the gap between its semantic parts, and their side padding.
+#[derive(Copy, Clone, Debug, Default, PartialEq)]
+pub struct Card {
+    pub size: crate::theme::CardSize,
+    /// surgical patch over `card_recipe`
+    pub patch: crate::style::BoxStylePatch,
+}
+
+impl Card {
+    pub fn new() -> Self {
+        Self::default()
+    }
+    pub fn size(mut self, s: crate::theme::CardSize) -> Self {
+        self.size = s;
+        self
+    }
+    /// surgical patch — later `.style` calls deep-merge, `None` never erases
+    pub fn style(mut self, p: crate::style::BoxStylePatch) -> Self {
+        self.patch.merge(&p);
+        self
+    }
+    pub(crate) fn props(&self) -> ContainerProps {
+        // card-spacing doubles as the part gap (16 -> Lg, 12 -> Md)
+        let gap = match self.size {
+            crate::theme::CardSize::Default => Space::Lg,
+            crate::theme::CardSize::Sm => Space::Md,
+        };
+        ContainerProps {
+            gap: Some(gap),
+            align: Some(Align::Stretch),
+            patch: self.patch,
+            card_size: Some(self.size),
+            ..Default::default()
+        }
+    }
+}
+
 // ------------------------- staging internals -------------------------------
 
 /// Flat staged node — children are indices into `Tx.nodes`, so the whole
 /// transaction is ONE reusable flat buffer, never a persistent second tree.
 pub(crate) struct StagedNode {
     pub automation_id: Option<Rc<str>>,
+    /// semantic part key inside the nearest automation-id owner —
+    /// `ui.part("header", …)` / `ui.part("line", …)`; devtools emits it
+    /// as `owner#part` (with parent part chains resolved)
+    pub part_key: Option<Rc<str>>,
     pub key: ChildKey,
     pub data: NodeData,
     pub visibility: Visibility,
@@ -255,6 +298,7 @@ impl StagedNode {
     pub(crate) fn placeholder() -> Self {
         StagedNode {
             automation_id: None,
+            part_key: None,
             key: ChildKey::Static {
                 kind: 0,
                 ordinal: u32::MAX,
@@ -283,6 +327,7 @@ impl StagedNode {
             }
             NodeData::Custom { .. } => crate::node::KIND_CUSTOM,
             NodeData::Action { .. } => crate::node::KIND_ACTION,
+            NodeData::Icon { .. } => crate::node::KIND_ICON,
         }
     }
 
@@ -454,6 +499,7 @@ impl Tx<'_> {
         let idx = self.nodes.len() as u32;
         self.nodes.push(StagedNode {
             automation_id: None,
+            part_key: None,
             key,
             data,
             visibility,
@@ -536,6 +582,7 @@ impl Tx<'_> {
         let idx = self.nodes.len() as u32;
         self.nodes.push(StagedNode {
             automation_id: None,
+            part_key: None,
             key,
             data,
             visibility,
@@ -600,6 +647,29 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
                 .push(UiDiagnostic::DuplicateAutomationId),
             None => self.tx.nodes[index as usize].automation_id = Some(Rc::from(id)),
         }
+    }
+
+    /// Mark exactly one child produced by `draw` as a semantic PART of the
+    /// enclosing automation-id owner (`owner#part`). Part keys are scoped
+    /// to the owner and chain with enclosing parts — `part("header")` +
+    /// `part("title")` inside emits `header.title`. Generic container
+    /// chrome only: the part marker never changes layout, painting, or
+    /// semantics beyond snapshot identity.
+    pub fn part(&mut self, key: &str, draw: impl FnOnce(&mut Ui<'_, '_, M>)) {
+        let before = self.tx.frames.last().unwrap().children.len();
+        draw(self);
+        let children = &self.tx.frames.last().unwrap().children;
+        if children.len() != before + 1 {
+            self.tx.diagnostics.push(UiDiagnostic::InvalidComposition);
+            return;
+        }
+        let index = children[before];
+        let node = &mut self.tx.nodes[index as usize];
+        if node.part_key.is_some() {
+            self.tx.diagnostics.push(UiDiagnostic::InvalidComposition);
+            return;
+        }
+        node.part_key = Some(Rc::from(key));
     }
 
     pub fn column(&mut self, props: Column, draw: impl FnOnce(&mut Ui<'_, '_, M>)) {
@@ -667,7 +737,61 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
         );
     }
 
+    /// Card container — `bg-card`, `rounded-xl`, `ring-1
+    /// ring-foreground/10`, top padding = `--card-spacing`. Column
+    /// semantics: children are the card's parts (header/title/
+    /// description/content/footer), spaced by the card-spacing token.
+    /// Compose parts with generic `column`/`row`/`box_`/`part` — the
+    /// card itself stays a plain styled container.
+    pub fn card(&mut self, props: Card, draw: impl FnOnce(&mut Ui<'_, '_, M>)) {
+        self.tx.stage_container(
+            crate::node::KIND_CARD,
+            None,
+            props.props(),
+            LayoutSpec::default(),
+            EventFactorySet::default(),
+            Visibility::Visible,
+            draw,
+            false,
+            |props| NodeData::Container {
+                kind: crate::node::KIND_CARD,
+                props,
+            },
+        );
+    }
+
     // ----- leaves -----------------------------------------------------------
+
+    /// Decorative vector icon leaf — Lucide stroke geometry at `size`.
+    /// Inert (no interaction); an icon inside a button contributes the
+    /// `icon` part, not a separate semantic node.
+    pub fn icon(&mut self, icon: crate::icons::Icon) -> IconBuilder<'_, 'ui, M> {
+        IconBuilder {
+            automation_id: None,
+            tx: self.tx,
+            icon,
+            size: crate::icons::Icon::DEFAULT_SIZE,
+            color: crate::style::Color::Role(ColorRole::Foreground),
+            visibility: Visibility::Visible,
+            layout: LayoutSpec::default(),
+            _m: std::marker::PhantomData,
+        }
+    }
+
+    /// Icon-only button — one `Button` node with a decorative central
+    /// icon, square size-class measure (`icon-xs/sm/icon/icon-lg`),
+    /// and a REQUIRED accessible name (no visible text). `text` is the
+    /// button's name; it is never painted.
+    pub fn icon_button<'a>(
+        &'a mut self,
+        icon: crate::icons::Icon,
+        text: &'a str,
+    ) -> ButtonBuilder<'a, 'ui, M> {
+        self.button(text)
+            .icon_start(icon)
+            .icon_only(true)
+            .accessible_name(text)
+    }
 
     /// `impl AsRef<str>` — an owned `String`/`format!` value or a `&str`
     /// both stage directly; the retained `Rc<str>` is reused when the text
@@ -680,6 +804,7 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
             wrap: false,
             color_role: ColorRole::Foreground,
             patch: crate::style::TextStylePatch::default(),
+            chrome: None,
             visibility: Visibility::Visible,
             layout: LayoutSpec::default(),
             factories: EventFactorySet::default(),
@@ -698,6 +823,11 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
             size: ControlSize::default(),
             motion: Some(MotionToken::Hover),
             tooltip: None,
+            icon_start: None,
+            icon_end: None,
+            icon_only: false,
+            accessible_name: None,
+            invalid: false,
             visibility: Visibility::Visible,
             layout: LayoutSpec::default(),
             factories: EventFactorySet::default(),
@@ -821,6 +951,7 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
         let idx = self.tx.nodes.len() as u32;
         self.tx.nodes.push(StagedNode {
             automation_id: None,
+            part_key: None,
             key,
             data: NodeData::Container {
                 kind: crate::node::KIND_SCOPE,
@@ -936,6 +1067,61 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
         }
     }
 
+    /// CORE typography specimen — the frozen `typography.<kind>` recipe
+    /// (style + chrome + wrap) applied to a display text leaf.
+    /// CodeBlock is composite — use `ui.code_block`.
+    pub fn typography<'a>(
+        &'a mut self,
+        kind: crate::typography::Typography,
+        text: &'a str,
+    ) -> TextBuilder<'a, 'ui, &'a str, M> {
+        let b = self.text(text).style(kind.style()).wrap(kind.wraps());
+        match kind.chrome() {
+            Some(c) => b.chrome(c),
+            None => b,
+        }
+    }
+
+    /// `typography.code-block` — mono code lines inside a `Surface`-role
+    /// rounded container (`radius-2xl` 18dp). Semantic parts: `pre`
+    /// marks the container itself (the frozen `pre` part rect is the
+    /// element rect) and `pre.line[N]` the 1-based code lines. Attach
+    /// the specimen's `automation_id` through `ui.named` — it lands on
+    /// the outer container.
+    pub fn code_block<'a>(&'a mut self, lines: &[&'a str]) {
+        let chrome = crate::style::BoxStyle {
+            background: crate::style::Color::Role(ColorRole::Surface),
+            border: crate::style::Border::default(),
+            radii: crate::style::CornerRadii::all(crate::geom::Dp(18.0)),
+            padding: crate::style::Insets {
+                top: crate::geom::Dp(14.0),
+                right: crate::geom::Dp(16.0),
+                bottom: crate::geom::Dp(14.0),
+                left: crate::geom::Dp(16.0),
+            },
+            shadow: None,
+        };
+        let mono = crate::style::TextStyle {
+            font: crate::theme::FontFamily::Mono,
+            size: crate::style::TextSize::Exact(crate::geom::Dp(14.0)),
+            weight: crate::style::TextWeight::Normal,
+            line_height: Some(crate::geom::Dp(20.0)),
+            ..crate::style::TextStyle::default()
+        };
+        self.part("pre", |ui| {
+            ui.box_(BoxProps::new().style(chrome), |ui| {
+                ui.column(Column::new(), |ui| {
+                    for (i, line) in lines.iter().enumerate() {
+                        let key = format!("line[{}]", i + 1);
+                        ui.part(&key, |ui| {
+                            ui.text(*line).style(mono);
+                        });
+                    }
+                });
+            });
+        });
+    }
+
     /// `ui.text` — styled text leaf; `label` is a recipe convenience over
     /// the same renderer.
     pub fn text<'a, T: AsRef<str>>(&'a mut self, text: T) -> TextBuilder<'a, 'ui, T, M> {
@@ -945,6 +1131,7 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
             text,
             wrap: false,
             style: crate::style::TextStyle::default(),
+            chrome: None,
             visibility: Visibility::Visible,
             layout: LayoutSpec::default(),
             _m: std::marker::PhantomData,
@@ -979,6 +1166,9 @@ pub struct LabelBuilder<'a, 'ui, T: AsRef<str>, M: 'static> {
     wrap: bool,
     color_role: ColorRole,
     patch: crate::style::TextStylePatch,
+    /// optional painted chrome under the text (rule lines, inline-code
+    /// surface) — a full authored `BoxStyle`, no recipe merge
+    chrome: Option<crate::style::BoxStyle>,
     visibility: Visibility,
     layout: LayoutSpec,
     factories: EventFactorySet,
@@ -1003,6 +1193,12 @@ impl<'a, 'ui, T: AsRef<str>, M: 'static> LabelBuilder<'a, 'ui, T, M> {
     /// surgical text patch — merges fieldwise within this build
     pub fn style(mut self, p: crate::style::TextStylePatch) -> Self {
         self.patch.merge(&p);
+        self
+    }
+    /// painted chrome under the text — the h2 rule line / inline-code
+    /// surface. Authored full style; insets the text measure.
+    pub fn chrome(mut self, c: crate::style::BoxStyle) -> Self {
+        self.chrome = Some(c);
         self
     }
     pub fn visibility(mut self, v: Visibility) -> Self {
@@ -1037,6 +1233,7 @@ impl<'a, 'ui, T: AsRef<str>, M: 'static> Drop for LabelBuilder<'a, 'ui, T, M> {
         let text = self.text.as_ref();
         let wrap = self.wrap;
         let role = self.color_role;
+        let chrome = self.chrome;
         let mut patch = self.patch;
         // color_role shorthand populates the patch's foreground only when
         // the consumer didn't set one explicitly
@@ -1064,6 +1261,7 @@ impl<'a, 'ui, T: AsRef<str>, M: 'static> Drop for LabelBuilder<'a, 'ui, T, M> {
                     wrap,
                     color_role: role,
                     patch,
+                    chrome,
                 }
             },
         );
@@ -1086,6 +1284,11 @@ pub struct ButtonBuilder<'a, 'ui, M: 'static> {
     size: ControlSize,
     motion: Option<MotionToken>,
     tooltip: Option<Rc<str>>,
+    icon_start: Option<crate::icons::Icon>,
+    icon_end: Option<crate::icons::Icon>,
+    icon_only: bool,
+    accessible_name: Option<Rc<str>>,
+    invalid: bool,
     visibility: Visibility,
     layout: LayoutSpec,
     factories: EventFactorySet,
@@ -1123,6 +1326,36 @@ impl<'a, 'ui, M: 'static> ButtonBuilder<'a, 'ui, M> {
     /// neutral tooltip — semantic delayed show, reduced-motion-aware
     pub fn tooltip(mut self, text: &str) -> Self {
         self.tooltip = Some(Rc::from(text));
+        self
+    }
+    /// decorative Lucide icon at the start edge (inline-start) — inert,
+    /// styled by the button recipe's foreground
+    pub fn icon_start(mut self, icon: crate::icons::Icon) -> Self {
+        self.icon_start = Some(icon);
+        self
+    }
+    /// decorative Lucide icon at the end edge (inline-end)
+    pub fn icon_end(mut self, icon: crate::icons::Icon) -> Self {
+        self.icon_end = Some(icon);
+        self
+    }
+    /// icon-only control — `ui.icon_button` sets this; square
+    /// size-class measure, no visible text
+    pub(crate) fn icon_only(mut self, on: bool) -> Self {
+        self.icon_only = on;
+        self
+    }
+    /// accessible name used when the visible text isn't the control
+    /// name — required on icon-only buttons (the button name, not the
+    /// icon file)
+    pub fn accessible_name(mut self, name: &str) -> Self {
+        self.accessible_name = Some(Rc::from(name));
+        self
+    }
+    /// semantic `aria-invalid` — destructive chrome; orthogonal to
+    /// disabled/hover/pressed/focus
+    pub fn invalid(mut self, on: bool) -> Self {
+        self.invalid = on;
         self
     }
     pub fn visibility(mut self, v: Visibility) -> Self {
@@ -1179,13 +1412,30 @@ impl<'a, 'ui, M: 'static> Drop for ButtonBuilder<'a, 'ui, M> {
     fn drop(&mut self) {
         let before = self.tx.frames.last().unwrap().children.len();
         let text = self.text;
-        let (variant, style, disabled, size, motion, tooltip) = (
+        let (
+            variant,
+            style,
+            disabled,
+            size,
+            motion,
+            tooltip,
+            icon_start,
+            icon_end,
+            icon_only,
+            accessible_name,
+            invalid,
+        ) = (
             self.variant,
             self.style,
             self.disabled,
             self.size,
             self.motion,
             self.tooltip.clone(),
+            self.icon_start,
+            self.icon_end,
+            self.icon_only,
+            self.accessible_name.clone(),
+            self.invalid,
         );
         self.tx.stage_leaf(
             crate::node::KIND_BUTTON,
@@ -1209,6 +1459,11 @@ impl<'a, 'ui, M: 'static> Drop for ButtonBuilder<'a, 'ui, M> {
                     size,
                     motion,
                     tooltip,
+                    icon_start,
+                    icon_end,
+                    icon_only,
+                    accessible_name,
+                    invalid,
                 }
             },
         );
@@ -1509,6 +1764,8 @@ pub struct TextBuilder<'a, 'ui, T: AsRef<str>, M: 'static> {
     text: T,
     wrap: bool,
     style: crate::style::TextStyle,
+    /// painted chrome under the text (rule lines, code surfaces)
+    chrome: Option<crate::style::BoxStyle>,
     visibility: Visibility,
     layout: LayoutSpec,
     _m: std::marker::PhantomData<fn() -> M>,
@@ -1523,6 +1780,11 @@ impl<'a, 'ui, T: AsRef<str>, M: 'static> TextBuilder<'a, 'ui, T, M> {
     /// full authored style — primitives want complete styles, not patches
     pub fn style(mut self, s: crate::style::TextStyle) -> Self {
         self.style = s;
+        self
+    }
+    /// painted chrome under the text — rule lines / code surfaces
+    pub fn chrome(mut self, c: crate::style::BoxStyle) -> Self {
+        self.chrome = Some(c);
         self
     }
     pub fn wrap(mut self, w: bool) -> Self {
@@ -1554,8 +1816,13 @@ impl<'a, 'ui, T: AsRef<str>, M: 'static> Drop for TextBuilder<'a, 'ui, T, M> {
             patch.size = Some(d);
         }
         patch.weight = Some(self.style.weight);
+        patch.font = Some(self.style.font);
+        patch.line_height = self.style.line_height;
+        patch.underline = Some(self.style.underline);
+        patch.letter_spacing = Some(self.style.letter_spacing);
         let text = self.text.as_ref();
         let wrap = self.wrap;
+        let chrome = self.chrome;
         self.tx.stage_leaf(
             crate::node::KIND_LABEL,
             None,
@@ -1575,8 +1842,78 @@ impl<'a, 'ui, T: AsRef<str>, M: 'static> Drop for TextBuilder<'a, 'ui, T, M> {
                     wrap,
                     color_role: ColorRole::Foreground,
                     patch,
+                    chrome,
                 }
             },
+        );
+        if let Some(id) = self.automation_id.take()
+            && self.tx.frames.last().unwrap().children.len() > before
+            && let Some(index) = self.tx.frames.last().unwrap().children.last().copied()
+        {
+            self.tx.nodes[index as usize].automation_id = Some(id);
+        }
+    }
+}
+
+/// `ui.icon` — decorative vector icon leaf (Lucide stroke geometry).
+/// Carries no interaction; `size`/`color` are authored directly.
+pub struct IconBuilder<'a, 'ui, M: 'static> {
+    automation_id: Option<Rc<str>>,
+    tx: &'a mut Tx<'ui>,
+    icon: crate::icons::Icon,
+    size: crate::geom::Dp,
+    color: crate::style::Color,
+    visibility: Visibility,
+    layout: LayoutSpec,
+    _m: std::marker::PhantomData<fn() -> M>,
+}
+
+impl<'a, 'ui, M: 'static> IconBuilder<'a, 'ui, M> {
+    pub fn automation_id(mut self, id: &str) -> Self {
+        self.automation_id = Some(Rc::from(id));
+        self
+    }
+    /// icon edge in dp — the viewBox scales `size / 24`; the frozen
+    /// specimen size is 16 (`size-4`)
+    pub fn size(mut self, s: crate::geom::Dp) -> Self {
+        self.size = s;
+        self
+    }
+    /// stroke color — the `currentColor` analog; recipes/authors set it
+    pub fn color(mut self, c: crate::style::Color) -> Self {
+        self.color = c;
+        self
+    }
+    /// role shorthand — `Icon` strokes resolve through the theme palette
+    pub fn color_role(mut self, r: ColorRole) -> Self {
+        self.color = crate::style::Color::Role(r);
+        self
+    }
+    pub fn visibility(mut self, v: Visibility) -> Self {
+        self.visibility = v;
+        self
+    }
+    pub fn width(mut self, w: crate::geom::Length) -> Self {
+        self.layout.width = w;
+        self
+    }
+    pub fn height(mut self, h: crate::geom::Length) -> Self {
+        self.layout.height = h;
+        self
+    }
+}
+
+impl<'a, 'ui, M: 'static> Drop for IconBuilder<'a, 'ui, M> {
+    fn drop(&mut self) {
+        let before = self.tx.frames.last().unwrap().children.len();
+        let (icon, size, color) = (self.icon, self.size, self.color);
+        self.tx.stage_leaf(
+            crate::node::KIND_ICON,
+            None,
+            self.visibility,
+            self.layout,
+            EventFactorySet::default(),
+            move |_| NodeData::Icon { icon, size, color },
         );
         if let Some(id) = self.automation_id.take()
             && self.tx.frames.last().unwrap().children.len() > before

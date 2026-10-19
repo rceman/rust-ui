@@ -398,6 +398,7 @@ impl Spike {
                                 offset_x: dp(0.0),
                                 offset_y: dp(3.0),
                                 blur_sigma: dp(6.0),
+                                spread: dp(0.0),
                             })),
                     )
                     .hover(BoxStylePatch::new().background(Color::role(ColorRole::Border))),

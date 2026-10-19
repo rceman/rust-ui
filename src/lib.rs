@@ -9,6 +9,7 @@ mod arena;
 pub mod devtools;
 mod event;
 mod geom;
+mod icons;
 mod key;
 mod layout;
 mod node;
@@ -18,6 +19,7 @@ mod style;
 mod tasks;
 mod text;
 mod theme;
+mod typography;
 mod ui;
 
 pub use app::App;
@@ -26,6 +28,7 @@ pub use geom::{
     Align, Constraints, Dp, Justify, LayoutSpec, Length, PhysicalPoint, PhysicalPx, PhysicalRect,
     PhysicalSize, Point, Rect, ScaleFactor, Size, Visibility, dp,
 };
+pub use icons::{Icon, IconOp};
 pub use key::KeyId;
 pub use node::NodeId;
 pub use runtime::UpdateCtx;
@@ -44,13 +47,14 @@ pub use text::{
     TextValue,
 };
 pub use theme::{
-    Appearance, ButtonVariant, ColorRole, ControlSize, MotionToken, Radius, ReducedMotion, Space,
-    SubmitPolicy, Theme, ThemeMode,
+    Appearance, ButtonVariant, CardSize, ColorRole, ControlSize, FontFamily, MotionToken, Radius,
+    ReducedMotion, Space, SubmitPolicy, Theme, ThemeMode,
 };
+pub use typography::Typography;
 pub use ui::{
-    ActionBuilder, ButtonBuilder, Canvas, Column, CustomBuilder, CustomRender, LabelBuilder, Paint,
-    Path2d, PathOp, Role, Row, Semantics, SemanticsAction, Stack, Surface, TextBuilder,
-    TextInputBuilder, TextRun, Ui,
+    ActionBuilder, ButtonBuilder, Canvas, Card, Column, CustomBuilder, CustomRender, IconBuilder,
+    LabelBuilder, Paint, Path2d, PathOp, Role, Row, Semantics, SemanticsAction, Stack, Surface,
+    TextBuilder, TextInputBuilder, TextRun, Ui,
 };
 
 /// `use rust_ui::prelude::*` — the documented consumer surface in one place.
@@ -72,12 +76,13 @@ pub mod prelude {
         TextSelection, TextValue,
     };
     pub use crate::theme::{
-        Appearance, ButtonVariant, ColorRole, ControlSize, MotionToken, Radius, ReducedMotion,
-        Space, SubmitPolicy, Theme, ThemeMode,
+        Appearance, ButtonVariant, CardSize, ColorRole, ControlSize, FontFamily, MotionToken,
+        Radius, ReducedMotion, Space, SubmitPolicy, Theme, ThemeMode,
     };
+    pub use crate::typography::Typography;
     pub use crate::ui::{
-        Canvas, Column, CustomRender, Paint, Path2d, PathOp, Role, Row, Semantics, SemanticsAction,
-        Stack, Surface, TextRun, Ui,
+        Canvas, Card, Column, CustomRender, Paint, Path2d, PathOp, Role, Row, Semantics,
+        SemanticsAction, Stack, Surface, TextRun, Ui,
     };
     pub use crate::{AssetError, SendError, TaskSender, UiDiagnostic, UiError, UiProxy, UiResult};
 }

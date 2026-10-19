@@ -10,6 +10,7 @@
 
 #[cfg(feature = "devtools")]
 mod devtools;
+pub(crate) mod fonts;
 pub(crate) mod layout;
 pub(crate) mod render;
 pub(crate) mod space;
@@ -2242,9 +2243,20 @@ where
                 height: (pr.bottom - pr.top) as f64,
             };
             let (name, ct, loc) = match &n.data {
-                NodeData::Button { text, .. } => {
-                    (text.to_string(), UIA_ButtonControlTypeId, "Button")
-                }
+                NodeData::Button {
+                    text,
+                    accessible_name,
+                    ..
+                } => (
+                    // icon-only buttons carry no visible text — the
+                    // semantic name comes from `.accessible_name`
+                    accessible_name
+                        .as_deref()
+                        .unwrap_or(text.as_ref())
+                        .to_string(),
+                    UIA_ButtonControlTypeId,
+                    "Button",
+                ),
                 NodeData::Label { text, .. } => (text.to_string(), UIA_TextControlTypeId, "Text"),
                 NodeData::Editor {
                     accessible_label, ..

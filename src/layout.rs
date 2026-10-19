@@ -190,6 +190,138 @@ pub fn node_insets(id: NodeId, n: &crate::node::Node, ix: &Interaction) -> Inset
             }
             i
         }
+        NodeData::Label {
+            chrome: Some(chrome),
+            ..
+        } => {
+            // framed text (h2 rule / inline-code surface) — padding +
+            // border inset the text measure, mirroring a `box_` child
+            let mut i = chrome.padding;
+            i.top.0 += chrome.border.top.width.0;
+            i.right.0 += chrome.border.right.width.0;
+            i.bottom.0 += chrome.border.bottom.width.0;
+            i.left.0 += chrome.border.left.width.0;
+            i
+        }
         _ => Insets::default(),
     }
+}
+
+// ---------------------------------------------------------------------------
+// Button geometry — shared by measure/paint/devtools so the icon part,
+// text content and natural size always agree
+// ---------------------------------------------------------------------------
+
+/// The frozen `has-data-[icon]` rule: an inline icon edge consumes 2dp
+/// less side padding than a text edge (`px-2.5` 10 -> `pl/pr-2` 8;
+/// `px-2` 8 -> `pl/pr-1.5` 6). Returns the icon's edge inset — the
+/// CONTENT starts after border + reduced padding.
+pub fn icon_side_inset(base_pad_x: f32) -> f32 {
+    (base_pad_x - 2.0).max(0.0)
+}
+
+/// Icon edge size per size class — `size-3` xs, `size-3.5` sm,
+/// `size-4` default/lg.
+pub fn button_icon_size(size: crate::theme::ControlSize) -> Dp {
+    use crate::theme::ControlSize::*;
+    Dp(match size {
+        Xs => 12.0,
+        Sm => 14.0,
+        Md | Lg => 16.0,
+    })
+}
+
+/// Icon-to-text gap per size class — `gap-1` xs, `gap-1.5` otherwise.
+pub fn button_icon_gap(size: crate::theme::ControlSize) -> Dp {
+    Dp(match size {
+        crate::theme::ControlSize::Xs => 4.0,
+        _ => 6.0,
+    })
+}
+
+/// The `icon` part rect inside a laid-out button — the shared authority
+/// for the painter and the devtools part snapshot. `r` is the button's
+/// layout rect (border-box); the icon sits centered vertically at the
+/// content edge.
+pub fn button_icon_rect(
+    node: &crate::node::NodeData,
+    vs: &crate::style::VisualStyle,
+    r: &crate::geom::Rect,
+    icon_end: bool,
+) -> Option<crate::geom::Rect> {
+    let crate::node::NodeData::Button {
+        icon_start,
+        icon_end: ie,
+        icon_only,
+        size,
+        ..
+    } = node
+    else {
+        return None;
+    };
+    let is = *icon_start;
+    let ie = *ie;
+    let px = button_icon_size(*size);
+    let side = if icon_end { ie } else { is };
+    if side.is_none() && !icon_only {
+        return None;
+    }
+    let b = &vs.box_style;
+    if *icon_only {
+        let x = r.x + (r.width - px.0) / 2.0;
+        let y = r.y + (r.height - px.0) / 2.0;
+        return Some(crate::geom::Rect {
+            x,
+            y,
+            width: px.0,
+            height: px.0,
+        });
+    }
+    let x = if icon_end {
+        r.x + r.width - b.border.right.width.0 - icon_side_inset(b.padding.right.0) - px.0
+    } else {
+        r.x + b.border.left.width.0 + icon_side_inset(b.padding.left.0)
+    };
+    let y = r.y + (r.height - px.0) / 2.0;
+    Some(crate::geom::Rect {
+        x,
+        y,
+        width: px.0,
+        height: px.0,
+    })
+}
+
+/// Content insets for a button — resolved box padding/border, with the
+/// icon edges reduced by the frozen `has-data-[icon]` rule. Used by
+/// measure (natural size) and paint (content/text placement), so the two
+/// can never drift apart. `icon_only` drops both text edges.
+pub fn button_content_insets(
+    node: &crate::node::NodeData,
+    vs: &crate::style::VisualStyle,
+) -> Insets {
+    let crate::node::NodeData::Button {
+        icon_start,
+        icon_end,
+        icon_only,
+        ..
+    } = node
+    else {
+        return Insets::default();
+    };
+    let b = &vs.box_style;
+    let mut i = b.padding;
+    i.top.0 += b.border.top.width.0;
+    i.right.0 += b.border.right.width.0;
+    i.bottom.0 += b.border.bottom.width.0;
+    i.left.0 += b.border.left.width.0;
+    if *icon_only {
+        return i;
+    }
+    if icon_start.is_some() {
+        i.left.0 = b.border.left.width.0 + icon_side_inset(b.padding.left.0);
+    }
+    if icon_end.is_some() {
+        i.right.0 = b.border.right.width.0 + icon_side_inset(b.padding.right.0);
+    }
+    i
 }
