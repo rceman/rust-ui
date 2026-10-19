@@ -12,13 +12,13 @@
   },
   "geometry": {
     "actual": {
-      "height": 158.62109375,
+      "height": 152.25,
       "width": 288.0,
       "x": 348.0,
       "y": 544.0
     },
     "delta": {
-      "height": 6.37109375,
+      "height": 0.0,
       "width": 0.0,
       "x": -228.0,
       "y": -1733.375
@@ -31,7 +31,7 @@
     },
     "id": "card.default.size-sm",
     "native_id": "card.default.size-sm",
-    "pass": false,
+    "pass": true,
     "tier": "core",
     "tolerance": 0.25
   },
@@ -40,26 +40,26 @@
   "normalization": {
     "canonical_dimensions": [
       288,
-      159
+      152
     ],
     "identity": true,
     "resampler": "area-box/1",
     "source_dimensions": [
       288,
-      159
+      152
     ],
     "source_scale": 1.0,
     "target_scale": 1.0,
     "transform": {
       "canonical_rect_dp": {
-        "bottom": 703,
+        "bottom": 696,
         "left": 348,
         "right": 636,
         "top": 544
       },
       "mapping": "source_px = canonical_px * source_scale",
       "source_footprint_px": {
-        "height": 159.0,
+        "height": 152.0,
         "width": 288.0,
         "x": 348.0,
         "y": 544.0
@@ -71,28 +71,28 @@
   "raster": {
     "native_canonical": {
       "canonical_rect_dp": {
-        "bottom": 703,
+        "bottom": 696,
         "left": 348,
         "right": 636,
         "top": 544
       },
       "dimensions": [
         288,
-        159
+        152
       ],
       "file": "native-canonical.png",
       "scale_px_per_dp": 1.0
     },
     "native_raw": {
       "crop_rect_px": {
-        "bottom": 703,
+        "bottom": 696,
         "left": 348,
         "right": 636,
         "top": 544
       },
       "dimensions": [
         288,
-        159
+        152
       ],
       "file": "native-raw.png",
       "scale_px_per_dp": 1.0
@@ -128,17 +128,17 @@
   "visual_canonical": {
     "actual": [
       288,
-      159
+      152
     ],
     "difference_bbox": {
-      "height": 159.0,
+      "height": 153.0,
       "width": 288.0,
       "x": 0.0,
       "y": 0.0
     },
     "dimensions": [
       288,
-      159
+      153
     ],
     "dimensions_match": false,
     "expected": [
@@ -146,10 +146,10 @@
       153
     ],
     "max_channel_delta": 255,
-    "mean_absolute_channel_error": 26.790956935709293,
-    "mismatch_percent": 43.36783717679944,
-    "mismatched_pixels": 19859,
-    "missing_pixels": 1728,
+    "mean_absolute_channel_error": 8.174099037763254,
+    "mismatch_percent": 11.744281045751634,
+    "mismatched_pixels": 5175,
+    "missing_pixels": 288,
     "pass": false,
     "pixel_domain": "union canvas; absent samples transparent; missing pixels always mismatch",
     "tolerance": 2
@@ -157,18 +157,18 @@
   "visual_raw": {
     "actual": [
       288,
-      159
+      152
     ],
     "computed": true,
     "difference_bbox": {
-      "height": 159.0,
+      "height": 153.0,
       "width": 288.0,
       "x": 0.0,
       "y": 0.0
     },
     "dimensions": [
       288,
-      159
+      153
     ],
     "dimensions_match": false,
     "expected": [
@@ -176,10 +176,10 @@
       153
     ],
     "max_channel_delta": 255,
-    "mean_absolute_channel_error": 26.790956935709293,
-    "mismatch_percent": 43.36783717679944,
-    "mismatched_pixels": 19859,
-    "missing_pixels": 1728,
+    "mean_absolute_channel_error": 8.174099037763254,
+    "mismatch_percent": 11.744281045751634,
+    "mismatched_pixels": 5175,
+    "missing_pixels": 288,
     "pass": false,
     "pixel_domain": "union canvas; absent samples transparent; missing pixels always mismatch",
     "tolerance": 2

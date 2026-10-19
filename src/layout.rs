@@ -291,10 +291,12 @@ pub fn button_icon_rect(
     })
 }
 
-/// Content insets for a button — resolved box padding/border, with the
-/// icon edges reduced by the frozen `has-data-[icon]` rule. Used by
-/// measure (natural size) and paint (content/text placement), so the two
-/// can never drift apart. `icon_only` drops both text edges.
+/// Content insets for a button — resolved box padding/border plus the
+/// reserved `icon_size + icon_gap` on each icon-bearing side, so the
+/// text layout box never overlaps the icon. The icon edges themselves
+/// keep the frozen `has-data-[icon]` reduced padding. Used by measure
+/// (natural size) and paint (content/text placement), so the two can
+/// never drift apart. `icon_only` drops both text edges.
 pub fn button_content_insets(
     node: &crate::node::NodeData,
     vs: &crate::style::VisualStyle,
@@ -303,6 +305,7 @@ pub fn button_content_insets(
         icon_start,
         icon_end,
         icon_only,
+        size,
         ..
     } = node
     else {
@@ -317,11 +320,17 @@ pub fn button_content_insets(
     if *icon_only {
         return i;
     }
-    if icon_start.is_some() {
-        i.left.0 = b.border.left.width.0 + icon_side_inset(b.padding.left.0);
+    // icon edge = border + reduced icon padding + icon + gap to the label
+    let icon_reserve = |icon: &Option<crate::icons::Icon>, border: f32, pad: f32| {
+        icon.map(|_| {
+            border + icon_side_inset(pad) + button_icon_size(*size).0 + button_icon_gap(*size).0
+        })
+    };
+    if let Some(l) = icon_reserve(icon_start, b.border.left.width.0, b.padding.left.0) {
+        i.left.0 = l;
     }
-    if icon_end.is_some() {
-        i.right.0 = b.border.right.width.0 + icon_side_inset(b.padding.right.0);
+    if let Some(r) = icon_reserve(icon_end, b.border.right.width.0, b.padding.right.0) {
+        i.right.0 = r;
     }
     i
 }

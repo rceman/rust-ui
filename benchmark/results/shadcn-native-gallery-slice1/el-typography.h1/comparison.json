@@ -1,0 +1,187 @@
+{
+  "evidence_classes": {
+    "borders": "not_measured",
+    "flat_fills": "not_measured",
+    "geometry": "measured",
+    "glyph_raster": "not_measured",
+    "icons": "not_measured",
+    "note": "Chromium and DirectWrite/D2D glyph pixels are not expected to be byte-identical; geometry is contract authority; canonical raster is a visual signal",
+    "radii": "not_measured",
+    "text_bounds_baseline": "not_measured",
+    "whole_component_raster": "measured"
+  },
+  "geometry": {
+    "actual": {
+      "height": 96.0,
+      "width": 704.0,
+      "x": 48.0,
+      "y": 116.0
+    },
+    "delta": {
+      "height": 0.0,
+      "width": -16.0,
+      "x": -80.0,
+      "y": -149.0
+    },
+    "expected": {
+      "height": 96.0,
+      "width": 720.0,
+      "x": 128.0,
+      "y": 265.0
+    },
+    "id": "typography.h1",
+    "native_id": "typography.h1",
+    "pass": false,
+    "tier": "core",
+    "tolerance": 0.25
+  },
+  "id": "typography.h1",
+  "native_id": "typography.h1",
+  "normalization": {
+    "canonical_dimensions": [
+      704,
+      96
+    ],
+    "identity": true,
+    "resampler": "area-box/1",
+    "source_dimensions": [
+      704,
+      96
+    ],
+    "source_scale": 1.0,
+    "target_scale": 1.0,
+    "transform": {
+      "canonical_rect_dp": {
+        "bottom": 212,
+        "left": 48,
+        "right": 752,
+        "top": 116
+      },
+      "mapping": "source_px = canonical_px * source_scale",
+      "source_footprint_px": {
+        "height": 96.0,
+        "width": 704.0,
+        "x": 48.0,
+        "y": 116.0
+      }
+    }
+  },
+  "padding_comparison_px": 0.0,
+  "pass": false,
+  "raster": {
+    "native_canonical": {
+      "canonical_rect_dp": {
+        "bottom": 212,
+        "left": 48,
+        "right": 752,
+        "top": 116
+      },
+      "dimensions": [
+        704,
+        96
+      ],
+      "file": "native-canonical.png",
+      "scale_px_per_dp": 1.0
+    },
+    "native_raw": {
+      "crop_rect_px": {
+        "bottom": 212,
+        "left": 48,
+        "right": 752,
+        "top": 116
+      },
+      "dimensions": [
+        704,
+        96
+      ],
+      "file": "native-raw.png",
+      "scale_px_per_dp": 1.0
+    },
+    "reference": {
+      "canonical_rect_dp": {
+        "bottom": 361,
+        "left": 128,
+        "right": 848,
+        "top": 265
+      },
+      "crop_rect_px": {
+        "bottom": 361,
+        "left": 128,
+        "right": 848,
+        "top": 265
+      },
+      "dimensions": [
+        720,
+        96
+      ],
+      "file": "reference.png",
+      "scale_px_per_dp": 1.0
+    }
+  },
+  "schema": "rust-ui.devctl.compare-element/0.2",
+  "scope": {
+    "tier_of_target": "core",
+    "tiers": [
+      "core"
+    ]
+  },
+  "visual_canonical": {
+    "actual": [
+      704,
+      96
+    ],
+    "difference_bbox": {
+      "height": 96.0,
+      "width": 720.0,
+      "x": 0.0,
+      "y": 0.0
+    },
+    "dimensions": [
+      720,
+      96
+    ],
+    "dimensions_match": false,
+    "expected": [
+      720,
+      96
+    ],
+    "max_channel_delta": 255,
+    "mean_absolute_channel_error": 52.79045500578704,
+    "mismatch_percent": 35.095486111111114,
+    "mismatched_pixels": 24258,
+    "missing_pixels": 1536,
+    "pass": false,
+    "pixel_domain": "union canvas; absent samples transparent; missing pixels always mismatch",
+    "tolerance": 2
+  },
+  "visual_raw": {
+    "actual": [
+      704,
+      96
+    ],
+    "computed": true,
+    "difference_bbox": {
+      "height": 96.0,
+      "width": 720.0,
+      "x": 0.0,
+      "y": 0.0
+    },
+    "dimensions": [
+      720,
+      96
+    ],
+    "dimensions_match": false,
+    "expected": [
+      720,
+      96
+    ],
+    "max_channel_delta": 255,
+    "mean_absolute_channel_error": 52.79045500578704,
+    "mismatch_percent": 35.095486111111114,
+    "mismatched_pixels": 24258,
+    "missing_pixels": 1536,
+    "pass": false,
+    "pixel_domain": "union canvas; absent samples transparent; missing pixels always mismatch",
+    "tolerance": 2
+  }
+}

@@ -278,62 +278,12 @@ impl Gallery {
             ui.row(Row::new().gap(Space::Md).align(Align::Start), |ui| {
                 ui.named("card.default", |ui| {
                     ui.card(Card::new().width(dp(288.0)), |ui| {
-                        ui.part("header", |ui| {
-                            ui.column(Column::new().gap(Space::Xs), |ui| {
-                                ui.part("title", |ui| {
-                                    ui.label("Card Title");
-                                });
-                                ui.part("description", |ui| {
-                                    ui.typography(
-                                        Typography::Muted,
-                                        "A short supporting description.",
-                                    );
-                                });
-                            });
-                        });
-                        ui.part("content", |ui| {
-                            ui.typography(Typography::Muted, "Card content region.");
-                        });
-                        ui.part("footer", |ui| {
-                            ui.row(Row::new().gap(Space::Sm).justify(Justify::End), |ui| {
-                                ui.button("Cancel")
-                                    .variant(ButtonVariant::Outline)
-                                    .size(ControlSize::Sm);
-                                ui.button("Save")
-                                    .size(ControlSize::Sm)
-                                    .on_press(|| Msg::Invoke("card.default"));
-                            });
-                        });
+                        card_parts(ui, CardSize::Default, "card.default")
                     });
                 });
                 ui.named("card.default.size-sm", |ui| {
                     ui.card(Card::new().size(CardSize::Sm).width(dp(288.0)), |ui| {
-                        ui.part("header", |ui| {
-                            ui.column(Column::new().gap(Space::Xs), |ui| {
-                                ui.part("title", |ui| {
-                                    ui.label("Card Title");
-                                });
-                                ui.part("description", |ui| {
-                                    ui.typography(
-                                        Typography::Muted,
-                                        "A short supporting description.",
-                                    );
-                                });
-                            });
-                        });
-                        ui.part("content", |ui| {
-                            ui.typography(Typography::Muted, "Card content region.");
-                        });
-                        ui.part("footer", |ui| {
-                            ui.row(Row::new().gap(Space::Sm).justify(Justify::End), |ui| {
-                                ui.button("Cancel")
-                                    .variant(ButtonVariant::Outline)
-                                    .size(ControlSize::Sm);
-                                ui.button("Save")
-                                    .size(ControlSize::Sm)
-                                    .on_press(|| Msg::Invoke("card.default.size-sm"));
-                            });
-                        });
+                        card_parts(ui, CardSize::Sm, "card.default.size-sm")
                     });
                 });
             });
@@ -349,54 +299,112 @@ impl Gallery {
         );
     }
 
-    /// The frozen `typography` slice — the CORE display recipes.
+    /// The frozen `typography` slice — the CORE display recipes, on the
+    /// frozen 720dp content column so wrapped headings measure right.
     fn typography_page(&self, ui: &mut Ui<Msg>) {
-        ui.column(
-            Column::new().gap(Space::Lg).align(Align::Stretch),
-            |ui| {
-                ui.named("typography.h1", |ui| {
-                    ui.typography(Typography::H1, "Design is intelligence made visible");
-                });
-                ui.named("typography.h2", |ui| {
-                    ui.typography(Typography::H2, "Heading 2 with a border rule");
-                });
-                ui.named("typography.h3", |ui| {
-                    ui.typography(Typography::H3, "Heading 3");
-                });
-                ui.named("typography.h4", |ui| {
-                    ui.typography(Typography::H4, "Heading 4");
-                });
-                ui.named("typography.p", |ui| {
-                    ui.typography(
-                        Typography::Paragraph,
-                        "The king's pawn. A paragraph of body text that wraps to the available width and keeps a measured leading of seven.",
-                    );
-                });
-                ui.named("typography.lead", |ui| {
-                    ui.typography(
-                        Typography::Lead,
-                        "A lead paragraph with muted foreground and a larger size to set the tone.",
-                    );
-                });
-                ui.named("typography.small", |ui| {
-                    ui.typography(Typography::Small, "Small caption text");
-                });
-                ui.named("typography.muted", |ui| {
-                    ui.typography(Typography::Muted, "Muted helper text");
-                });
-                ui.named("typography.inline-code", |ui| {
-                    ui.typography(Typography::InlineCode, "rust-ui --install");
-                });
-                ui.named("typography.code-block", |ui| {
-                    ui.code_block(&[
-                        "fn render_button(rect: Rect) {",
-                        "ctx.fill(rect, theme.primary)",
-                        "}",
-                    ]);
-                });
-            },
-        );
+        // a row wrapper keeps the 720 box at its spec width — a Stretch
+        // column would stretch the box itself to the page width
+        ui.row(Row::new(), |ui| {
+            ui.box_(BoxProps::new().width(Length::Fixed(dp(720.0))), |ui| {
+                ui.column(
+                    // no inner padding — the box is the frozen 720 content
+                    // column; elements span it edge-to-edge
+                    Column::new()
+                        .gap(Space::Lg)
+                        .padding(Space::None)
+                        .align(Align::Stretch),
+                |ui| {
+                    ui.named("typography.h1", |ui| {
+                        ui.typography(Typography::H1, "Taxing Laughter: The Joke Tax Chronicles");
+                    });
+                    ui.named("typography.h2", |ui| {
+                        ui.typography(Typography::H2, "The People of the Kingdom");
+                    });
+                    ui.named("typography.h3", |ui| {
+                        ui.typography(Typography::H3, "The Joke Tax");
+                    });
+                    ui.named("typography.h4", |ui| {
+                        ui.typography(Typography::H4, "People stopped telling jokes");
+                    });
+                    ui.named("typography.p", |ui| {
+                        ui.typography(
+                            Typography::Paragraph,
+                            "The king, seeing how much happier his subjects were, realized the error of his ways and repealed the joke tax.",
+                        );
+                    });
+                    ui.named("typography.lead", |ui| {
+                        ui.typography(
+                            Typography::Lead,
+                            "A modal dialog that interrupts the user with important content and expects a response.",
+                        );
+                    });
+                    ui.named("typography.small", |ui| {
+                        ui.typography(Typography::Small, "Email address");
+                    });
+                    ui.named("typography.muted", |ui| {
+                        ui.typography(Typography::Muted, "Enter your email address.");
+                    });
+                    // inline-code is a content-hugging box — a row wrapper
+                    // keeps it at Content width inside the Stretch column
+                    ui.row(Row::new(), |ui| {
+                        ui.typography(Typography::InlineCode, "npx shadcn@latest init")
+                            .automation_id("typography.inline-code");
+                    });
+                    ui.named("typography.code-block", |ui| {
+                        ui.code_block(&[
+                            "fn render_button(rect: Rect) {",
+                            "ctx.fill(rect, theme.primary)",
+                            "}",
+                        ]);
+                    });
+                    },
+                );
+            });
+        });
     }
+}
+
+/// The frozen `card.*` semantic parts — header/title/description/content/
+/// footer composed against the Card contract recipes (`card_part_box`,
+/// `card_title_style`, `card_content_style`, `card_footer_style`) so part
+/// geometry and chrome come from the component contract, never generic
+/// container defaults. `cs` selects Default or Sm.
+fn card_parts(ui: &mut Ui<Msg>, cs: CardSize, id: &'static str) {
+    ui.part("header", |ui| {
+        ui.box_(BoxProps::new().style(card_part_box(cs)), |ui| {
+            ui.column(Column::new().gap(Space::Xs).padding(Space::None), |ui| {
+                ui.part("title", |ui| {
+                    ui.text("Card Title").style(card_title_style(cs));
+                });
+                ui.part("description", |ui| {
+                    ui.typography(Typography::Muted, "A short supporting description.");
+                });
+            });
+        });
+    });
+    ui.part("content", |ui| {
+        ui.box_(BoxProps::new().style(card_part_box(cs)), |ui| {
+            ui.text("Card content region.").style(card_content_style());
+        });
+    });
+    ui.part("footer", |ui| {
+        ui.box_(BoxProps::new().style(card_footer_style(cs)), |ui| {
+            ui.row(
+                Row::new()
+                    .gap(Space::Sm)
+                    .padding(Space::None)
+                    .justify(Justify::End),
+                |ui| {
+                    ui.button("Cancel")
+                        .variant(ButtonVariant::Outline)
+                        .size(ControlSize::Sm);
+                    ui.button("Save")
+                        .size(ControlSize::Sm)
+                        .on_press(move || Msg::Invoke(id));
+                },
+            );
+        });
+    });
 }
 
 fn main() -> UiResult {

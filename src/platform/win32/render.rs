@@ -202,8 +202,13 @@ fn layout_for(
         // line pitch — CSS line-height: the glyph band centers inside
         // the pitch, baseline = (pitch + ascent - descent)/2
         if let Some(lh) = ts.line_height {
-            let mut line_metrics = [DWRITE_LINE_METRICS::default()];
+            // GetLineMetrics wants a buffer sized for ALL wrapped lines —
+            // an empty first call returns E_NOT_SUFFICIENT_BUFFER but fills
+            // `count`. Only line[0] feeds the uniform baseline (every line
+            // shares metrics), but the buffer must still fit `count`.
             let mut count = 0u32;
+            let _ = lay.GetLineMetrics(None, &mut count);
+            let mut line_metrics = vec![DWRITE_LINE_METRICS::default(); count.max(1) as usize];
             lay.GetLineMetrics(Some(&mut line_metrics), &mut count)
                 .map_err(|e| UiError::Platform(format!("GetLineMetrics: {e}")))?;
             let ascent = line_metrics[0].baseline;
@@ -594,8 +599,10 @@ impl Renderer {
                         )?;
                         // focus ring — the RESOLVED style's ring (3dp
                         // ring/50 band outside the border); enforcement
-                        // supplies it for Focus-role colors too
-                        if be.focus == Some(id) && !*disabled {
+                        // supplies it for Focus-role colors too. The
+                        // invalid state carries the same 3dp band in
+                        // ring-destructive and does NOT require focus.
+                        if (be.focus == Some(id) || *invalid) && !*disabled {
                             let rc = resolve_render(vs.focus_ring, dark, forced);
                             let rc_brush = target.CreateSolidColorBrush(&rc, None)?;
                             let rr = D2D1_ROUNDED_RECT {
@@ -645,6 +652,9 @@ impl Renderer {
                             )?;
                             lay.SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER)?;
                             lay.SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER)?;
+                            // whitespace-nowrap — button labels are always
+                            // single-line; a tight box must never wrap
+                            lay.SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP)?;
                             target.DrawTextLayout(
                                 Vector2 {
                                     X: br.left + ins.left.0,
@@ -1180,6 +1190,7 @@ struct ShadowKey {
     pad: u32,
     radii: [u32; 4], // normalized radii bit patterns (DIP)
     sigma: u32,
+    spread: u32,
     color: u32,
     scale: u32,
     /// raster bakes the offset-exclusion — same mask CANNOT serve another
@@ -1248,6 +1259,7 @@ pub(crate) fn draw_shadow(
     target_gen: u64,
 ) -> Result<()> {
     let sigma = shadow.blur_sigma.0.max(0.0);
+    let spread = shadow.spread.0;
     let [sr, sg, sb, sa] = crate::style::resolve_color(shadow.color, dark);
     if sa <= 0.0 || !shadow.offset_x.0.is_finite() || !shadow.offset_y.0.is_finite() {
         return Ok(());
@@ -1258,7 +1270,10 @@ pub(crate) fn draw_shadow(
     // CHECKED BEFORE ARITHMETIC — every float->usize conversion happens
     // only after the value proves finite and in-range; `2 * pad` and the
     // extent additions are checked_mul/checked_add, never wrapping.
-    let pad_dip = sigma * 3.0;
+    // pad covers the blur kernel AND any positive spread (the silhouette
+    // dilates by `spread` before blurring); negative spread contracts
+    // inward and needs no extra pad.
+    let pad_dip = sigma * 3.0 + spread.max(0.0);
     if !pad_dip.is_finite() || pad_dip < 0.0 {
         return Err(einval().into());
     }
@@ -1330,6 +1345,7 @@ pub(crate) fn draw_shadow(
             norm.bottom_left.0.to_bits(),
         ],
         sigma: sigma.to_bits(),
+        spread: spread.to_bits(),
         color: (cbits(sa) << 24) | (cbits(sr) << 16) | (cbits(sg) << 8) | cbits(sb),
         scale: scale.0.to_bits(),
         offset_px: (ox_key, oy_key),
@@ -1380,18 +1396,21 @@ pub(crate) fn draw_shadow(
         let ay = qy.max(0.0);
         (ax * ax + ay * ay).sqrt() + qx.max(qy).min(0.0) - rad
     };
-    // SOLID silhouette — kept for interior exclusion
+    // SOLID silhouette — kept for interior exclusion (UNEXPANDED box)
     let mut solid = vec![0f32; n_px];
+    // MASK silhouette — the box DILATED by `spread`; blur then widens
+    // from the expanded shape (CSS `0 0 0 Npx` ring = spread-only).
+    let mut mask = vec![0f32; n_px];
     for y in 0..h {
         for x in 0..w {
             let d = sd(x as f32, y as f32);
             // AA edge half-width shrinks in DIP terms at high DPI —
             // `to_physical_f` keeps the sigma-kernel space in px
             solid[y * w + x] = (0.5 - scale.to_physical_f(d)).clamp(0.0, 1.0);
+            mask[y * w + x] = (0.5 - scale.to_physical_f(d - spread)).clamp(0.0, 1.0);
         }
     }
     // 3 box blurs approximate a Gaussian of `sigma` DIP — kernel in px
-    let mut mask = solid.clone();
     if sigma > 0.0 {
         let kr = (scale.to_physical_f(sigma) / 1.5).max(1.0) as usize;
         for _ in 0..3 {

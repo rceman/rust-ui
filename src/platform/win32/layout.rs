@@ -10,7 +10,7 @@ use std::rc::Rc;
 
 use windows::Win32::Foundation::RECT;
 
-use crate::geom::{Align, Length, Visibility};
+use crate::geom::{Align, Justify, Length, Visibility};
 use crate::node::{
     KIND_ACTION, KIND_BOX, KIND_CARD, KIND_COLUMN, KIND_GROUP, KIND_ROW, KIND_SCOPE, KIND_STACK,
     KIND_SURFACE, NodeData,
@@ -156,16 +156,11 @@ where
             }
             let ins = crate::layout::button_content_insets(&n.data, &vs);
             let (tw, _) = measure(text, f32::MAX, &vs.text_style);
-            // +4 DIP slack: GetMetrics width is the ink advance; the draw
-            // layout needs a hair more or the last glyph wraps
-            let icon_w = |i: &Option<crate::icons::Icon>| {
-                i.map(|_| {
-                    crate::layout::button_icon_size(*size).0
-                        + crate::layout::button_icon_gap(*size).0
-                })
-                .unwrap_or(0.0)
-            };
-            let w = tw + ins.left.0 + ins.right.0 + icon_w(icon_start) + icon_w(icon_end) + 4.0;
+            // insets already reserve icon size+gap on the icon side(s);
+            // natural width = ink advance + content insets + a uniform
+            // ink-vs-layout epsilon (GetMetrics width is the ink box —
+            // the laid-out line can need a hair more; not per-label)
+            let w = tw + ins.left.0 + ins.right.0 + 2.0;
             let _ = disabled;
             (w, h)
         }
@@ -517,7 +512,18 @@ impl LayoutCache {
                     inner.width - gap * ids.len().saturating_sub(1) as f32,
                     &items,
                 );
-                let mut x = inner.x;
+                // main-axis justify — Start (default) packs at inner.x,
+                // Center/End offset the whole used span. No SpaceBetween
+                // variant exists in the current Justify contract.
+                let used: f32 =
+                    sizes.iter().sum::<f32>() + gap * sizes.len().saturating_sub(1) as f32;
+                let slack = (inner.width - used).max(0.0);
+                let mut x = inner.x
+                    + match props.justify.unwrap_or_default() {
+                        Justify::Start => 0.0,
+                        Justify::Center => slack / 2.0,
+                        Justify::End => slack,
+                    };
                 for (it, sz) in items.iter().zip(sizes.iter()) {
                     // cross axis: align — Stretch fills the row height,
                     // Start/Center/End keep the child's natural height

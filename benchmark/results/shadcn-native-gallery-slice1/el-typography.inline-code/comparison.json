@@ -1,0 +1,187 @@
+{
+  "evidence_classes": {
+    "borders": "not_measured",
+    "flat_fills": "not_measured",
+    "geometry": "measured",
+    "glyph_raster": "not_measured",
+    "icons": "not_measured",
+    "note": "Chromium and DirectWrite/D2D glyph pixels are not expected to be byte-identical; geometry is contract authority; canonical raster is a visual signal",
+    "radii": "not_measured",
+    "text_bounds_baseline": "not_measured",
+    "whole_component_raster": "measured"
+  },
+  "geometry": {
+    "actual": {
+      "height": 26.400001525878903,
+      "width": 143.45938110351562,
+      "x": 56.0,
+      "y": 599.0
+    },
+    "delta": {
+      "height": 2.0250015258789027,
+      "width": -50.94661889648438,
+      "x": -72.0,
+      "y": -682.8130000000001
+    },
+    "expected": {
+      "height": 24.375,
+      "width": 194.406,
+      "x": 128.0,
+      "y": 1281.813
+    },
+    "id": "typography.inline-code",
+    "native_id": "typography.inline-code",
+    "pass": false,
+    "tier": "core",
+    "tolerance": 0.25
+  },
+  "id": "typography.inline-code",
+  "native_id": "typography.inline-code",
+  "normalization": {
+    "canonical_dimensions": [
+      143,
+      26
+    ],
+    "identity": true,
+    "resampler": "area-box/1",
+    "source_dimensions": [
+      143,
+      26
+    ],
+    "source_scale": 1.0,
+    "target_scale": 1.0,
+    "transform": {
+      "canonical_rect_dp": {
+        "bottom": 625,
+        "left": 56,
+        "right": 199,
+        "top": 599
+      },
+      "mapping": "source_px = canonical_px * source_scale",
+      "source_footprint_px": {
+        "height": 26.0,
+        "width": 143.0,
+        "x": 56.0,
+        "y": 599.0
+      }
+    }
+  },
+  "padding_comparison_px": 0.0,
+  "pass": false,
+  "raster": {
+    "native_canonical": {
+      "canonical_rect_dp": {
+        "bottom": 625,
+        "left": 56,
+        "right": 199,
+        "top": 599
+      },
+      "dimensions": [
+        143,
+        26
+      ],
+      "file": "native-canonical.png",
+      "scale_px_per_dp": 1.0
+    },
+    "native_raw": {
+      "crop_rect_px": {
+        "bottom": 625,
+        "left": 56,
+        "right": 199,
+        "top": 599
+      },
+      "dimensions": [
+        143,
+        26
+      ],
+      "file": "native-raw.png",
+      "scale_px_per_dp": 1.0
+    },
+    "reference": {
+      "canonical_rect_dp": {
+        "bottom": 1306,
+        "left": 128,
+        "right": 322,
+        "top": 1282
+      },
+      "crop_rect_px": {
+        "bottom": 1306,
+        "left": 128,
+        "right": 322,
+        "top": 1282
+      },
+      "dimensions": [
+        194,
+        24
+      ],
+      "file": "reference.png",
+      "scale_px_per_dp": 1.0
+    }
+  },
+  "schema": "rust-ui.devctl.compare-element/0.2",
+  "scope": {
+    "tier_of_target": "core",
+    "tiers": [
+      "core"
+    ]
+  },
+  "visual_canonical": {
+    "actual": [
+      143,
+      26
+    ],
+    "difference_bbox": {
+      "height": 26.0,
+      "width": 194.0,
+      "x": 0.0,
+      "y": 0.0
+    },
+    "dimensions": [
+      194,
+      26
+    ],
+    "dimensions_match": false,
+    "expected": [
+      194,
+      24
+    ],
+    "max_channel_delta": 255,
+    "mean_absolute_channel_error": 90.49925654242665,
+    "mismatch_percent": 57.57335448057098,
+    "mismatched_pixels": 2904,
+    "missing_pixels": 1612,
+    "pass": false,
+    "pixel_domain": "union canvas; absent samples transparent; missing pixels always mismatch",
+    "tolerance": 2
+  },
+  "visual_raw": {
+    "actual": [
+      143,
+      26
+    ],
+    "computed": true,
+    "difference_bbox": {
+      "height": 26.0,
+      "width": 194.0,
+      "x": 0.0,
+      "y": 0.0
+    },
+    "dimensions": [
+      194,
+      26
+    ],
+    "dimensions_match": false,
+    "expected": [
+      194,
+      24
+    ],
+    "max_channel_delta": 255,
+    "mean_absolute_channel_error": 90.49925654242665,
+    "mismatch_percent": 57.57335448057098,
+    "mismatched_pixels": 2904,
+    "missing_pixels": 1612,
+    "pass": false,
+    "pixel_domain": "union canvas; absent samples transparent; missing pixels always mismatch",
+    "tolerance": 2
+  }
+}

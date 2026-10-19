@@ -13,14 +13,14 @@
   "geometry": {
     "actual": {
       "height": 28.0,
-      "width": 69.4312515258789,
-      "x": 118.099609375,
+      "width": 67.4312515258789,
+      "x": 116.099609375,
       "y": 300.0
     },
     "delta": {
       "height": 0.0,
-      "width": 0.5252515258789003,
-      "x": -281.447390625,
+      "width": -1.4747484741210997,
+      "x": -283.447390625,
       "y": -541.0
     },
     "expected": {
@@ -39,13 +39,13 @@
   "native_id": "button.default.size-sm",
   "normalization": {
     "canonical_dimensions": [
-      70,
+      68,
       28
     ],
     "identity": true,
     "resampler": "area-box/1",
     "source_dimensions": [
-      70,
+      68,
       28
     ],
     "source_scale": 1.0,
@@ -53,15 +53,15 @@
     "transform": {
       "canonical_rect_dp": {
         "bottom": 328,
-        "left": 118,
-        "right": 188,
+        "left": 116,
+        "right": 184,
         "top": 300
       },
       "mapping": "source_px = canonical_px * source_scale",
       "source_footprint_px": {
         "height": 28.0,
-        "width": 70.0,
-        "x": 118.0,
+        "width": 68.0,
+        "x": 116.0,
         "y": 300.0
       }
     }
@@ -72,12 +72,12 @@
     "native_canonical": {
       "canonical_rect_dp": {
         "bottom": 328,
-        "left": 118,
-        "right": 188,
+        "left": 116,
+        "right": 184,
         "top": 300
       },
       "dimensions": [
-        70,
+        68,
         28
       ],
       "file": "native-canonical.png",
@@ -86,12 +86,12 @@
     "native_raw": {
       "crop_rect_px": {
         "bottom": 328,
-        "left": 118,
-        "right": 188,
+        "left": 116,
+        "right": 184,
         "top": 300
       },
       "dimensions": [
-        70,
+        68,
         28
       ],
       "file": "native-raw.png",
@@ -127,59 +127,59 @@
   },
   "visual_canonical": {
     "actual": [
-      70,
+      68,
       28
     ],
     "difference_bbox": {
       "height": 28.0,
-      "width": 70.0,
+      "width": 68.0,
       "x": 0.0,
       "y": 0.0
     },
     "dimensions": [
-      70,
+      68,
       28
     ],
-    "dimensions_match": false,
+    "dimensions_match": true,
     "expected": [
       68,
       28
     ],
-    "max_channel_delta": 255,
-    "mean_absolute_channel_error": 35.969515306122446,
-    "mismatch_percent": 33.01020408163265,
-    "mismatched_pixels": 647,
-    "missing_pixels": 56,
+    "max_channel_delta": 232,
+    "mean_absolute_channel_error": 30.23174894957983,
+    "mismatch_percent": 30.409663865546218,
+    "mismatched_pixels": 579,
+    "missing_pixels": 0,
     "pass": false,
     "pixel_domain": "union canvas; absent samples transparent; missing pixels always mismatch",
     "tolerance": 2
   },
   "visual_raw": {
     "actual": [
-      70,
+      68,
       28
     ],
     "computed": true,
     "difference_bbox": {
       "height": 28.0,
-      "width": 70.0,
+      "width": 68.0,
       "x": 0.0,
       "y": 0.0
     },
     "dimensions": [
-      70,
+      68,
       28
     ],
-    "dimensions_match": false,
+    "dimensions_match": true,
     "expected": [
       68,
       28
     ],
-    "max_channel_delta": 255,
-    "mean_absolute_channel_error": 35.969515306122446,
-    "mismatch_percent": 33.01020408163265,
-    "mismatched_pixels": 647,
-    "missing_pixels": 56,
+    "max_channel_delta": 232,
+    "mean_absolute_channel_error": 30.23174894957983,
+    "mismatch_percent": 30.409663865546218,
+    "mismatched_pixels": 579,
+    "missing_pixels": 0,
     "pass": false,
     "pixel_domain": "union canvas; absent samples transparent; missing pixels always mismatch",
     "tolerance": 2

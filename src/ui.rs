@@ -1088,11 +1088,16 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
         kind: crate::typography::Typography,
         text: &'a str,
     ) -> TextBuilder<'a, 'ui, &'a str, M> {
-        let b = self.text(text).style(kind.style()).wrap(kind.wraps());
-        match kind.chrome() {
-            Some(c) => b.chrome(c),
-            None => b,
+        let mut b = self.text(text).style(kind.style()).wrap(kind.wraps());
+        if let Some(c) = kind.chrome() {
+            b = b.chrome(c);
         }
+        // inline-code is an inline content-hugging box — it must not
+        // stretch to its parent's width in a Stretch-aligned column
+        if kind == crate::typography::Typography::InlineCode {
+            b = b.width(crate::geom::Length::Content);
+        }
+        b
     }
 
     /// `typography.code-block` — mono code lines inside a `Surface`-role
@@ -1103,7 +1108,7 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
     /// the outer container.
     pub fn code_block<'a>(&'a mut self, lines: &[&'a str]) {
         let chrome = crate::style::BoxStyle {
-            background: crate::style::Color::Role(ColorRole::Surface),
+            background: crate::style::Color::Role(ColorRole::Code),
             border: crate::style::Border::default(),
             radii: crate::style::CornerRadii::all(crate::geom::Dp(18.0)),
             padding: crate::style::Insets {
@@ -1118,12 +1123,15 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
             font: crate::theme::FontFamily::Mono,
             size: crate::style::TextSize::Exact(crate::geom::Dp(14.0)),
             weight: crate::style::TextWeight::Normal,
+            foreground: crate::style::Color::Role(ColorRole::CodeForeground),
             line_height: Some(crate::geom::Dp(20.0)),
             ..crate::style::TextStyle::default()
         };
         self.part("pre", |ui| {
             ui.box_(BoxProps::new().style(chrome), |ui| {
-                ui.column(Column::new(), |ui| {
+                // zero-pad/zero-gap — the chrome owns the frozen 14/16
+                // insets; lines stack at their 20dp line-height
+                ui.column(Column::new().padding(Space::None).gap(Space::None), |ui| {
                     for (i, line) in lines.iter().enumerate() {
                         let key = format!("line[{}]", i + 1);
                         ui.part(&key, |ui| {

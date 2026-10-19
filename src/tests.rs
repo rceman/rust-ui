@@ -8386,3 +8386,129 @@ fn button_dirty_classification_catches_icon_fields() {
     assert_ne!(crate::node::dirty_diff(&plain, &icon, false, None), 0);
     assert_ne!(crate::node::dirty_diff(&plain, &inv, false, None), 0);
 }
+
+// ==================== slice-1 visual rework — recipe tests ===================
+
+#[test]
+fn button_content_insets_reserves_icon_space() {
+    use crate::theme::{ButtonVariant, ControlSize};
+    let vs = crate::style::resolve_button(
+        ButtonVariant::Primary,
+        ControlSize::Md,
+        &Default::default(),
+        crate::style::StyleState::Normal,
+        false,
+        false,
+        false,
+    );
+    let mk = |icon_start, icon_end| NodeData::Button {
+        text: Rc::from("x"),
+        variant: ButtonVariant::Primary,
+        style: Default::default(),
+        disabled: false,
+        size: ControlSize::Md,
+        motion: None,
+        tooltip: None,
+        icon_start,
+        icon_end,
+        icon_only: false,
+        accessible_name: None,
+        invalid: false,
+    };
+    // icon_start: left inset = border(1) + reduced-pad(8) + icon(16) + gap(6) = 31
+    let s =
+        crate::layout::button_content_insets(&mk(Some(crate::icons::Icon::ArrowRight), None), &vs);
+    assert!(
+        (s.left.0 - 31.0).abs() < 0.01,
+        "icon_start left {}",
+        s.left.0
+    );
+    // icon_end: right inset = 1 + 8 + 16 + 6 = 31
+    let e =
+        crate::layout::button_content_insets(&mk(None, Some(crate::icons::Icon::ArrowRight)), &vs);
+    assert!(
+        (e.right.0 - 31.0).abs() < 0.01,
+        "icon_end right {}",
+        e.right.0
+    );
+    // no icon: plain padding+border insets
+    let n = crate::layout::button_content_insets(&mk(None, None), &vs);
+    assert!(n.left.0 > 0.0 && n.left.0 < 31.0);
+}
+
+#[test]
+fn invalid_button_gets_destructive_ring_recipe() {
+    use crate::theme::{ButtonVariant, ColorRole, ControlSize};
+    for v in [
+        ButtonVariant::Primary,
+        ButtonVariant::Secondary,
+        ButtonVariant::Outline,
+        ButtonVariant::Ghost,
+        ButtonVariant::Destructive,
+        ButtonVariant::Link,
+    ] {
+        let vs = crate::style::resolve_button(
+            v,
+            ControlSize::Md,
+            &Default::default(),
+            crate::style::StyleState::Normal,
+            false,
+            false,
+            true, // invalid — ring must be destructive regardless of focus
+        );
+        assert_eq!(
+            vs.focus_ring,
+            crate::style::Color::Role(ColorRole::DestructiveRing),
+            "{v:?}"
+        );
+    }
+}
+
+#[test]
+fn card_recipe_shadow_has_unit_spread_ring() {
+    for size in [crate::theme::CardSize::Default, crate::theme::CardSize::Sm] {
+        let bs = crate::style::card_recipe(size);
+        let sh = bs.shadow.expect("card carries the ring-1 spread shadow");
+        assert_eq!(sh.spread.0, 1.0);
+        assert_eq!(sh.blur_sigma.0, 0.0);
+        assert_eq!(sh.offset_x.0, 0.0);
+        assert_eq!(sh.offset_y.0, 0.0);
+    }
+}
+
+#[test]
+fn card_part_recipes_match_frozen_contract() {
+    use crate::theme::CardSize;
+    // part horizontal inset = --card-spacing (16 / 12)
+    assert_eq!(
+        crate::style::card_part_insets(CardSize::Default).left.0,
+        16.0
+    );
+    assert_eq!(crate::style::card_part_insets(CardSize::Sm).left.0, 12.0);
+    // title: Default 16/lh22, Sm 14/lh19.25, medium weight
+    let d = crate::style::card_title_style(CardSize::Default);
+    assert_eq!(d.size, crate::style::TextSize::Exact(crate::geom::Dp(16.0)));
+    assert_eq!(d.line_height, Some(crate::geom::Dp(22.0)));
+    assert_eq!(d.weight, crate::style::TextWeight::Medium);
+    let s = crate::style::card_title_style(CardSize::Sm);
+    assert_eq!(s.size, crate::style::TextSize::Exact(crate::geom::Dp(14.0)));
+    assert_eq!(s.line_height, Some(crate::geom::Dp(19.25)));
+    // content: 14/lh20 CardForeground
+    let c = crate::style::card_content_style();
+    assert_eq!(c.size, crate::style::TextSize::Exact(crate::geom::Dp(14.0)));
+    assert_eq!(c.line_height, Some(crate::geom::Dp(20.0)));
+    // footer: bg-muted/50 + 1dp border-top + spacing padding
+    let f = crate::style::card_footer_style(CardSize::Default);
+    assert_eq!(f.border.top.width.0, 1.0);
+    assert_eq!(f.padding.top.0, 16.0);
+    let f2 = crate::style::card_footer_style(CardSize::Sm);
+    assert_eq!(f2.padding.top.0, 12.0);
+}
+
+#[test]
+fn inline_code_recipe_is_13px_and_wraps_content() {
+    let s = crate::typography::Typography::InlineCode.style();
+    assert_eq!(s.size, crate::style::TextSize::Exact(crate::geom::Dp(13.0)));
+    assert_eq!(s.weight, crate::style::TextWeight::Semibold);
+    assert_eq!(s.line_height, Some(crate::geom::Dp(20.0)));
+}

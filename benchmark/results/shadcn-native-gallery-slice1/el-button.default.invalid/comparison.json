@@ -1,0 +1,187 @@
+{
+  "evidence_classes": {
+    "borders": "not_measured",
+    "flat_fills": "not_measured",
+    "geometry": "measured",
+    "glyph_raster": "not_measured",
+    "icons": "not_measured",
+    "note": "Chromium and DirectWrite/D2D glyph pixels are not expected to be byte-identical; geometry is contract authority; canonical raster is a visual signal",
+    "radii": "not_measured",
+    "text_bounds_baseline": "not_measured",
+    "whole_component_raster": "measured"
+  },
+  "geometry": {
+    "actual": {
+      "height": 32.0,
+      "width": 66.177734375,
+      "x": 221.5068359375,
+      "y": 116.0
+    },
+    "delta": {
+      "height": 0.0,
+      "width": 1.302734375,
+      "x": -974.0561640625001,
+      "y": -184.75
+    },
+    "expected": {
+      "height": 32.0,
+      "width": 64.875,
+      "x": 1195.563,
+      "y": 300.75
+    },
+    "id": "button.default.invalid",
+    "native_id": "button.default.invalid",
+    "pass": false,
+    "tier": "core",
+    "tolerance": 0.25
+  },
+  "id": "button.default.invalid",
+  "native_id": "button.default.invalid",
+  "normalization": {
+    "canonical_dimensions": [
+      66,
+      32
+    ],
+    "identity": true,
+    "resampler": "area-box/1",
+    "source_dimensions": [
+      66,
+      32
+    ],
+    "source_scale": 1.0,
+    "target_scale": 1.0,
+    "transform": {
+      "canonical_rect_dp": {
+        "bottom": 148,
+        "left": 222,
+        "right": 288,
+        "top": 116
+      },
+      "mapping": "source_px = canonical_px * source_scale",
+      "source_footprint_px": {
+        "height": 32.0,
+        "width": 66.0,
+        "x": 222.0,
+        "y": 116.0
+      }
+    }
+  },
+  "padding_comparison_px": 0.0,
+  "pass": false,
+  "raster": {
+    "native_canonical": {
+      "canonical_rect_dp": {
+        "bottom": 148,
+        "left": 222,
+        "right": 288,
+        "top": 116
+      },
+      "dimensions": [
+        66,
+        32
+      ],
+      "file": "native-canonical.png",
+      "scale_px_per_dp": 1.0
+    },
+    "native_raw": {
+      "crop_rect_px": {
+        "bottom": 148,
+        "left": 222,
+        "right": 288,
+        "top": 116
+      },
+      "dimensions": [
+        66,
+        32
+      ],
+      "file": "native-raw.png",
+      "scale_px_per_dp": 1.0
+    },
+    "reference": {
+      "canonical_rect_dp": {
+        "bottom": 333,
+        "left": 1196,
+        "right": 1260,
+        "top": 301
+      },
+      "crop_rect_px": {
+        "bottom": 333,
+        "left": 1196,
+        "right": 1260,
+        "top": 301
+      },
+      "dimensions": [
+        64,
+        32
+      ],
+      "file": "reference.png",
+      "scale_px_per_dp": 1.0
+    }
+  },
+  "schema": "rust-ui.devctl.compare-element/0.2",
+  "scope": {
+    "tier_of_target": "core",
+    "tiers": [
+      "core"
+    ]
+  },
+  "visual_canonical": {
+    "actual": [
+      66,
+      32
+    ],
+    "difference_bbox": {
+      "height": 32.0,
+      "width": 66.0,
+      "x": 0.0,
+      "y": 0.0
+    },
+    "dimensions": [
+      66,
+      32
+    ],
+    "dimensions_match": false,
+    "expected": [
+      64,
+      32
+    ],
+    "max_channel_delta": 255,
+    "mean_absolute_channel_error": 22.98035037878788,
+    "mismatch_percent": 29.356060606060606,
+    "mismatched_pixels": 620,
+    "missing_pixels": 64,
+    "pass": false,
+    "pixel_domain": "union canvas; absent samples transparent; missing pixels always mismatch",
+    "tolerance": 2
+  },
+  "visual_raw": {
+    "actual": [
+      66,
+      32
+    ],
+    "computed": true,
+    "difference_bbox": {
+      "height": 32.0,
+      "width": 66.0,
+      "x": 0.0,
+      "y": 0.0
+    },
+    "dimensions": [
+      66,
+      32
+    ],
+    "dimensions_match": false,
+    "expected": [
+      64,
+      32
+    ],
+    "max_channel_delta": 255,
+    "mean_absolute_channel_error": 22.98035037878788,
+    "mismatch_percent": 29.356060606060606,
+    "mismatched_pixels": 620,
+    "missing_pixels": 64,
+    "pass": false,
+    "pixel_domain": "union canvas; absent samples transparent; missing pixels always mismatch",
+    "tolerance": 2
+  }
+}

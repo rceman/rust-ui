@@ -105,6 +105,9 @@ pub enum ColorRole {
 
 #[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
 pub enum Space {
+    /// no spacing — for component chrome that carries its own exact
+    /// geometry instead of inheriting generic container defaults
+    None,
     Xs,
     #[default]
     Sm,
@@ -115,6 +118,7 @@ pub enum Space {
 impl Space {
     pub fn dp(self) -> Dp {
         Dp(match self {
+            Space::None => 0.0,
             Space::Xs => 4.0,
             Space::Sm => 8.0,
             Space::Md => 12.0,

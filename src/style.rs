@@ -1559,6 +1559,78 @@ pub fn card_spacing(size: crate::theme::CardSize) -> Dp {
     }
 }
 
+// ------------------------- card part recipes ------------------------------
+// The parts composed inside a `ui.card` body (`#header`, `#title`,
+// `#description`, `#content`, `#footer`) carry the frozen contract chrome
+// and typography — these recipes centralize it so part geometry never
+// inherits generic container defaults. `size` selects Default / Sm.
+
+/// `#header` / `#content` horizontal inset — the `--card-spacing` token
+/// (16 Default / 12 Sm) applied to the left/right edges only.
+pub fn card_part_insets(size: crate::theme::CardSize) -> Insets {
+    let p = card_spacing(size);
+    Insets {
+        right: p,
+        left: p,
+        ..Insets::default()
+    }
+}
+
+/// `#header` / `#content` box chrome — carries only the horizontal inset
+/// so the part's `padding` doesn't inherit a container default.
+pub fn card_part_box(size: crate::theme::CardSize) -> BoxStyle {
+    BoxStyle {
+        padding: card_part_insets(size),
+        ..BoxStyle::default()
+    }
+}
+
+/// `#header.title` — Default `16px / lh22`, Sm `14px / lh19.25`, medium.
+pub fn card_title_style(size: crate::theme::CardSize) -> TextStyle {
+    let (fs, lh) = match size {
+        crate::theme::CardSize::Default => (16.0, 22.0),
+        crate::theme::CardSize::Sm => (14.0, 19.25),
+    };
+    TextStyle {
+        foreground: Color::Role(ColorRole::CardForeground),
+        size: TextSize::Exact(Dp(fs)),
+        weight: TextWeight::Medium,
+        line_height: Some(Dp(lh)),
+        ..TextStyle::default()
+    }
+}
+
+/// `#content` body text — `14px / lh20` in `CardForeground`.
+pub fn card_content_style() -> TextStyle {
+    TextStyle {
+        foreground: Color::Role(ColorRole::CardForeground),
+        size: TextSize::Exact(Dp(14.0)),
+        line_height: Some(Dp(20.0)),
+        ..TextStyle::default()
+    }
+}
+
+/// `#footer` chrome — `bg-muted/50`, `1dp` `border-t`, `--card-spacing`
+/// padding on all sides. Buttons inside are `Sm`, right-aligned.
+pub fn card_footer_style(size: crate::theme::CardSize) -> BoxStyle {
+    let p = card_spacing(size);
+    BoxStyle {
+        background: Color::Role(ColorRole::Muted50),
+        border: Border {
+            top: BorderSide::new(Dp(1.0), Color::Role(ColorRole::Border)),
+            ..Border::default()
+        },
+        radii: CornerRadii::default(),
+        padding: Insets {
+            top: p,
+            right: p,
+            bottom: p,
+            left: p,
+        },
+        shadow: None,
+    }
+}
+
 /// Label recipe — foreground role + body text.
 pub fn label_recipe() -> TextStyle {
     TextStyle::default()

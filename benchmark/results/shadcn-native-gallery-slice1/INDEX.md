@@ -1,6 +1,7 @@
 # Shadcn Native Gallery — Slice 1 parity evidence
 
-Candidate: `cbb39d31985567861a68fec39f22b95728310e36`
+Candidate: rework of `8247984` (V01-V06)
+Production base: `cbb39d31985567861a68fec39f22b95728310e36`
 (branch `agent/shadcn-native-gallery-slice1-opus55`, authoritative checkout
 `/home/therceman/git/rust-ui`)
 
@@ -23,8 +24,8 @@ canonical raster. One `el-<id>/` dir per element: `reference.png`,
 | all `button.*` | +0.4 … +4.0 | 0.0 | text-measure noise (below) |
 | all `button.default.size-*` | +0.0 … +1.3 | 0.0 | heights exact after row-align fix |
 | all `icon-button.*` | 0.0 | 0.0 | exact |
-| `card.default` | 0.0 | −4.4 | card interior spacing |
-| `card.default.size-sm` | 0.0 | +6.4 | card interior spacing |
+| `card.default` | 0.0 | 0.0 | fixed — V05 card part recipes |
+| `card.default.size-sm` | 0.0 | 0.0 | fixed — V05 card part recipes |
 
 - **Height** is exact for every size specimen — the `cross_v` row-align
   fix (`src/platform/win32/layout.rs`) removed a stretch-to-max bug; all

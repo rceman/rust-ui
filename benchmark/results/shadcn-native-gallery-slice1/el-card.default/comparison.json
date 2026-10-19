@@ -12,13 +12,13 @@
   },
   "geometry": {
     "actual": {
-      "height": 170.62109375,
+      "height": 175.0,
       "width": 288.0,
       "x": 48.0,
       "y": 544.0
     },
     "delta": {
-      "height": -4.37890625,
+      "height": 0.0,
       "width": 0.0,
       "x": -112.0,
       "y": -1722.0
@@ -31,7 +31,7 @@
     },
     "id": "card.default",
     "native_id": "card.default",
-    "pass": false,
+    "pass": true,
     "tier": "core",
     "tolerance": 0.25
   },
@@ -40,26 +40,26 @@
   "normalization": {
     "canonical_dimensions": [
       288,
-      171
+      175
     ],
     "identity": true,
     "resampler": "area-box/1",
     "source_dimensions": [
       288,
-      171
+      175
     ],
     "source_scale": 1.0,
     "target_scale": 1.0,
     "transform": {
       "canonical_rect_dp": {
-        "bottom": 715,
+        "bottom": 719,
         "left": 48,
         "right": 336,
         "top": 544
       },
       "mapping": "source_px = canonical_px * source_scale",
       "source_footprint_px": {
-        "height": 171.0,
+        "height": 175.0,
         "width": 288.0,
         "x": 48.0,
         "y": 544.0
@@ -71,28 +71,28 @@
   "raster": {
     "native_canonical": {
       "canonical_rect_dp": {
-        "bottom": 715,
+        "bottom": 719,
         "left": 48,
         "right": 336,
         "top": 544
       },
       "dimensions": [
         288,
-        171
+        175
       ],
       "file": "native-canonical.png",
       "scale_px_per_dp": 1.0
     },
     "native_raw": {
       "crop_rect_px": {
-        "bottom": 715,
+        "bottom": 719,
         "left": 48,
         "right": 336,
         "top": 544
       },
       "dimensions": [
         288,
-        171
+        175
       ],
       "file": "native-raw.png",
       "scale_px_per_dp": 1.0
@@ -128,7 +128,7 @@
   "visual_canonical": {
     "actual": [
       288,
-      171
+      175
     ],
     "difference_bbox": {
       "height": 175.0,
@@ -140,16 +140,16 @@
       288,
       175
     ],
-    "dimensions_match": false,
+    "dimensions_match": true,
     "expected": [
       288,
       175
     ],
-    "max_channel_delta": 255,
-    "mean_absolute_channel_error": 21.334464285714287,
-    "mismatch_percent": 40.464285714285715,
-    "mismatched_pixels": 20394,
-    "missing_pixels": 1152,
+    "max_channel_delta": 245,
+    "mean_absolute_channel_error": 6.218268849206349,
+    "mismatch_percent": 8.670634920634921,
+    "mismatched_pixels": 4370,
+    "missing_pixels": 0,
     "pass": false,
     "pixel_domain": "union canvas; absent samples transparent; missing pixels always mismatch",
     "tolerance": 2
@@ -157,7 +157,7 @@
   "visual_raw": {
     "actual": [
       288,
-      171
+      175
     ],
     "computed": true,
     "difference_bbox": {
@@ -170,16 +170,16 @@
       288,
       175
     ],
-    "dimensions_match": false,
+    "dimensions_match": true,
     "expected": [
       288,
       175
     ],
-    "max_channel_delta": 255,
-    "mean_absolute_channel_error": 21.334464285714287,
-    "mismatch_percent": 40.464285714285715,
-    "mismatched_pixels": 20394,
-    "missing_pixels": 1152,
+    "max_channel_delta": 245,
+    "mean_absolute_channel_error": 6.218268849206349,
+    "mismatch_percent": 8.670634920634921,
+    "mismatched_pixels": 4370,
+    "missing_pixels": 0,
     "pass": false,
     "pixel_domain": "union canvas; absent samples transparent; missing pixels always mismatch",
     "tolerance": 2

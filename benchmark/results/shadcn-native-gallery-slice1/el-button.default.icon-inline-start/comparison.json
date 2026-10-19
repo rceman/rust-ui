@@ -13,14 +13,14 @@
   "geometry": {
     "actual": {
       "height": 32.0,
-      "width": 104.5908203125,
-      "x": 278.6900329589844,
+      "width": 102.5908203125,
+      "x": 272.6900329589844,
       "y": 298.0
     },
     "delta": {
       "height": 0.0,
-      "width": 4.027820312499998,
-      "x": -447.0289670410157,
+      "width": 2.0278203124999976,
+      "x": -453.0289670410157,
       "y": -539.0
     },
     "expected": {
@@ -39,13 +39,13 @@
   "native_id": "button.default.icon-inline-start",
   "normalization": {
     "canonical_dimensions": [
-      104,
+      102,
       32
     ],
     "identity": true,
     "resampler": "area-box/1",
     "source_dimensions": [
-      104,
+      102,
       32
     ],
     "source_scale": 1.0,
@@ -53,15 +53,15 @@
     "transform": {
       "canonical_rect_dp": {
         "bottom": 330,
-        "left": 279,
-        "right": 383,
+        "left": 273,
+        "right": 375,
         "top": 298
       },
       "mapping": "source_px = canonical_px * source_scale",
       "source_footprint_px": {
         "height": 32.0,
-        "width": 104.0,
-        "x": 279.0,
+        "width": 102.0,
+        "x": 273.0,
         "y": 298.0
       }
     }
@@ -72,12 +72,12 @@
     "native_canonical": {
       "canonical_rect_dp": {
         "bottom": 330,
-        "left": 279,
-        "right": 383,
+        "left": 273,
+        "right": 375,
         "top": 298
       },
       "dimensions": [
-        104,
+        102,
         32
       ],
       "file": "native-canonical.png",
@@ -86,12 +86,12 @@
     "native_raw": {
       "crop_rect_px": {
         "bottom": 330,
-        "left": 279,
-        "right": 383,
+        "left": 273,
+        "right": 375,
         "top": 298
       },
       "dimensions": [
-        104,
+        102,
         32
       ],
       "file": "native-raw.png",
@@ -127,17 +127,17 @@
   },
   "visual_canonical": {
     "actual": [
-      104,
+      102,
       32
     ],
     "difference_bbox": {
       "height": 32.0,
-      "width": 104.0,
+      "width": 102.0,
       "x": 0.0,
       "y": 0.0
     },
     "dimensions": [
-      104,
+      102,
       32
     ],
     "dimensions_match": false,
@@ -146,28 +146,28 @@
       32
     ],
     "max_channel_delta": 255,
-    "mean_absolute_channel_error": 35.61884014423077,
-    "mismatch_percent": 34.43509615384615,
-    "mismatched_pixels": 1146,
-    "missing_pixels": 128,
+    "mean_absolute_channel_error": 31.982919730392158,
+    "mismatch_percent": 31.832107843137255,
+    "mismatched_pixels": 1039,
+    "missing_pixels": 64,
     "pass": false,
     "pixel_domain": "union canvas; absent samples transparent; missing pixels always mismatch",
     "tolerance": 2
   },
   "visual_raw": {
     "actual": [
-      104,
+      102,
       32
     ],
     "computed": true,
     "difference_bbox": {
       "height": 32.0,
-      "width": 104.0,
+      "width": 102.0,
       "x": 0.0,
       "y": 0.0
     },
     "dimensions": [
-      104,
+      102,
       32
     ],
     "dimensions_match": false,
@@ -176,10 +176,10 @@
       32
     ],
     "max_channel_delta": 255,
-    "mean_absolute_channel_error": 35.61884014423077,
-    "mismatch_percent": 34.43509615384615,
-    "mismatched_pixels": 1146,
-    "missing_pixels": 128,
+    "mean_absolute_channel_error": 31.982919730392158,
+    "mismatch_percent": 31.832107843137255,
+    "mismatched_pixels": 1039,
+    "missing_pixels": 64,
     "pass": false,
     "pixel_domain": "union canvas; absent samples transparent; missing pixels always mismatch",
     "tolerance": 2

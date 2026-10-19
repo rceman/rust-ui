@@ -31,7 +31,7 @@ pub enum Typography {
     Small,
     /// `typography.muted` — 14/400 lh20 muted
     Muted,
-    /// `typography.inline-code` — mono 14/600 lh20 on muted chrome
+    /// `typography.inline-code` — mono 13/600 lh20 on muted chrome
     InlineCode,
 }
 
@@ -90,7 +90,7 @@ impl Typography {
             }
             Typography::InlineCode => {
                 s.font = FontFamily::Mono;
-                s.size = crate::style::TextSize::Exact(Dp(14.0));
+                s.size = crate::style::TextSize::Exact(Dp(13.0));
                 s.weight = TextWeight::Semibold;
                 s.line_height = Some(Dp(20.0));
             }

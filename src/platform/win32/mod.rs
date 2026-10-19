@@ -32,6 +32,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use windows::Win32::Foundation::*;
+use windows::Win32::Graphics::Dwm::{DWMWA_USE_IMMERSIVE_DARK_MODE, DwmSetWindowAttribute};
 use windows::Win32::System::Threading::{
     CREATE_EVENT, CreateEventExW, EVENT_ALL_ACCESS, INFINITE, SetEvent,
 };
@@ -359,6 +360,10 @@ where
 {
     pub rt: crate::runtime::Runtime<S, M, U, V>,
     pub hwnd: HWND,
+    /// last applied non-client dark appearance — `DWMWA_USE_IMMERSIVE_
+    /// DARK_MODE` is synced when the resolved theme.light/dark changes
+    /// (incl. System-driven), never by recreating the window
+    pub dark_caption: std::cell::Cell<Option<bool>>,
     pub peer_ctx: Rc<PeerCtx>,
     pub renderer: RefCell<Renderer>,
     /// laid-out rects in DIP, keyed by live NodeId — pruned on remove
@@ -463,6 +468,7 @@ where
             paint_epoch: std::cell::Cell::new(0),
             rt,
             hwnd: HWND::default(),
+            dark_caption: std::cell::Cell::new(None),
             peer_ctx,
             renderer: RefCell::new(Renderer::new()?),
             rects: HashMap::new(),
@@ -671,6 +677,26 @@ where
     /// `pump_queued` is set ONLY when the post actually lands; a failed
     /// post rolls the flag back and surfaces a typed error — the caller's
     /// fatal path propagates it. Guaranteed-progress semantics are real.
+    /// Sync the top-level non-client caption to the resolved dark
+    /// appearance via `DWMWA_USE_IMMERSIVE_DARK_MODE`. Receives a generic
+    /// resolved light/dark bool — no Shadcn/theme types cross this
+    /// platform boundary. Only re-issues the attribute on change.
+    fn sync_dark_caption(&self, dark: bool) {
+        if self.hwnd.0.is_null() || self.dark_caption.get() == Some(dark) {
+            return;
+        }
+        let val: BOOL = BOOL::from(dark);
+        unsafe {
+            let _ = DwmSetWindowAttribute(
+                self.hwnd,
+                DWMWA_USE_IMMERSIVE_DARK_MODE,
+                &val as *const _ as *const c_void,
+                std::mem::size_of::<BOOL>() as u32,
+            );
+        }
+        self.dark_caption.set(Some(dark));
+    }
+
     pub(crate) fn wake_pump(&self) -> UiResult {
         if self.hwnd.0.is_null() || self.closed.load(Ordering::SeqCst) || self.pump_queued.get() {
             return Ok(()); // nothing to wake, or already armed
@@ -739,6 +765,9 @@ where
         {
             let appearance = self.rt.appearance();
             let dark = self.rt.theme.dark;
+            // V01 — keep the native non-client caption in sync with the
+            // resolved light/dark appearance (no window recreation)
+            self.sync_dark_caption(dark);
             let forced = appearance.forced_colors;
             let sys = self.peer_ctx.sys_resolver.get();
             let (_fg, sel_bg, sel_fg) = palette(&self.rt.theme, &appearance, &sys);
@@ -2923,6 +2952,7 @@ where
         paint_epoch: std::cell::Cell::new(0),
         rt,
         hwnd: HWND::default(),
+        dark_caption: std::cell::Cell::new(None),
         peer_ctx,
         renderer: RefCell::new(Renderer::new()?),
         rects: HashMap::new(),

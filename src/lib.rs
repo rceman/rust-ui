@@ -69,7 +69,8 @@ pub mod prelude {
         Action, ActionStyle, Border, BorderPatch, BorderSide, BorderSidePatch, BoxProps, BoxStyle,
         BoxStylePatch, ButtonStylePatch, Color, CornerRadii, CornerRadiiPatch, Insets, InsetsPatch,
         Shadow, ShadowPatch, StateStyles, TextSize, TextStyle, TextStylePatch, TextWeight,
-        VisualStyle, VisualStylePatch,
+        VisualStyle, VisualStylePatch, card_content_style, card_footer_style, card_part_box,
+        card_part_insets, card_spacing, card_title_style,
     };
     pub use crate::text::{
         AcceptOutcome, BindingToken, EditOrigin, TextConflict, TextEdit, TextRevision,
