@@ -1,5 +1,10 @@
 #![cfg(all(windows, feature = "devtools"))]
-//! Real CLI + pipe + retained runtime + WGC acceptance. Build devctl_probe first.
+//! Real CLI + pipe + retained runtime + WGC protocol integration. The
+//! internal `rust-ui-devctl-test-fixture` binary is built by Cargo
+//! automatically — its path arrives through CARGO_BIN_EXE_ (no manual
+//! build step). The real Shadcn acceptance application is
+//! `examples/gallery`; this synthetic fixture exists only because the
+//! protocol test needs a deterministic executable.
 use rust_ui::devtools::{self as d, Image, Snapshot};
 use serde_json::{Value, json};
 use std::{
@@ -81,14 +86,8 @@ fn native_agent_workflow_and_bounded_repetition() {
         d::client::nonce().unwrap()
     ));
     std::fs::create_dir(&root).unwrap();
-    let exe = Path::new(env!("CARGO_BIN_EXE_rust-ui-devctl"))
-        .parent()
-        .unwrap()
-        .join("examples/devctl_probe.exe");
-    assert!(
-        exe.exists(),
-        "build --features devtools --example devctl_probe first"
-    );
+    let exe = Path::new(env!("CARGO_BIN_EXE_rust-ui-devctl-test-fixture")).to_path_buf();
+    assert!(exe.exists(), "internal devctl test fixture binary must exist");
     for cycle in 0..3 {
         let file = root.join(format!("session-{cycle}.json"));
         let owner = Session { file: file.clone() };
@@ -205,7 +204,7 @@ fn native_agent_workflow_and_bounded_repetition() {
         let edited: Snapshot = serde_json::from_value(action(session, "tree", &[])).unwrap();
         assert_eq!(
             edited.index().unwrap()["probe.input"].0.label,
-            "Calibration tex",
+            "Fixture tex",
             "basic native key must reach committed application TextValue"
         );
         action(session, "focus", &["probe.button"]);

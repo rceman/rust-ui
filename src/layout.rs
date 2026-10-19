@@ -8,7 +8,7 @@
 //!   authority. Win32's `layout.rs` drives the pass; this file owns the
 //!   arithmetic policy.
 
-use crate::geom::{Dp, Rect};
+use crate::geom::{Dp, Justify, Rect};
 use crate::node::{NodeData, NodeId};
 use crate::style::{BoxStyle, Insets, TextInputStylePatch};
 
@@ -79,6 +79,21 @@ pub fn waterfill(avail: f32, items: &[FillItem]) -> Vec<f32> {
             }
         })
         .collect()
+}
+
+/// Main-axis origin offset for a justified container — the ONE policy
+/// shared by the Row (horizontal) and Column/Card (vertical) walk
+/// branches so the two axes can never drift. `used` is the summed child
+/// main-axis sizes plus gaps; slack is clamped at zero so overflow never
+/// shifts origins negative, and Fill children have already consumed the
+/// axis (leaving no slack) before this runs.
+pub fn justify_offset(justify: Justify, inner_main: f32, used: f32) -> f32 {
+    let slack = (inner_main - used).max(0.0);
+    match justify {
+        Justify::Start => 0.0,
+        Justify::Center => slack / 2.0,
+        Justify::End => slack,
+    }
 }
 
 // ---------------------------------------------------------------------------

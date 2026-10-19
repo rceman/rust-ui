@@ -40,7 +40,7 @@ where
         snapshot.index()?;
         Ok(snapshot)
     }
-    fn dev_node(&self, id: NodeId, depth: usize, count: &mut usize) -> Result<Node> {
+    pub(crate) fn dev_node(&self, id: NodeId, depth: usize, count: &mut usize) -> Result<Node> {
         *count += 1;
         if depth > 128 || *count > 8192 {
             return Err(Error::new("MESSAGE_TOO_LARGE", "semantic tree limit"));
@@ -106,6 +106,9 @@ where
         // part-marked child is collected by its owner, not self-emitted.
         let mut parts = Vec::new();
         if n.automation_id.is_some() {
+            // the owner's own part key seeds the descendant prefix so
+            // nested `ui.part` chains compose `pre.line[1]`, not `line[1]`
+            let mut prefix = Vec::new();
             if let Some(pk) = &n.part_key {
                 parts.push(d::PartNode {
                     key: pk.to_string(),
@@ -124,8 +127,9 @@ where
                     visible: n.visibility == crate::Visibility::Visible,
                     reason: None,
                 });
+                prefix.push(pk.to_string());
             }
-            self.collect_parts(id, &mut Vec::new(), &mut parts);
+            self.collect_parts(id, &mut prefix, &mut parts);
             if let NodeData::Button {
                 icon_start,
                 icon_end,
@@ -148,25 +152,40 @@ where
                         false,
                         *invalid,
                     );
-                    if let Some(ir) = crate::layout::button_icon_rect(&n.data, &vs, &r, false) {
-                        let ip = ir.physical(self.peer_ctx.scale.get());
-                        parts.push(d::PartNode {
-                            key: "icon".into(),
-                            rect_dp: Rect {
-                                x: ir.x as f64,
-                                y: ir.y as f64,
-                                width: ir.width as f64,
-                                height: ir.height as f64,
-                            },
-                            rect_px: Rect {
-                                x: ip.left as f64,
-                                y: ip.top as f64,
-                                width: (ip.right - ip.left) as f64,
-                                height: (ip.bottom - ip.top) as f64,
-                            },
-                            visible: n.visibility == crate::Visibility::Visible,
-                            reason: None,
-                        });
+                    // one part per populated icon edge, mirroring the paint
+                    // path: a single edge keeps the canonical `icon` key;
+                    // a both-edge button gets `icon.start` / `icon.end` so
+                    // no populated edge silently disappears.
+                    let both = icon_start.is_some() && icon_end.is_some();
+                    let mut emit_icon = |end: bool, key: &str| {
+                        if let Some(ir) = crate::layout::button_icon_rect(&n.data, &vs, &r, end) {
+                            let ip = ir.physical(self.peer_ctx.scale.get());
+                            parts.push(d::PartNode {
+                                key: key.into(),
+                                rect_dp: Rect {
+                                    x: ir.x as f64,
+                                    y: ir.y as f64,
+                                    width: ir.width as f64,
+                                    height: ir.height as f64,
+                                },
+                                rect_px: Rect {
+                                    x: ip.left as f64,
+                                    y: ip.top as f64,
+                                    width: (ip.right - ip.left) as f64,
+                                    height: (ip.bottom - ip.top) as f64,
+                                },
+                                visible: n.visibility == crate::Visibility::Visible,
+                                reason: None,
+                            });
+                        }
+                    };
+                    if *icon_only {
+                        emit_icon(false, "icon");
+                    } else if both {
+                        emit_icon(false, "icon.start");
+                        emit_icon(true, "icon.end");
+                    } else {
+                        emit_icon(icon_start.is_none(), "icon");
                     }
                 }
             }

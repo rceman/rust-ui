@@ -13,7 +13,7 @@ On native Windows, from the repository root:
 cargo build --locked --features devtools --all-targets
 $ctl = '.\target\debug\rust-ui-devctl.exe'
 New-Item -ItemType Directory -Force .devctl | Out-Null
-& $ctl launch --exe .\target\debug\examples\devctl_probe.exe --session .devctl\session.json --json
+& $ctl launch --exe .\target\debug\rust-ui-devctl-test-fixture.exe --session .devctl\session.json --json
 ```
 
 `devtools` enables the CLI, protocol/comparison helpers and Windows instrumentation.
@@ -85,7 +85,7 @@ OS modifier state applies, as it does to real input; release physical modifiers
 for deterministic unmodified actions. Character typing, modifier chords, IME
 synthesis, scroll-into-view and hidden targets are outside v0.1. Unsupported keys
 fail explicitly. Input editing remains native RichEdit, with the application's
-normal TextEdit acknowledgement. The probe's input label in a snapshot is the
+normal TextEdit acknowledgement. The fixture's input label in a snapshot is the
 retained committed TextValue, not an independent native read.
 
 ## Idle and presentation
@@ -174,7 +174,7 @@ Comparators run offline, including on Linux without a Linux UI backend:
 ```
 
 Use native IDs that match the frozen reference when implementing components.
-The calibration probe deliberately has generic probe IDs and no Shadcn styling.
+The internal test fixture deliberately has generic probe IDs and no Shadcn styling.
 The read-only adapter consumes `contract/0.2` capture keys (`page/state`) directly;
 there is no manually duplicated contract. Geometry is theme independent; choose
 Light/Dark with the reference-image path. Full-document reference images need no
@@ -293,7 +293,9 @@ The Windows integration test uses the actual CLI, owned process, pipe, runtime a
 WGC. It tests semantic effects, pressed/hover crops, committed native keyboard
 edit, deterministic snapshots, comparator negative controls, authentication,
 stale receipt cleanup, target handle counts and three complete shutdown cycles.
-Build the probe before running that test. Portable helpers and semantic-ID tests
+The internal `rust-ui-devctl-test-fixture` binary target builds automatically and
+reaches the test through `CARGO_BIN_EXE_`; no manual example build is needed.
+Portable helpers and semantic-ID tests
 also run with `cargo test --locked --features devtools --lib` on Linux.
 
 Direct additions are optional `serde` (derive/std), `serde_json` (std JSON) and

@@ -10,7 +10,7 @@ use std::rc::Rc;
 
 use windows::Win32::Foundation::RECT;
 
-use crate::geom::{Align, Justify, Length, Visibility};
+use crate::geom::{Align, Length, Visibility};
 use crate::node::{
     KIND_ACTION, KIND_BOX, KIND_CARD, KIND_COLUMN, KIND_GROUP, KIND_ROW, KIND_SCOPE, KIND_STACK,
     KIND_SURFACE, NodeData,
@@ -378,7 +378,7 @@ impl LayoutCache {
     /// Recursively place one node: layout containers split, transparent
     /// kinds project children onto the enclosing axis, leaves take the
     /// whole rect.
-    fn walk<S, M, U, V>(
+    pub(crate) fn walk<S, M, U, V>(
         &self,
         rt: &mut crate::runtime::Runtime<S, M, U, V>,
         ctx: &PeerCtx,
@@ -471,7 +471,19 @@ impl LayoutCache {
                     inner.height - gap * ids.len().saturating_sub(1) as f32,
                     &items,
                 );
-                let mut y = inner.y;
+                // main-axis justify — symmetric with KIND_ROW through the
+                // shared `justify_offset` policy: Start packs at inner.y,
+                // Center/End offset the whole used span, overflow clamps
+                // slack to zero so origins never shift negative. Fill
+                // children consume the space first.
+                let used: f32 =
+                    sizes.iter().sum::<f32>() + gap * sizes.len().saturating_sub(1) as f32;
+                let mut y = inner.y
+                    + crate::layout::justify_offset(
+                        props.justify.unwrap_or_default(),
+                        inner.height,
+                        used,
+                    );
                 for (it, sz) in items.iter().zip(sizes.iter()) {
                     // cross axis: align — Stretch fills, others keep natural
                     let (nw, _) = natural(rt, ctx, it.id, inner.width, &mut measurer);
@@ -513,17 +525,17 @@ impl LayoutCache {
                     &items,
                 );
                 // main-axis justify — Start (default) packs at inner.x,
-                // Center/End offset the whole used span. No SpaceBetween
-                // variant exists in the current Justify contract.
+                // Center/End offset the whole used span via the shared
+                // `justify_offset` policy. No SpaceBetween variant exists
+                // in the current Justify contract.
                 let used: f32 =
                     sizes.iter().sum::<f32>() + gap * sizes.len().saturating_sub(1) as f32;
-                let slack = (inner.width - used).max(0.0);
                 let mut x = inner.x
-                    + match props.justify.unwrap_or_default() {
-                        Justify::Start => 0.0,
-                        Justify::Center => slack / 2.0,
-                        Justify::End => slack,
-                    };
+                    + crate::layout::justify_offset(
+                        props.justify.unwrap_or_default(),
+                        inner.width,
+                        used,
+                    );
                 for (it, sz) in items.iter().zip(sizes.iter()) {
                     // cross axis: align — Stretch fills the row height,
                     // Start/Center/End keep the child's natural height

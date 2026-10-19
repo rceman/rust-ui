@@ -1261,7 +1261,11 @@ pub(crate) fn draw_shadow(
     let sigma = shadow.blur_sigma.0.max(0.0);
     let spread = shadow.spread.0;
     let [sr, sg, sb, sa] = crate::style::resolve_color(shadow.color, dark);
-    if sa <= 0.0 || !shadow.offset_x.0.is_finite() || !shadow.offset_y.0.is_finite() {
+    if sa <= 0.0
+        || !shadow.offset_x.0.is_finite()
+        || !shadow.offset_y.0.is_finite()
+        || !shadow.spread.0.is_finite()
+    {
         return Ok(());
     }
     let einval =
