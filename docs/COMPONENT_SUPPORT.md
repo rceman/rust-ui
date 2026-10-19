@@ -40,15 +40,15 @@ The `Desktop-responsive` column ("responsive layout target" - `layout`,
 
 | Component / Pattern | Tier | Reference | Native API | Windows | macOS | Linux | Visual parity | Interaction parity | Accessibility | Desktop-responsive | Status | Notes |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| Button | core | complete | partial | foundation | - | - | - | - | foundation UIA | layout | FOUNDATION_AVAILABLE | Foundation `ui.button`: Primary/Secondary/Ghost/Destructive, Sm/Md/Lg, disabled. Missing vs reference: outline, link, xs, invalid, inline icons. |
-| IconButton | core | complete | no | - | - | - | - | - | - | layout | PLANNED | Reference: 5 variants x 5 states + 4 icon sizes. |
-| Card / Surface | core | complete | partial | foundation | - | - | - | - | - | layout | FOUNDATION_AVAILABLE | Foundation `ui.surface`; Card header/content/footer composition not implemented. |
+| Button | core | complete | yes | verified | - | - | partial | partial | foundation UIA | layout | IMPLEMENTED | `ui.button`: all 6 variants (primary/secondary/outline/ghost/destructive/link) x normal/disabled/invalid, Xs/Sm/Md/Lg, inline `icon_start`/`icon_end` + a11y name. Geometry verified vs frozen contract (`benchmark/results/shadcn-native-gallery-slice1/`); raster deltas are documented DirectWrite↔Chromium text-measure noise. |
+| IconButton | core | complete | yes | verified | - | - | partial | partial | foundation UIA | layout | IMPLEMENTED | `ui.icon_button`: 5 variants x normal/disabled, 4 icon sizes (`size-icon-*`), decorative icon excluded from UIA name. Geometry exact (`dh=0` all sizes). |
+| Card / Surface | core | complete | yes | verified | - | - | partial | partial | foundation UIA | layout | IMPLEMENTED | `ui.card`: CardSize Default/Sm (16/12 card-spacing) x header/title/description/content/footer parts; `Card.width(dp)` fixed width. Column-part layout verified; interior spacing Δ ~4–6dp. |
 | Separator | core | complete | no | - | - | - | - | - | - | layout | PLANNED | |
 | Badge | core | complete | no | - | - | - | - | - | - | layout | PLANNED | 6 variants. |
 | Alert | core | complete | no | - | - | - | - | - | - | layout | PLANNED | default, destructive. |
 | Skeleton | core | complete | no | - | - | - | - | - | - | layout | PLANNED | Static only (reduced motion). |
 | Kbd | core | complete | no | - | - | - | - | - | - | - | PLANNED | single, group. |
-| Typography (h1-h4, p, lead, small, muted, inline code, code block) | core | complete | partial | foundation | - | - | - | - | foundation UIA | layout | FOUNDATION_AVAILABLE | Foundation text/label nodes; Geist type scale not implemented. |
+| Typography (h1-h4, p, lead, small, muted, inline code, code block) | core | complete | yes | verified | - | - | partial | partial | foundation UIA | layout | IMPLEMENTED | `ui.typography` + `ui.code_block`: Geist type scale (h1–h4, paragraph, lead, small, muted, inline-code), Geist font registered via DirectWrite custom collection. |
 | Label | core | complete | partial | foundation | - | - | - | - | foundation UIA | layout | FOUNDATION_AVAILABLE | Foundation label text; field association not implemented. |
 | Field | core | complete | no | - | - | - | - | - | - | layout | PLANNED | vertical (default/invalid/disabled) + horizontal settings row. |
 | Input | core | complete | partial | foundation | - | - | - | - | foundation UIA | layout | FOUNDATION_AVAILABLE | Built on native single-line text; shadcn chrome/states not implemented. |

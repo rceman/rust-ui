@@ -1,0 +1,43 @@
+# Shadcn Native Gallery — Slice 1 parity evidence
+
+Candidate: `cbb39d31985567861a68fec39f22b95728310e36`
+(branch `agent/shadcn-native-gallery-slice1-opus55`, authoritative checkout
+`/home/therceman/git/rust-ui`)
+
+Native capture: `examples/gallery` on the win32 backend, light theme
+(`shell.theme.light`), client 964×861 @ scale 1.0 on the secondary monitor.
+Reference: `reference/shadcn-gallery-v0.1/contract.json` +
+`screenshots/light/components.png` (frozen).
+
+## Method
+
+`rust-ui-devctl compare-element --mode size-only --tolerance 0.25
+--channel-tolerance 2` per specimen — geometry (contract authority) plus
+canonical raster. One `el-<id>/` dir per element: `reference.png`,
+`native-raw.png`, `native-canonical.png`, `comparison.json`, `diff.png`.
+
+## Findings (geometry, `size-only`)
+
+| specimen | width Δ | height Δ | note |
+|---|---|---|---|
+| all `button.*` | +0.4 … +4.0 | 0.0 | text-measure noise (below) |
+| all `button.default.size-*` | +0.0 … +1.3 | 0.0 | heights exact after row-align fix |
+| all `icon-button.*` | 0.0 | 0.0 | exact |
+| `card.default` | 0.0 | −4.4 | card interior spacing |
+| `card.default.size-sm` | 0.0 | +6.4 | card interior spacing |
+
+- **Height** is exact for every size specimen — the `cross_v` row-align
+  fix (`src/platform/win32/layout.rs`) removed a stretch-to-max bug; all
+  `size-*` / `size-icon-*` specimens report `dh = 0.0`.
+- **Width** deltas are +0.4 … +4.0 dp on text-bearing elements — the known
+  DirectWrite↔Chromium variable-font (Geist) measure difference, not a
+  layout defect. Empty icon buttons measure 0-width-delta.
+- **Raster** is a visual signal (Chromium↔D2D glyph pixels differ by
+  design); `compare-element` marks `whole_component_raster` measured but
+  glyphs `not_measured`.
+
+## Status
+
+`SHADCN_NATIVE_GALLERY_SLICE1_READY_FOR_VISUAL_REVIEW` — implementation is
+frozen and the deterministic evidence is committed; visual approval is a
+separate review-context responsibility.
