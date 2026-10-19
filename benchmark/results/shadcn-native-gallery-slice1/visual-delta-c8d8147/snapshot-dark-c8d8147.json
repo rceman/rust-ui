@@ -1,0 +1,2540 @@
+{
+  "client_dp": {
+    "height": 682.4000244140625,
+    "width": 769.5999755859375,
+    "x": 0.0,
+    "y": 0.0
+  },
+  "client_px": {
+    "height": 853.0,
+    "width": 962.0,
+    "x": 0.0,
+    "y": 0.0
+  },
+  "root": {
+    "automation_id": null,
+    "children": [
+      {
+        "automation_id": "shell.root",
+        "children": [
+          {
+            "automation_id": "shell.header",
+            "children": [
+              {
+                "automation_id": "shell.nav",
+                "children": [
+                  {
+                    "automation_id": "shell.nav.all",
+                    "children": [],
+                    "enabled": false,
+                    "focus_visible": false,
+                    "focused": false,
+                    "hovered": false,
+                    "kind": "button",
+                    "label": "All",
+                    "pressed": false,
+                    "rect_dp": {
+                      "height": 24.0,
+                      "width": 34.326171875,
+                      "x": 48.0,
+                      "y": 48.0
+                    },
+                    "rect_px": {
+                      "height": 30.0,
+                      "width": 43.0,
+                      "x": 60.0,
+                      "y": 60.0
+                    },
+                    "visible": true
+                  },
+                  {
+                    "automation_id": "shell.nav.components",
+                    "children": [],
+                    "enabled": true,
+                    "focus_visible": false,
+                    "focused": false,
+                    "hovered": false,
+                    "kind": "button",
+                    "label": "Components",
+                    "pressed": false,
+                    "rect_dp": {
+                      "height": 24.0,
+                      "width": 89.533203125,
+                      "x": 86.326171875,
+                      "y": 48.0
+                    },
+                    "rect_px": {
+                      "height": 30.0,
+                      "width": 112.0,
+                      "x": 108.0,
+                      "y": 60.0
+                    },
+                    "visible": true
+                  },
+                  {
+                    "automation_id": "shell.nav.forms",
+                    "children": [],
+                    "enabled": false,
+                    "focus_visible": false,
+                    "focused": false,
+                    "hovered": false,
+                    "kind": "button",
+                    "label": "Forms",
+                    "pressed": false,
+                    "rect_dp": {
+                      "height": 24.0,
+                      "width": 53.439453125,
+                      "x": 179.859375,
+                      "y": 48.0
+                    },
+                    "rect_px": {
+                      "height": 30.0,
+                      "width": 67.0,
+                      "x": 225.0,
+                      "y": 60.0
+                    },
+                    "visible": true
+                  },
+                  {
+                    "automation_id": "shell.nav.navigation",
+                    "children": [],
+                    "enabled": false,
+                    "focus_visible": false,
+                    "focused": false,
+                    "hovered": false,
+                    "kind": "button",
+                    "label": "Navigation",
+                    "pressed": false,
+                    "rect_dp": {
+                      "height": 24.0,
+                      "width": 79.82421875,
+                      "x": 237.298828125,
+                      "y": 48.0
+                    },
+                    "rect_px": {
+                      "height": 30.0,
+                      "width": 99.0,
+                      "x": 297.0,
+                      "y": 60.0
+                    },
+                    "visible": true
+                  },
+                  {
+                    "automation_id": "shell.nav.typography",
+                    "children": [],
+                    "enabled": true,
+                    "focus_visible": false,
+                    "focused": false,
+                    "hovered": false,
+                    "kind": "button",
+                    "label": "Typography",
+                    "pressed": false,
+                    "rect_dp": {
+                      "height": 24.0,
+                      "width": 84.7578125,
+                      "x": 321.123046875,
+                      "y": 48.0
+                    },
+                    "rect_px": {
+                      "height": 30.0,
+                      "width": 106.0,
+                      "x": 401.0,
+                      "y": 60.0
+                    },
+                    "visible": true
+                  },
+                  {
+                    "automation_id": "shell.nav.overlays",
+                    "children": [],
+                    "enabled": false,
+                    "focus_visible": false,
+                    "focused": false,
+                    "hovered": false,
+                    "kind": "button",
+                    "label": "Overlays",
+                    "pressed": false,
+                    "rect_dp": {
+                      "height": 24.0,
+                      "width": 66.552734375,
+                      "x": 409.880859375,
+                      "y": 48.0
+                    },
+                    "rect_px": {
+                      "height": 30.0,
+                      "width": 84.0,
+                      "x": 512.0,
+                      "y": 60.0
+                    },
+                    "visible": true
+                  },
+                  {
+                    "automation_id": "shell.nav.native-text",
+                    "children": [],
+                    "enabled": false,
+                    "focus_visible": false,
+                    "focused": false,
+                    "hovered": false,
+                    "kind": "button",
+                    "label": "Native Text",
+                    "pressed": false,
+                    "rect_dp": {
+                      "height": 24.0,
+                      "width": 80.78515625,
+                      "x": 480.43359375,
+                      "y": 48.0
+                    },
+                    "rect_px": {
+                      "height": 30.0,
+                      "width": 101.0,
+                      "x": 601.0,
+                      "y": 60.0
+                    },
+                    "visible": true
+                  }
+                ],
+                "enabled": true,
+                "focus_visible": false,
+                "focused": false,
+                "hovered": false,
+                "kind": "container",
+                "label": "",
+                "pressed": false,
+                "rect_dp": {
+                  "height": 40.0,
+                  "width": 529.21875,
+                  "x": 40.0,
+                  "y": 40.0
+                },
+                "rect_px": {
+                  "height": 50.0,
+                  "width": 662.0,
+                  "x": 50.0,
+                  "y": 50.0
+                },
+                "visible": true
+              },
+              {
+                "automation_id": "shell.theme",
+                "children": [
+                  {
+                    "automation_id": "shell.theme.light",
+                    "children": [],
+                    "enabled": true,
+                    "focus_visible": false,
+                    "focused": false,
+                    "hovered": false,
+                    "kind": "button",
+                    "label": "Light theme",
+                    "parts": [
+                      {
+                        "key": "icon",
+                        "rect_dp": {
+                          "height": 12.0,
+                          "width": 12.0,
+                          "x": 591.21875,
+                          "y": 54.0
+                        },
+                        "rect_px": {
+                          "height": 15.0,
+                          "width": 15.0,
+                          "x": 739.0,
+                          "y": 68.0
+                        },
+                        "visible": true
+                      }
+                    ],
+                    "pressed": false,
+                    "rect_dp": {
+                      "height": 24.0,
+                      "width": 24.0,
+                      "x": 585.21875,
+                      "y": 48.0
+                    },
+                    "rect_px": {
+                      "height": 30.0,
+                      "width": 30.0,
+                      "x": 732.0,
+                      "y": 60.0
+                    },
+                    "visible": true
+                  },
+                  {
+                    "automation_id": "shell.theme.dark",
+                    "children": [],
+                    "enabled": true,
+                    "focus_visible": true,
+                    "focused": true,
+                    "hovered": true,
+                    "kind": "button",
+                    "label": "Dark theme",
+                    "parts": [
+                      {
+                        "key": "icon",
+                        "rect_dp": {
+                          "height": 12.0,
+                          "width": 12.0,
+                          "x": 619.21875,
+                          "y": 54.0
+                        },
+                        "rect_px": {
+                          "height": 15.0,
+                          "width": 15.0,
+                          "x": 774.0,
+                          "y": 68.0
+                        },
+                        "visible": true
+                      }
+                    ],
+                    "pressed": false,
+                    "rect_dp": {
+                      "height": 24.0,
+                      "width": 24.0,
+                      "x": 613.21875,
+                      "y": 48.0
+                    },
+                    "rect_px": {
+                      "height": 30.0,
+                      "width": 30.0,
+                      "x": 767.0,
+                      "y": 60.0
+                    },
+                    "visible": true
+                  },
+                  {
+                    "automation_id": "shell.theme.system",
+                    "children": [],
+                    "enabled": true,
+                    "focus_visible": false,
+                    "focused": false,
+                    "hovered": false,
+                    "kind": "button",
+                    "label": "System theme",
+                    "parts": [
+                      {
+                        "key": "icon",
+                        "rect_dp": {
+                          "height": 12.0,
+                          "width": 12.0,
+                          "x": 647.21875,
+                          "y": 54.0
+                        },
+                        "rect_px": {
+                          "height": 15.0,
+                          "width": 15.0,
+                          "x": 809.0,
+                          "y": 68.0
+                        },
+                        "visible": true
+                      }
+                    ],
+                    "pressed": false,
+                    "rect_dp": {
+                      "height": 24.0,
+                      "width": 24.0,
+                      "x": 641.21875,
+                      "y": 48.0
+                    },
+                    "rect_px": {
+                      "height": 30.0,
+                      "width": 30.0,
+                      "x": 802.0,
+                      "y": 60.0
+                    },
+                    "visible": true
+                  }
+                ],
+                "enabled": true,
+                "focus_visible": false,
+                "focused": false,
+                "hovered": false,
+                "kind": "container",
+                "label": "",
+                "pressed": false,
+                "rect_dp": {
+                  "height": 40.0,
+                  "width": 96.0,
+                  "x": 577.21875,
+                  "y": 40.0
+                },
+                "rect_px": {
+                  "height": 50.0,
+                  "width": 120.0,
+                  "x": 722.0,
+                  "y": 50.0
+                },
+                "visible": true
+              }
+            ],
+            "enabled": true,
+            "focus_visible": false,
+            "focused": false,
+            "hovered": false,
+            "kind": "container",
+            "label": "",
+            "pressed": false,
+            "rect_dp": {
+              "height": 56.0,
+              "width": 705.5999755859375,
+              "x": 32.0,
+              "y": 32.0
+            },
+            "rect_px": {
+              "height": 70.0,
+              "width": 882.0,
+              "x": 40.0,
+              "y": 40.0
+            },
+            "visible": true
+          },
+          {
+            "automation_id": null,
+            "children": [
+              {
+                "automation_id": null,
+                "children": [
+                  {
+                    "automation_id": "button.default",
+                    "children": [],
+                    "enabled": true,
+                    "focus_visible": false,
+                    "focused": false,
+                    "hovered": false,
+                    "kind": "button",
+                    "label": "Default",
+                    "pressed": false,
+                    "rect_dp": {
+                      "height": 32.0,
+                      "width": 70.498046875,
+                      "x": 48.0,
+                      "y": 116.0
+                    },
+                    "rect_px": {
+                      "height": 40.0,
+                      "width": 88.0,
+                      "x": 60.0,
+                      "y": 145.0
+                    },
+                    "visible": true
+                  },
+                  {
+                    "automation_id": "button.default.disabled",
+                    "children": [],
+                    "enabled": false,
+                    "focus_visible": false,
+                    "focused": false,
+                    "hovered": false,
+                    "kind": "button",
+                    "label": "Disabled",
+                    "pressed": false,
+                    "rect_dp": {
+                      "height": 32.0,
+                      "width": 79.0087890625,
+                      "x": 130.498046875,
+                      "y": 116.0
+                    },
+                    "rect_px": {
+                      "height": 40.0,
+                      "width": 99.0,
+                      "x": 163.0,
+                      "y": 145.0
+                    },
+                    "visible": true
+                  },
+                  {
+                    "automation_id": "button.default.invalid",
+                    "children": [],
+                    "enabled": true,
+                    "focus_visible": false,
+                    "focused": false,
+                    "hovered": false,
+                    "kind": "button",
+                    "label": "Invalid",
+                    "pressed": false,
+                    "rect_dp": {
+                      "height": 32.0,
+                      "width": 66.177734375,
+                      "x": 221.5068359375,
+                      "y": 116.0
+                    },
+                    "rect_px": {
+                      "height": 40.0,
+                      "width": 83.0,
+                      "x": 277.0,
+                      "y": 145.0
+                    },
+                    "visible": true
+                  },
+                  {
+                    "automation_id": "button.secondary",
+                    "children": [],
+                    "enabled": true,
+                    "focus_visible": false,
+                    "focused": false,
+                    "hovered": false,
+                    "kind": "button",
+                    "label": "Secondary",
+                    "pressed": false,
+                    "rect_dp": {
+                      "height": 32.0,
+                      "width": 90.7734375,
+                      "x": 299.6845703125,
+                      "y": 116.0
+                    },
+                    "rect_px": {
+                      "height": 40.0,
+                      "width": 113.0,
+                      "x": 375.0,
+                      "y": 145.0
+                    },
+                    "visible": true
+                  },
+                  {
+                    "automation_id": "button.secondary.disabled",
+                    "children": [],
+                    "enabled": false,
+                    "focus_visible": false,
+                    "focused": false,
+                    "hovered": false,
+                    "kind": "button",
+                    "label": "Disabled",
+                    "pressed": false,
+                    "rect_dp": {
+                      "height": 32.0,
+                      "width": 79.0087890625,
+                      "x": 402.4580078125,
+                      "y": 116.0
+                    },
+                    "rect_px": {
+                      "height": 40.0,
+                      "width": 99.0,
+                      "x": 503.0,
+                      "y": 145.0
+                    },
+                    "visible": true
+                  },
+                  {
+                    "automation_id": "button.secondary.invalid",
+                    "children": [],
+                    "enabled": true,
+                    "focus_visible": false,
+                    "focused": false,
+                    "hovered": false,
+                    "kind": "button",
+                    "label": "Invalid",
+                    "pressed": false,
+                    "rect_dp": {
+                      "height": 32.0,
+                      "width": 66.177734375,
+                      "x": 493.466796875,
+                      "y": 116.0
+                    },
+                    "rect_px": {
+                      "height": 40.0,
+                      "width": 83.0,
+                      "x": 617.0,
+                      "y": 145.0
+                    },
+                    "visible": true
+                  }
+                ],
+                "enabled": true,
+                "focus_visible": false,
+                "focused": false,
+                "hovered": false,
+                "kind": "container",
+                "label": "",
+                "pressed": false,
+                "rect_dp": {
+                  "height": 48.0,
+                  "width": 689.5999755859375,
+                  "x": 40.0,
+                  "y": 108.0
+                },
+                "rect_px": {
+                  "height": 60.0,
+                  "width": 862.0,
+                  "x": 50.0,
+                  "y": 135.0
+                },
+                "visible": true
+              },
+              {
+                "automation_id": null,
+                "children": [
+                  {
+                    "automation_id": "button.outline",
+                    "children": [],
+                    "enabled": true,
+                    "focus_visible": false,
+                    "focused": false,
+                    "hovered": false,
+                    "kind": "button",
+                    "label": "Outline",
+                    "pressed": false,
+                    "rect_dp": {
+                      "height": 32.0,
+                      "width": 70.73046875,
+                      "x": 48.0,
+                      "y": 176.0
+                    },
+                    "rect_px": {
+                      "height": 40.0,
+                      "width": 88.0,
+                      "x": 60.0,
+                      "y": 220.0
+                    },
+                    "visible": true
+                  },
+                  {
+                    "automation_id": "button.outline.disabled",
+                    "children": [],
+                    "enabled": false,
+                    "focus_visible": false,
+                    "focused": false,
+                    "hovered": false,
+                    "kind": "button",
+                    "label": "Disabled",
+                    "pressed": false,
+                    "rect_dp": {
+                      "height": 32.0,
+                      "width": 79.0087890625,
+                      "x": 130.73046875,
+                      "y": 176.0
+                    },
+                    "rect_px": {
+                      "height": 40.0,
+                      "width": 99.0,
+                      "x": 163.0,
+                      "y": 220.0
+                    },
+                    "visible": true
+                  },
+                  {
+                    "automation_id": "button.outline.invalid",
+                    "children": [],
+                    "enabled": true,
+                    "focus_visible": false,
+                    "focused": false,
+                    "hovered": false,
+                    "kind": "button",
+                    "label": "Invalid",
+                    "pressed": false,
+                    "rect_dp": {
+                      "height": 32.0,
+                      "width": 66.177734375,
+                      "x": 221.7392578125,
+                      "y": 176.0
+                    },
+                    "rect_px": {
+                      "height": 40.0,
+                      "width": 83.0,
+                      "x": 277.0,
+                      "y": 220.0
+                    },
+                    "visible": true
+                  },
+                  {
+                    "automation_id": "button.ghost",
+                    "children": [],
+                    "enabled": true,
+                    "focus_visible": false,
+                    "focused": false,
+                    "hovered": false,
+                    "kind": "button",
+                    "label": "Ghost",
+                    "pressed": false,
+                    "rect_dp": {
+                      "height": 32.0,
+                      "width": 61.365234375,
+                      "x": 299.9169921875,
+                      "y": 176.0
+                    },
+                    "rect_px": {
+                      "height": 40.0,
+                      "width": 77.0,
+                      "x": 375.0,
+                      "y": 220.0
+                    },
+                    "visible": true
+                  },
+                  {
+                    "automation_id": "button.ghost.disabled",
+                    "children": [],
+                    "enabled": false,
+                    "focus_visible": false,
+                    "focused": false,
+                    "hovered": false,
+                    "kind": "button",
+                    "label": "Disabled",
+                    "pressed": false,
+                    "rect_dp": {
+                      "height": 32.0,
+                      "width": 79.0087890625,
+                      "x": 373.2822265625,
+                      "y": 176.0
+                    },
+                    "rect_px": {
+                      "height": 40.0,
+                      "width": 98.0,
+                      "x": 467.0,
+                      "y": 220.0
+                    },
+                    "visible": true
+                  },
+                  {
+                    "automation_id": "button.ghost.invalid",
+                    "children": [],
+                    "enabled": true,
+                    "focus_visible": false,
+                    "focused": false,
+                    "hovered": false,
+                    "kind": "button",
+                    "label": "Invalid",
+                    "pressed": false,
+                    "rect_dp": {
+                      "height": 32.0,
+                      "width": 66.177734375,
+                      "x": 464.291015625,
+                      "y": 176.0
+                    },
+                    "rect_px": {
+                      "height": 40.0,
+                      "width": 83.0,
+                      "x": 580.0,
+                      "y": 220.0
+                    },
+                    "visible": true
+                  }
+                ],
+                "enabled": true,
+                "focus_visible": false,
+                "focused": false,
+                "hovered": false,
+                "kind": "container",
+                "label": "",
+                "pressed": false,
+                "rect_dp": {
+                  "height": 48.0,
+                  "width": 689.5999755859375,
+                  "x": 40.0,
+                  "y": 168.0
+                },
+                "rect_px": {
+                  "height": 60.0,
+                  "width": 862.0,
+                  "x": 50.0,
+                  "y": 210.0
+                },
+                "visible": true
+              },
+              {
+                "automation_id": null,
+                "children": [
+                  {
+                    "automation_id": "button.destructive",
+                    "children": [],
+                    "enabled": true,
+                    "focus_visible": false,
+                    "focused": false,
+                    "hovered": false,
+                    "kind": "button",
+                    "label": "Destructive",
+                    "pressed": false,
+                    "rect_dp": {
+                      "height": 32.0,
+                      "width": 95.654296875,
+                      "x": 48.0,
+                      "y": 236.0
+                    },
+                    "rect_px": {
+                      "height": 40.0,
+                      "width": 120.0,
+                      "x": 60.0,
+                      "y": 295.0
+                    },
+                    "visible": true
+                  },
+                  {
+                    "automation_id": "button.destructive.disabled",
+                    "children": [],
+                    "enabled": false,
+                    "focus_visible": false,
+                    "focused": false,
+                    "hovered": false,
+                    "kind": "button",
+                    "label": "Disabled",
+                    "pressed": false,
+                    "rect_dp": {
+                      "height": 32.0,
+                      "width": 79.0087890625,
+                      "x": 155.654296875,
+                      "y": 236.0
+                    },
+                    "rect_px": {
+                      "height": 40.0,
+                      "width": 98.0,
+                      "x": 195.0,
+                      "y": 295.0
+                    },
+                    "visible": true
+                  },
+                  {
+                    "automation_id": "button.destructive.invalid",
+                    "children": [],
+                    "enabled": true,
+                    "focus_visible": false,
+                    "focused": false,
+                    "hovered": false,
+                    "kind": "button",
+                    "label": "Invalid",
+                    "pressed": false,
+                    "rect_dp": {
+                      "height": 32.0,
+                      "width": 66.177734375,
+                      "x": 246.6630859375,
+                      "y": 236.0
+                    },
+                    "rect_px": {
+                      "height": 40.0,
+                      "width": 83.0,
+                      "x": 308.0,
+                      "y": 295.0
+                    },
+                    "visible": true
+                  },
+                  {
+                    "automation_id": "button.link",
+                    "children": [],
+                    "enabled": true,
+                    "focus_visible": false,
+                    "focused": false,
+                    "hovered": false,
+                    "kind": "button",
+                    "label": "Link",
+                    "pressed": false,
+                    "rect_dp": {
+                      "height": 32.0,
+                      "width": 50.017578125,
+                      "x": 324.8408203125,
+                      "y": 236.0
+                    },
+                    "rect_px": {
+                      "height": 40.0,
+                      "width": 63.0,
+                      "x": 406.0,
+                      "y": 295.0
+                    },
+                    "visible": true
+                  },
+                  {
+                    "automation_id": "button.link.disabled",
+                    "children": [],
+                    "enabled": false,
+                    "focus_visible": false,
+                    "focused": false,
+                    "hovered": false,
+                    "kind": "button",
+                    "label": "Disabled",
+                    "pressed": false,
+                    "rect_dp": {
+                      "height": 32.0,
+                      "width": 79.0087890625,
+                      "x": 386.8583984375,
+                      "y": 236.0
+                    },
+                    "rect_px": {
+                      "height": 40.0,
+                      "width": 98.0,
+                      "x": 484.0,
+                      "y": 295.0
+                    },
+                    "visible": true
+                  },
+                  {
+                    "automation_id": "button.link.invalid",
+                    "children": [],
+                    "enabled": true,
+                    "focus_visible": false,
+                    "focused": false,
+                    "hovered": false,
+                    "kind": "button",
+                    "label": "Invalid",
+                    "pressed": false,
+                    "rect_dp": {
+                      "height": 32.0,
+                      "width": 66.177734375,
+                      "x": 477.8671875,
+                      "y": 236.0
+                    },
+                    "rect_px": {
+                      "height": 40.0,
+                      "width": 83.0,
+                      "x": 597.0,
+                      "y": 295.0
+                    },
+                    "visible": true
+                  }
+                ],
+                "enabled": true,
+                "focus_visible": false,
+                "focused": false,
+                "hovered": false,
+                "kind": "container",
+                "label": "",
+                "pressed": false,
+                "rect_dp": {
+                  "height": 48.0,
+                  "width": 689.5999755859375,
+                  "x": 40.0,
+                  "y": 228.0
+                },
+                "rect_px": {
+                  "height": 60.0,
+                  "width": 862.0,
+                  "x": 50.0,
+                  "y": 285.0
+                },
+                "visible": true
+              },
+              {
+                "automation_id": null,
+                "children": [
+                  {
+                    "automation_id": "button.default.size-xs",
+                    "children": [],
+                    "enabled": true,
+                    "focus_visible": false,
+                    "focused": false,
+                    "hovered": false,
+                    "kind": "button",
+                    "label": "Size xs",
+                    "pressed": false,
+                    "rect_dp": {
+                      "height": 24.0,
+                      "width": 56.099609375,
+                      "x": 48.0,
+                      "y": 302.0
+                    },
+                    "rect_px": {
+                      "height": 30.0,
+                      "width": 70.0,
+                      "x": 60.0,
+                      "y": 378.0
+                    },
+                    "visible": true
+                  },
+                  {
+                    "automation_id": "button.default.size-sm",
+                    "children": [],
+                    "enabled": true,
+                    "focus_visible": false,
+                    "focused": false,
+                    "hovered": false,
+                    "kind": "button",
+                    "label": "Size sm",
+                    "pressed": false,
+                    "rect_dp": {
+                      "height": 28.0,
+                      "width": 67.4312515258789,
+                      "x": 116.099609375,
+                      "y": 300.0
+                    },
+                    "rect_px": {
+                      "height": 35.0,
+                      "width": 84.0,
+                      "x": 145.0,
+                      "y": 375.0
+                    },
+                    "visible": true
+                  },
+                  {
+                    "automation_id": "button.default.size-lg",
+                    "children": [],
+                    "enabled": true,
+                    "focus_visible": false,
+                    "focused": false,
+                    "hovered": false,
+                    "kind": "button",
+                    "label": "Size lg",
+                    "pressed": false,
+                    "rect_dp": {
+                      "height": 36.0,
+                      "width": 65.1591796875,
+                      "x": 195.5308532714844,
+                      "y": 296.0
+                    },
+                    "rect_px": {
+                      "height": 45.0,
+                      "width": 82.0,
+                      "x": 244.0,
+                      "y": 370.0
+                    },
+                    "visible": true
+                  },
+                  {
+                    "automation_id": "button.default.icon-inline-start",
+                    "children": [],
+                    "enabled": true,
+                    "focus_visible": false,
+                    "focused": false,
+                    "hovered": false,
+                    "kind": "button",
+                    "label": "Add item",
+                    "parts": [
+                      {
+                        "key": "icon",
+                        "rect_dp": {
+                          "height": 16.0,
+                          "width": 16.0,
+                          "x": 281.6900329589844,
+                          "y": 306.0
+                        },
+                        "rect_px": {
+                          "height": 20.0,
+                          "width": 20.0,
+                          "x": 352.0,
+                          "y": 383.0
+                        },
+                        "visible": true
+                      }
+                    ],
+                    "pressed": false,
+                    "rect_dp": {
+                      "height": 32.0,
+                      "width": 102.5908203125,
+                      "x": 272.6900329589844,
+                      "y": 298.0
+                    },
+                    "rect_px": {
+                      "height": 40.0,
+                      "width": 128.0,
+                      "x": 341.0,
+                      "y": 373.0
+                    },
+                    "visible": true
+                  },
+                  {
+                    "automation_id": "button.default.icon-inline-end",
+                    "children": [],
+                    "enabled": true,
+                    "focus_visible": false,
+                    "focused": false,
+                    "hovered": false,
+                    "kind": "button",
+                    "label": "Continue",
+                    "parts": [
+                      {
+                        "key": "icon",
+                        "rect_dp": {
+                          "height": 16.0,
+                          "width": 16.0,
+                          "x": 463.9966735839844,
+                          "y": 306.0
+                        },
+                        "rect_px": {
+                          "height": 20.0,
+                          "width": 20.0,
+                          "x": 580.0,
+                          "y": 383.0
+                        },
+                        "visible": true
+                      }
+                    ],
+                    "pressed": false,
+                    "rect_dp": {
+                      "height": 32.0,
+                      "width": 101.7158203125,
+                      "x": 387.2808532714844,
+                      "y": 298.0
+                    },
+                    "rect_px": {
+                      "height": 40.0,
+                      "width": 127.0,
+                      "x": 484.0,
+                      "y": 373.0
+                    },
+                    "visible": true
+                  }
+                ],
+                "enabled": true,
+                "focus_visible": false,
+                "focused": false,
+                "hovered": false,
+                "kind": "container",
+                "label": "",
+                "pressed": false,
+                "rect_dp": {
+                  "height": 52.0,
+                  "width": 689.5999755859375,
+                  "x": 40.0,
+                  "y": 288.0
+                },
+                "rect_px": {
+                  "height": 65.0,
+                  "width": 862.0,
+                  "x": 50.0,
+                  "y": 360.0
+                },
+                "visible": true
+              },
+              {
+                "automation_id": null,
+                "children": [
+                  {
+                    "automation_id": "icon-button.default",
+                    "children": [],
+                    "enabled": true,
+                    "focus_visible": false,
+                    "focused": false,
+                    "hovered": false,
+                    "kind": "button",
+                    "label": "icon-button.default",
+                    "parts": [
+                      {
+                        "key": "icon",
+                        "rect_dp": {
+                          "height": 16.0,
+                          "width": 16.0,
+                          "x": 56.0,
+                          "y": 368.0
+                        },
+                        "rect_px": {
+                          "height": 20.0,
+                          "width": 20.0,
+                          "x": 70.0,
+                          "y": 460.0
+                        },
+                        "visible": true
+                      }
+                    ],
+                    "pressed": false,
+                    "rect_dp": {
+                      "height": 32.0,
+                      "width": 32.0,
+                      "x": 48.0,
+                      "y": 360.0
+                    },
+                    "rect_px": {
+                      "height": 40.0,
+                      "width": 40.0,
+                      "x": 60.0,
+                      "y": 450.0
+                    },
+                    "visible": true
+                  },
+                  {
+                    "automation_id": "icon-button.default.disabled",
+                    "children": [],
+                    "enabled": false,
+                    "focus_visible": false,
+                    "focused": false,
+                    "hovered": false,
+                    "kind": "button",
+                    "label": "disabled",
+                    "parts": [
+                      {
+                        "key": "icon",
+                        "rect_dp": {
+                          "height": 16.0,
+                          "width": 16.0,
+                          "x": 100.0,
+                          "y": 368.0
+                        },
+                        "rect_px": {
+                          "height": 20.0,
+                          "width": 20.0,
+                          "x": 125.0,
+                          "y": 460.0
+                        },
+                        "visible": true
+                      }
+                    ],
+                    "pressed": false,
+                    "rect_dp": {
+                      "height": 32.0,
+                      "width": 32.0,
+                      "x": 92.0,
+                      "y": 360.0
+                    },
+                    "rect_px": {
+                      "height": 40.0,
+                      "width": 40.0,
+                      "x": 115.0,
+                      "y": 450.0
+                    },
+                    "visible": true
+                  },
+                  {
+                    "automation_id": "icon-button.secondary",
+                    "children": [],
+                    "enabled": true,
+                    "focus_visible": false,
+                    "focused": false,
+                    "hovered": false,
+                    "kind": "button",
+                    "label": "icon-button.secondary",
+                    "parts": [
+                      {
+                        "key": "icon",
+                        "rect_dp": {
+                          "height": 16.0,
+                          "width": 16.0,
+                          "x": 144.0,
+                          "y": 368.0
+                        },
+                        "rect_px": {
+                          "height": 20.0,
+                          "width": 20.0,
+                          "x": 180.0,
+                          "y": 460.0
+                        },
+                        "visible": true
+                      }
+                    ],
+                    "pressed": false,
+                    "rect_dp": {
+                      "height": 32.0,
+                      "width": 32.0,
+                      "x": 136.0,
+                      "y": 360.0
+                    },
+                    "rect_px": {
+                      "height": 40.0,
+                      "width": 40.0,
+                      "x": 170.0,
+                      "y": 450.0
+                    },
+                    "visible": true
+                  },
+                  {
+                    "automation_id": "icon-button.secondary.disabled",
+                    "children": [],
+                    "enabled": false,
+                    "focus_visible": false,
+                    "focused": false,
+                    "hovered": false,
+                    "kind": "button",
+                    "label": "disabled",
+                    "parts": [
+                      {
+                        "key": "icon",
+                        "rect_dp": {
+                          "height": 16.0,
+                          "width": 16.0,
+                          "x": 188.0,
+                          "y": 368.0
+                        },
+                        "rect_px": {
+                          "height": 20.0,
+                          "width": 20.0,
+                          "x": 235.0,
+                          "y": 460.0
+                        },
+                        "visible": true
+                      }
+                    ],
+                    "pressed": false,
+                    "rect_dp": {
+                      "height": 32.0,
+                      "width": 32.0,
+                      "x": 180.0,
+                      "y": 360.0
+                    },
+                    "rect_px": {
+                      "height": 40.0,
+                      "width": 40.0,
+                      "x": 225.0,
+                      "y": 450.0
+                    },
+                    "visible": true
+                  },
+                  {
+                    "automation_id": "icon-button.outline",
+                    "children": [],
+                    "enabled": true,
+                    "focus_visible": false,
+                    "focused": false,
+                    "hovered": false,
+                    "kind": "button",
+                    "label": "icon-button.outline",
+                    "parts": [
+                      {
+                        "key": "icon",
+                        "rect_dp": {
+                          "height": 16.0,
+                          "width": 16.0,
+                          "x": 232.0,
+                          "y": 368.0
+                        },
+                        "rect_px": {
+                          "height": 20.0,
+                          "width": 20.0,
+                          "x": 290.0,
+                          "y": 460.0
+                        },
+                        "visible": true
+                      }
+                    ],
+                    "pressed": false,
+                    "rect_dp": {
+                      "height": 32.0,
+                      "width": 32.0,
+                      "x": 224.0,
+                      "y": 360.0
+                    },
+                    "rect_px": {
+                      "height": 40.0,
+                      "width": 40.0,
+                      "x": 280.0,
+                      "y": 450.0
+                    },
+                    "visible": true
+                  },
+                  {
+                    "automation_id": "icon-button.outline.disabled",
+                    "children": [],
+                    "enabled": false,
+                    "focus_visible": false,
+                    "focused": false,
+                    "hovered": false,
+                    "kind": "button",
+                    "label": "disabled",
+                    "parts": [
+                      {
+                        "key": "icon",
+                        "rect_dp": {
+                          "height": 16.0,
+                          "width": 16.0,
+                          "x": 276.0,
+                          "y": 368.0
+                        },
+                        "rect_px": {
+                          "height": 20.0,
+                          "width": 20.0,
+                          "x": 345.0,
+                          "y": 460.0
+                        },
+                        "visible": true
+                      }
+                    ],
+                    "pressed": false,
+                    "rect_dp": {
+                      "height": 32.0,
+                      "width": 32.0,
+                      "x": 268.0,
+                      "y": 360.0
+                    },
+                    "rect_px": {
+                      "height": 40.0,
+                      "width": 40.0,
+                      "x": 335.0,
+                      "y": 450.0
+                    },
+                    "visible": true
+                  }
+                ],
+                "enabled": true,
+                "focus_visible": false,
+                "focused": false,
+                "hovered": false,
+                "kind": "container",
+                "label": "",
+                "pressed": false,
+                "rect_dp": {
+                  "height": 48.0,
+                  "width": 689.5999755859375,
+                  "x": 40.0,
+                  "y": 352.0
+                },
+                "rect_px": {
+                  "height": 60.0,
+                  "width": 862.0,
+                  "x": 50.0,
+                  "y": 440.0
+                },
+                "visible": true
+              },
+              {
+                "automation_id": null,
+                "children": [
+                  {
+                    "automation_id": "icon-button.ghost",
+                    "children": [],
+                    "enabled": true,
+                    "focus_visible": false,
+                    "focused": false,
+                    "hovered": false,
+                    "kind": "button",
+                    "label": "icon-button.ghost",
+                    "parts": [
+                      {
+                        "key": "icon",
+                        "rect_dp": {
+                          "height": 16.0,
+                          "width": 16.0,
+                          "x": 56.0,
+                          "y": 428.0
+                        },
+                        "rect_px": {
+                          "height": 20.0,
+                          "width": 20.0,
+                          "x": 70.0,
+                          "y": 535.0
+                        },
+                        "visible": true
+                      }
+                    ],
+                    "pressed": false,
+                    "rect_dp": {
+                      "height": 32.0,
+                      "width": 32.0,
+                      "x": 48.0,
+                      "y": 420.0
+                    },
+                    "rect_px": {
+                      "height": 40.0,
+                      "width": 40.0,
+                      "x": 60.0,
+                      "y": 525.0
+                    },
+                    "visible": true
+                  },
+                  {
+                    "automation_id": "icon-button.ghost.disabled",
+                    "children": [],
+                    "enabled": false,
+                    "focus_visible": false,
+                    "focused": false,
+                    "hovered": false,
+                    "kind": "button",
+                    "label": "disabled",
+                    "parts": [
+                      {
+                        "key": "icon",
+                        "rect_dp": {
+                          "height": 16.0,
+                          "width": 16.0,
+                          "x": 100.0,
+                          "y": 428.0
+                        },
+                        "rect_px": {
+                          "height": 20.0,
+                          "width": 20.0,
+                          "x": 125.0,
+                          "y": 535.0
+                        },
+                        "visible": true
+                      }
+                    ],
+                    "pressed": false,
+                    "rect_dp": {
+                      "height": 32.0,
+                      "width": 32.0,
+                      "x": 92.0,
+                      "y": 420.0
+                    },
+                    "rect_px": {
+                      "height": 40.0,
+                      "width": 40.0,
+                      "x": 115.0,
+                      "y": 525.0
+                    },
+                    "visible": true
+                  },
+                  {
+                    "automation_id": "icon-button.destructive",
+                    "children": [],
+                    "enabled": true,
+                    "focus_visible": false,
+                    "focused": false,
+                    "hovered": false,
+                    "kind": "button",
+                    "label": "icon-button.destructive",
+                    "parts": [
+                      {
+                        "key": "icon",
+                        "rect_dp": {
+                          "height": 16.0,
+                          "width": 16.0,
+                          "x": 144.0,
+                          "y": 428.0
+                        },
+                        "rect_px": {
+                          "height": 20.0,
+                          "width": 20.0,
+                          "x": 180.0,
+                          "y": 535.0
+                        },
+                        "visible": true
+                      }
+                    ],
+                    "pressed": false,
+                    "rect_dp": {
+                      "height": 32.0,
+                      "width": 32.0,
+                      "x": 136.0,
+                      "y": 420.0
+                    },
+                    "rect_px": {
+                      "height": 40.0,
+                      "width": 40.0,
+                      "x": 170.0,
+                      "y": 525.0
+                    },
+                    "visible": true
+                  },
+                  {
+                    "automation_id": "icon-button.destructive.disabled",
+                    "children": [],
+                    "enabled": false,
+                    "focus_visible": false,
+                    "focused": false,
+                    "hovered": false,
+                    "kind": "button",
+                    "label": "disabled",
+                    "parts": [
+                      {
+                        "key": "icon",
+                        "rect_dp": {
+                          "height": 16.0,
+                          "width": 16.0,
+                          "x": 188.0,
+                          "y": 428.0
+                        },
+                        "rect_px": {
+                          "height": 20.0,
+                          "width": 20.0,
+                          "x": 235.0,
+                          "y": 535.0
+                        },
+                        "visible": true
+                      }
+                    ],
+                    "pressed": false,
+                    "rect_dp": {
+                      "height": 32.0,
+                      "width": 32.0,
+                      "x": 180.0,
+                      "y": 420.0
+                    },
+                    "rect_px": {
+                      "height": 40.0,
+                      "width": 40.0,
+                      "x": 225.0,
+                      "y": 525.0
+                    },
+                    "visible": true
+                  }
+                ],
+                "enabled": true,
+                "focus_visible": false,
+                "focused": false,
+                "hovered": false,
+                "kind": "container",
+                "label": "",
+                "pressed": false,
+                "rect_dp": {
+                  "height": 48.0,
+                  "width": 689.5999755859375,
+                  "x": 40.0,
+                  "y": 412.0
+                },
+                "rect_px": {
+                  "height": 60.0,
+                  "width": 862.0,
+                  "x": 50.0,
+                  "y": 515.0
+                },
+                "visible": true
+              },
+              {
+                "automation_id": null,
+                "children": [
+                  {
+                    "automation_id": "icon-button.default.size-icon-xs",
+                    "children": [],
+                    "enabled": true,
+                    "focus_visible": false,
+                    "focused": false,
+                    "hovered": false,
+                    "kind": "button",
+                    "label": "icon-button.default.size-icon-xs",
+                    "parts": [
+                      {
+                        "key": "icon",
+                        "rect_dp": {
+                          "height": 12.0,
+                          "width": 12.0,
+                          "x": 54.0,
+                          "y": 492.0
+                        },
+                        "rect_px": {
+                          "height": 15.0,
+                          "width": 15.0,
+                          "x": 68.0,
+                          "y": 615.0
+                        },
+                        "visible": true
+                      }
+                    ],
+                    "pressed": false,
+                    "rect_dp": {
+                      "height": 24.0,
+                      "width": 24.0,
+                      "x": 48.0,
+                      "y": 486.0
+                    },
+                    "rect_px": {
+                      "height": 30.0,
+                      "width": 30.0,
+                      "x": 60.0,
+                      "y": 608.0
+                    },
+                    "visible": true
+                  },
+                  {
+                    "automation_id": "icon-button.default.size-icon-sm",
+                    "children": [],
+                    "enabled": true,
+                    "focus_visible": false,
+                    "focused": false,
+                    "hovered": false,
+                    "kind": "button",
+                    "label": "icon-button.default.size-icon-sm",
+                    "parts": [
+                      {
+                        "key": "icon",
+                        "rect_dp": {
+                          "height": 14.0,
+                          "width": 14.0,
+                          "x": 91.0,
+                          "y": 491.0
+                        },
+                        "rect_px": {
+                          "height": 17.0,
+                          "width": 17.0,
+                          "x": 114.0,
+                          "y": 614.0
+                        },
+                        "visible": true
+                      }
+                    ],
+                    "pressed": false,
+                    "rect_dp": {
+                      "height": 28.0,
+                      "width": 28.0,
+                      "x": 84.0,
+                      "y": 484.0
+                    },
+                    "rect_px": {
+                      "height": 35.0,
+                      "width": 35.0,
+                      "x": 105.0,
+                      "y": 605.0
+                    },
+                    "visible": true
+                  },
+                  {
+                    "automation_id": "icon-button.default.size-icon",
+                    "children": [],
+                    "enabled": true,
+                    "focus_visible": false,
+                    "focused": false,
+                    "hovered": false,
+                    "kind": "button",
+                    "label": "icon-button.default.size-icon",
+                    "parts": [
+                      {
+                        "key": "icon",
+                        "rect_dp": {
+                          "height": 16.0,
+                          "width": 16.0,
+                          "x": 132.0,
+                          "y": 490.0
+                        },
+                        "rect_px": {
+                          "height": 20.0,
+                          "width": 20.0,
+                          "x": 165.0,
+                          "y": 613.0
+                        },
+                        "visible": true
+                      }
+                    ],
+                    "pressed": false,
+                    "rect_dp": {
+                      "height": 32.0,
+                      "width": 32.0,
+                      "x": 124.0,
+                      "y": 482.0
+                    },
+                    "rect_px": {
+                      "height": 40.0,
+                      "width": 40.0,
+                      "x": 155.0,
+                      "y": 603.0
+                    },
+                    "visible": true
+                  },
+                  {
+                    "automation_id": "icon-button.default.size-icon-lg",
+                    "children": [],
+                    "enabled": true,
+                    "focus_visible": false,
+                    "focused": false,
+                    "hovered": false,
+                    "kind": "button",
+                    "label": "icon-button.default.size-icon-lg",
+                    "parts": [
+                      {
+                        "key": "icon",
+                        "rect_dp": {
+                          "height": 16.0,
+                          "width": 16.0,
+                          "x": 178.0,
+                          "y": 490.0
+                        },
+                        "rect_px": {
+                          "height": 20.0,
+                          "width": 20.0,
+                          "x": 223.0,
+                          "y": 613.0
+                        },
+                        "visible": true
+                      }
+                    ],
+                    "pressed": false,
+                    "rect_dp": {
+                      "height": 36.0,
+                      "width": 36.0,
+                      "x": 168.0,
+                      "y": 480.0
+                    },
+                    "rect_px": {
+                      "height": 45.0,
+                      "width": 45.0,
+                      "x": 210.0,
+                      "y": 600.0
+                    },
+                    "visible": true
+                  }
+                ],
+                "enabled": true,
+                "focus_visible": false,
+                "focused": false,
+                "hovered": false,
+                "kind": "container",
+                "label": "",
+                "pressed": false,
+                "rect_dp": {
+                  "height": 52.0,
+                  "width": 689.5999755859375,
+                  "x": 40.0,
+                  "y": 472.0
+                },
+                "rect_px": {
+                  "height": 65.0,
+                  "width": 862.0,
+                  "x": 50.0,
+                  "y": 590.0
+                },
+                "visible": true
+              },
+              {
+                "automation_id": null,
+                "children": [
+                  {
+                    "automation_id": "card.default",
+                    "children": [
+                      {
+                        "automation_id": null,
+                        "children": [
+                          {
+                            "automation_id": null,
+                            "children": [
+                              {
+                                "automation_id": null,
+                                "children": [],
+                                "enabled": true,
+                                "focus_visible": false,
+                                "focused": false,
+                                "hovered": false,
+                                "kind": "label",
+                                "label": "Card Title",
+                                "pressed": false,
+                                "rect_dp": {
+                                  "height": 22.0,
+                                  "width": 69.578125,
+                                  "x": 64.0,
+                                  "y": 560.0
+                                },
+                                "rect_px": {
+                                  "height": 28.0,
+                                  "width": 87.0,
+                                  "x": 80.0,
+                                  "y": 700.0
+                                },
+                                "visible": true
+                              },
+                              {
+                                "automation_id": null,
+                                "children": [],
+                                "enabled": true,
+                                "focus_visible": false,
+                                "focused": false,
+                                "hovered": false,
+                                "kind": "label",
+                                "label": "A short supporting description.",
+                                "pressed": false,
+                                "rect_dp": {
+                                  "height": 20.0,
+                                  "width": 191.666015625,
+                                  "x": 64.0,
+                                  "y": 586.0
+                                },
+                                "rect_px": {
+                                  "height": 25.0,
+                                  "width": 240.0,
+                                  "x": 80.0,
+                                  "y": 733.0
+                                },
+                                "visible": true
+                              }
+                            ],
+                            "enabled": true,
+                            "focus_visible": false,
+                            "focused": false,
+                            "hovered": false,
+                            "kind": "container",
+                            "label": "",
+                            "pressed": false,
+                            "rect_dp": {
+                              "height": 46.0,
+                              "width": 256.0,
+                              "x": 64.0,
+                              "y": 560.0
+                            },
+                            "rect_px": {
+                              "height": 58.0,
+                              "width": 320.0,
+                              "x": 80.0,
+                              "y": 700.0
+                            },
+                            "visible": true
+                          }
+                        ],
+                        "enabled": true,
+                        "focus_visible": false,
+                        "focused": false,
+                        "hovered": false,
+                        "kind": "container",
+                        "label": "",
+                        "pressed": false,
+                        "rect_dp": {
+                          "height": 46.0,
+                          "width": 288.0,
+                          "x": 48.0,
+                          "y": 560.0
+                        },
+                        "rect_px": {
+                          "height": 58.0,
+                          "width": 360.0,
+                          "x": 60.0,
+                          "y": 700.0
+                        },
+                        "visible": true
+                      },
+                      {
+                        "automation_id": null,
+                        "children": [
+                          {
+                            "automation_id": null,
+                            "children": [],
+                            "enabled": true,
+                            "focus_visible": false,
+                            "focused": false,
+                            "hovered": false,
+                            "kind": "label",
+                            "label": "Card content region.",
+                            "pressed": false,
+                            "rect_dp": {
+                              "height": 20.0,
+                              "width": 256.0,
+                              "x": 64.0,
+                              "y": 622.0
+                            },
+                            "rect_px": {
+                              "height": 25.0,
+                              "width": 320.0,
+                              "x": 80.0,
+                              "y": 778.0
+                            },
+                            "visible": true
+                          }
+                        ],
+                        "enabled": true,
+                        "focus_visible": false,
+                        "focused": false,
+                        "hovered": false,
+                        "kind": "container",
+                        "label": "",
+                        "pressed": false,
+                        "rect_dp": {
+                          "height": 20.0,
+                          "width": 288.0,
+                          "x": 48.0,
+                          "y": 622.0
+                        },
+                        "rect_px": {
+                          "height": 25.0,
+                          "width": 360.0,
+                          "x": 60.0,
+                          "y": 778.0
+                        },
+                        "visible": true
+                      },
+                      {
+                        "automation_id": null,
+                        "children": [
+                          {
+                            "automation_id": null,
+                            "children": [
+                              {
+                                "automation_id": null,
+                                "children": [],
+                                "enabled": true,
+                                "focus_visible": false,
+                                "focused": false,
+                                "hovered": false,
+                                "kind": "button",
+                                "label": "Cancel",
+                                "pressed": false,
+                                "rect_dp": {
+                                  "height": 28.0,
+                                  "width": 62.26250076293945,
+                                  "x": 198.8937530517578,
+                                  "y": 675.0
+                                },
+                                "rect_px": {
+                                  "height": 35.0,
+                                  "width": 77.0,
+                                  "x": 249.0,
+                                  "y": 844.0
+                                },
+                                "visible": true
+                              },
+                              {
+                                "automation_id": null,
+                                "children": [],
+                                "enabled": true,
+                                "focus_visible": false,
+                                "focused": false,
+                                "hovered": false,
+                                "kind": "button",
+                                "label": "Save",
+                                "pressed": false,
+                                "rect_dp": {
+                                  "height": 28.0,
+                                  "width": 50.84375,
+                                  "x": 269.15625,
+                                  "y": 675.0
+                                },
+                                "rect_px": {
+                                  "height": 35.0,
+                                  "width": 64.0,
+                                  "x": 336.0,
+                                  "y": 844.0
+                                },
+                                "visible": true
+                              }
+                            ],
+                            "enabled": true,
+                            "focus_visible": false,
+                            "focused": false,
+                            "hovered": false,
+                            "kind": "container",
+                            "label": "",
+                            "pressed": false,
+                            "rect_dp": {
+                              "height": 28.0,
+                              "width": 256.0,
+                              "x": 64.0,
+                              "y": 675.0
+                            },
+                            "rect_px": {
+                              "height": 35.0,
+                              "width": 320.0,
+                              "x": 80.0,
+                              "y": 844.0
+                            },
+                            "visible": true
+                          }
+                        ],
+                        "enabled": true,
+                        "focus_visible": false,
+                        "focused": false,
+                        "hovered": false,
+                        "kind": "container",
+                        "label": "",
+                        "pressed": false,
+                        "rect_dp": {
+                          "height": 61.0,
+                          "width": 288.0,
+                          "x": 48.0,
+                          "y": 658.0
+                        },
+                        "rect_px": {
+                          "height": 76.0,
+                          "width": 360.0,
+                          "x": 60.0,
+                          "y": 823.0
+                        },
+                        "visible": true
+                      }
+                    ],
+                    "enabled": true,
+                    "focus_visible": false,
+                    "focused": false,
+                    "hovered": false,
+                    "kind": "container",
+                    "label": "",
+                    "parts": [
+                      {
+                        "key": "header",
+                        "rect_dp": {
+                          "height": 46.0,
+                          "width": 288.0,
+                          "x": 48.0,
+                          "y": 560.0
+                        },
+                        "rect_px": {
+                          "height": 58.0,
+                          "width": 360.0,
+                          "x": 60.0,
+                          "y": 700.0
+                        },
+                        "visible": true
+                      },
+                      {
+                        "key": "header.title",
+                        "rect_dp": {
+                          "height": 22.0,
+                          "width": 69.578125,
+                          "x": 64.0,
+                          "y": 560.0
+                        },
+                        "rect_px": {
+                          "height": 28.0,
+                          "width": 87.0,
+                          "x": 80.0,
+                          "y": 700.0
+                        },
+                        "visible": true
+                      },
+                      {
+                        "key": "header.description",
+                        "rect_dp": {
+                          "height": 20.0,
+                          "width": 191.666015625,
+                          "x": 64.0,
+                          "y": 586.0
+                        },
+                        "rect_px": {
+                          "height": 25.0,
+                          "width": 240.0,
+                          "x": 80.0,
+                          "y": 733.0
+                        },
+                        "visible": true
+                      },
+                      {
+                        "key": "content",
+                        "rect_dp": {
+                          "height": 20.0,
+                          "width": 288.0,
+                          "x": 48.0,
+                          "y": 622.0
+                        },
+                        "rect_px": {
+                          "height": 25.0,
+                          "width": 360.0,
+                          "x": 60.0,
+                          "y": 778.0
+                        },
+                        "visible": true
+                      },
+                      {
+                        "key": "footer",
+                        "rect_dp": {
+                          "height": 61.0,
+                          "width": 288.0,
+                          "x": 48.0,
+                          "y": 658.0
+                        },
+                        "rect_px": {
+                          "height": 76.0,
+                          "width": 360.0,
+                          "x": 60.0,
+                          "y": 823.0
+                        },
+                        "visible": true
+                      }
+                    ],
+                    "pressed": false,
+                    "rect_dp": {
+                      "height": 175.0,
+                      "width": 288.0,
+                      "x": 48.0,
+                      "y": 544.0
+                    },
+                    "rect_px": {
+                      "height": 219.0,
+                      "width": 360.0,
+                      "x": 60.0,
+                      "y": 680.0
+                    },
+                    "visible": true
+                  },
+                  {
+                    "automation_id": "card.default.size-sm",
+                    "children": [
+                      {
+                        "automation_id": null,
+                        "children": [
+                          {
+                            "automation_id": null,
+                            "children": [
+                              {
+                                "automation_id": null,
+                                "children": [],
+                                "enabled": true,
+                                "focus_visible": false,
+                                "focused": false,
+                                "hovered": false,
+                                "kind": "label",
+                                "label": "Card Title",
+                                "pressed": false,
+                                "rect_dp": {
+                                  "height": 19.25,
+                                  "width": 60.880859375,
+                                  "x": 360.0,
+                                  "y": 556.0
+                                },
+                                "rect_px": {
+                                  "height": 24.0,
+                                  "width": 76.0,
+                                  "x": 450.0,
+                                  "y": 695.0
+                                },
+                                "visible": true
+                              },
+                              {
+                                "automation_id": null,
+                                "children": [],
+                                "enabled": true,
+                                "focus_visible": false,
+                                "focused": false,
+                                "hovered": false,
+                                "kind": "label",
+                                "label": "A short supporting description.",
+                                "pressed": false,
+                                "rect_dp": {
+                                  "height": 20.0,
+                                  "width": 191.666015625,
+                                  "x": 360.0,
+                                  "y": 579.25
+                                },
+                                "rect_px": {
+                                  "height": 25.0,
+                                  "width": 240.0,
+                                  "x": 450.0,
+                                  "y": 724.0
+                                },
+                                "visible": true
+                              }
+                            ],
+                            "enabled": true,
+                            "focus_visible": false,
+                            "focused": false,
+                            "hovered": false,
+                            "kind": "container",
+                            "label": "",
+                            "pressed": false,
+                            "rect_dp": {
+                              "height": 43.25,
+                              "width": 264.0,
+                              "x": 360.0,
+                              "y": 556.0
+                            },
+                            "rect_px": {
+                              "height": 54.0,
+                              "width": 330.0,
+                              "x": 450.0,
+                              "y": 695.0
+                            },
+                            "visible": true
+                          }
+                        ],
+                        "enabled": true,
+                        "focus_visible": false,
+                        "focused": false,
+                        "hovered": false,
+                        "kind": "container",
+                        "label": "",
+                        "pressed": false,
+                        "rect_dp": {
+                          "height": 43.25,
+                          "width": 288.0,
+                          "x": 348.0,
+                          "y": 556.0
+                        },
+                        "rect_px": {
+                          "height": 54.0,
+                          "width": 360.0,
+                          "x": 435.0,
+                          "y": 695.0
+                        },
+                        "visible": true
+                      },
+                      {
+                        "automation_id": null,
+                        "children": [
+                          {
+                            "automation_id": null,
+                            "children": [],
+                            "enabled": true,
+                            "focus_visible": false,
+                            "focused": false,
+                            "hovered": false,
+                            "kind": "label",
+                            "label": "Card content region.",
+                            "pressed": false,
+                            "rect_dp": {
+                              "height": 20.0,
+                              "width": 264.0,
+                              "x": 360.0,
+                              "y": 611.25
+                            },
+                            "rect_px": {
+                              "height": 25.0,
+                              "width": 330.0,
+                              "x": 450.0,
+                              "y": 764.0
+                            },
+                            "visible": true
+                          }
+                        ],
+                        "enabled": true,
+                        "focus_visible": false,
+                        "focused": false,
+                        "hovered": false,
+                        "kind": "container",
+                        "label": "",
+                        "pressed": false,
+                        "rect_dp": {
+                          "height": 20.0,
+                          "width": 288.0,
+                          "x": 348.0,
+                          "y": 611.25
+                        },
+                        "rect_px": {
+                          "height": 25.0,
+                          "width": 360.0,
+                          "x": 435.0,
+                          "y": 764.0
+                        },
+                        "visible": true
+                      },
+                      {
+                        "automation_id": null,
+                        "children": [
+                          {
+                            "automation_id": null,
+                            "children": [
+                              {
+                                "automation_id": null,
+                                "children": [],
+                                "enabled": true,
+                                "focus_visible": false,
+                                "focused": false,
+                                "hovered": false,
+                                "kind": "button",
+                                "label": "Cancel",
+                                "pressed": false,
+                                "rect_dp": {
+                                  "height": 28.0,
+                                  "width": 62.26250076293945,
+                                  "x": 502.8937377929687,
+                                  "y": 656.25
+                                },
+                                "rect_px": {
+                                  "height": 35.0,
+                                  "width": 77.0,
+                                  "x": 629.0,
+                                  "y": 820.0
+                                },
+                                "visible": true
+                              },
+                              {
+                                "automation_id": null,
+                                "children": [],
+                                "enabled": true,
+                                "focus_visible": false,
+                                "focused": false,
+                                "hovered": false,
+                                "kind": "button",
+                                "label": "Save",
+                                "pressed": false,
+                                "rect_dp": {
+                                  "height": 28.0,
+                                  "width": 50.84375,
+                                  "x": 573.15625,
+                                  "y": 656.25
+                                },
+                                "rect_px": {
+                                  "height": 35.0,
+                                  "width": 64.0,
+                                  "x": 716.0,
+                                  "y": 820.0
+                                },
+                                "visible": true
+                              }
+                            ],
+                            "enabled": true,
+                            "focus_visible": false,
+                            "focused": false,
+                            "hovered": false,
+                            "kind": "container",
+                            "label": "",
+                            "pressed": false,
+                            "rect_dp": {
+                              "height": 28.0,
+                              "width": 264.0,
+                              "x": 360.0,
+                              "y": 656.25
+                            },
+                            "rect_px": {
+                              "height": 35.0,
+                              "width": 330.0,
+                              "x": 450.0,
+                              "y": 820.0
+                            },
+                            "visible": true
+                          }
+                        ],
+                        "enabled": true,
+                        "focus_visible": false,
+                        "focused": false,
+                        "hovered": false,
+                        "kind": "container",
+                        "label": "",
+                        "pressed": false,
+                        "rect_dp": {
+                          "height": 53.0,
+                          "width": 288.0,
+                          "x": 348.0,
+                          "y": 643.25
+                        },
+                        "rect_px": {
+                          "height": 66.0,
+                          "width": 360.0,
+                          "x": 435.0,
+                          "y": 804.0
+                        },
+                        "visible": true
+                      }
+                    ],
+                    "enabled": true,
+                    "focus_visible": false,
+                    "focused": false,
+                    "hovered": false,
+                    "kind": "container",
+                    "label": "",
+                    "parts": [
+                      {
+                        "key": "header",
+                        "rect_dp": {
+                          "height": 43.25,
+                          "width": 288.0,
+                          "x": 348.0,
+                          "y": 556.0
+                        },
+                        "rect_px": {
+                          "height": 54.0,
+                          "width": 360.0,
+                          "x": 435.0,
+                          "y": 695.0
+                        },
+                        "visible": true
+                      },
+                      {
+                        "key": "header.title",
+                        "rect_dp": {
+                          "height": 19.25,
+                          "width": 60.880859375,
+                          "x": 360.0,
+                          "y": 556.0
+                        },
+                        "rect_px": {
+                          "height": 24.0,
+                          "width": 76.0,
+                          "x": 450.0,
+                          "y": 695.0
+                        },
+                        "visible": true
+                      },
+                      {
+                        "key": "header.description",
+                        "rect_dp": {
+                          "height": 20.0,
+                          "width": 191.666015625,
+                          "x": 360.0,
+                          "y": 579.25
+                        },
+                        "rect_px": {
+                          "height": 25.0,
+                          "width": 240.0,
+                          "x": 450.0,
+                          "y": 724.0
+                        },
+                        "visible": true
+                      },
+                      {
+                        "key": "content",
+                        "rect_dp": {
+                          "height": 20.0,
+                          "width": 288.0,
+                          "x": 348.0,
+                          "y": 611.25
+                        },
+                        "rect_px": {
+                          "height": 25.0,
+                          "width": 360.0,
+                          "x": 435.0,
+                          "y": 764.0
+                        },
+                        "visible": true
+                      },
+                      {
+                        "key": "footer",
+                        "rect_dp": {
+                          "height": 53.0,
+                          "width": 288.0,
+                          "x": 348.0,
+                          "y": 643.25
+                        },
+                        "rect_px": {
+                          "height": 66.0,
+                          "width": 360.0,
+                          "x": 435.0,
+                          "y": 804.0
+                        },
+                        "visible": true
+                      }
+                    ],
+                    "pressed": false,
+                    "rect_dp": {
+                      "height": 152.25,
+                      "width": 288.0,
+                      "x": 348.0,
+                      "y": 544.0
+                    },
+                    "rect_px": {
+                      "height": 190.0,
+                      "width": 360.0,
+                      "x": 435.0,
+                      "y": 680.0
+                    },
+                    "visible": true
+                  }
+                ],
+                "enabled": true,
+                "focus_visible": false,
+                "focused": false,
+                "hovered": false,
+                "kind": "container",
+                "label": "",
+                "pressed": false,
+                "rect_dp": {
+                  "height": 191.0,
+                  "width": 689.5999755859375,
+                  "x": 40.0,
+                  "y": 536.0
+                },
+                "rect_px": {
+                  "height": 239.0,
+                  "width": 862.0,
+                  "x": 50.0,
+                  "y": 670.0
+                },
+                "visible": true
+              }
+            ],
+            "enabled": true,
+            "focus_visible": false,
+            "focused": false,
+            "hovered": false,
+            "kind": "container",
+            "label": "",
+            "pressed": false,
+            "rect_dp": {
+              "height": 635.0,
+              "width": 705.5999755859375,
+              "x": 32.0,
+              "y": 100.0
+            },
+            "rect_px": {
+              "height": 794.0,
+              "width": 882.0,
+              "x": 40.0,
+              "y": 125.0
+            },
+            "visible": true
+          }
+        ],
+        "enabled": true,
+        "focus_visible": false,
+        "focused": false,
+        "hovered": false,
+        "kind": "container",
+        "label": "",
+        "pressed": false,
+        "rect_dp": {
+          "height": 735.0,
+          "width": 737.5999755859375,
+          "x": 16.0,
+          "y": 16.0
+        },
+        "rect_px": {
+          "height": 919.0,
+          "width": 922.0,
+          "x": 20.0,
+          "y": 20.0
+        },
+        "visible": true
+      }
+    ],
+    "enabled": true,
+    "focus_visible": false,
+    "focused": false,
+    "hovered": false,
+    "kind": "container",
+    "label": "",
+    "pressed": false,
+    "rect_dp": {
+      "height": 682.4000244140625,
+      "width": 769.5999755859375,
+      "x": 0.0,
+      "y": 0.0
+    },
+    "rect_px": {
+      "height": 853.0,
+      "width": 962.0,
+      "x": 0.0,
+      "y": 0.0
+    },
+    "visible": true
+  },
+  "scale_factor": 1.25,
+  "schema": "rust-ui.devctl.snapshot-layout/0.2"
+}
