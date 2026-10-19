@@ -13,7 +13,9 @@
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
-use windows::Win32::Graphics::Gdi::{AddFontResourceExW, FR_NOT_ENUM, FR_PRIVATE};
+use windows::Win32::Graphics::Gdi::{
+    AddFontResourceExW, FONT_RESOURCE_CHARACTERISTICS, FR_NOT_ENUM, FR_PRIVATE,
+};
 use windows::core::PCWSTR;
 
 /// Canonical family names — `FontFamily::Sans` / `FontFamily::Mono`.
@@ -67,7 +69,13 @@ pub(crate) fn register() -> GeistStatus {
                 return false;
             }
             let wide: Vec<u16> = path.to_string_lossy().encode_utf16().chain([0]).collect();
-            unsafe { AddFontResourceExW(PCWSTR(wide.as_ptr()), FR_PRIVATE | FR_NOT_ENUM, None) > 0 }
+            unsafe {
+                AddFontResourceExW(
+                    PCWSTR(wide.as_ptr()),
+                    FONT_RESOURCE_CHARACTERISTICS(FR_PRIVATE.0 | FR_NOT_ENUM.0),
+                    None,
+                ) > 0
+            }
         };
         st.sans = register_one("Geist-Variable.ttf");
         st.mono = register_one("GeistMono-Variable.ttf");
@@ -90,6 +98,12 @@ pub(crate) fn collection(
 ) -> Option<windows::Win32::Graphics::DirectWrite::IDWriteFontCollection> {
     register();
     COLLECTION
-        .get_or_init(|| unsafe { factory.GetSystemFontCollection(true).ok() })
+        .get_or_init(|| unsafe {
+            let mut coll = None;
+            factory
+                .GetSystemFontCollection(&mut coll as *mut _, true)
+                .ok()?;
+            coll
+        })
         .clone()
 }

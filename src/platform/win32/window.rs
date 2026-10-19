@@ -638,13 +638,19 @@ where
             ..Default::default()
         };
         RegisterClassW(&wc);
+        // Prefer a secondary monitor for the window's start position —
+        // keeps the dev/preview surface off the primary display when a
+        // second one is connected (CW_USEDEFAULT otherwise).
+        let (x, y) = secondary_monitor_origin()
+            .map(|(ox, oy)| (ox + 48, oy + 48))
+            .unwrap_or((CW_USEDEFAULT, CW_USEDEFAULT));
         let hwnd = CreateWindowExW(
             WINDOW_EX_STYLE(0),
             w!("RustUiWindow"),
             PCWSTR(HSTRING::from(title).as_ptr()),
             WS_OVERLAPPEDWINDOW,
-            CW_USEDEFAULT,
-            CW_USEDEFAULT,
+            x,
+            y,
             980,
             900,
             None,
@@ -656,4 +662,37 @@ where
         let _ = ShowWindow(hwnd, SW_SHOW);
         Ok(hwnd)
     }
+}
+
+/// Work-area origin of the first non-primary monitor, if any. Used to open
+/// the dev/preview window on a secondary display rather than the main one.
+fn secondary_monitor_origin() -> Option<(i32, i32)> {
+    unsafe extern "system" fn pick(
+        hmon: HMONITOR,
+        _hdc: HDC,
+        _rect: *mut RECT,
+        data: LPARAM,
+    ) -> BOOL {
+        let out = unsafe { &mut *(data.0 as *mut Option<(i32, i32)>) };
+        let mut mi = MONITORINFO {
+            cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+            ..Default::default()
+        };
+        if unsafe { GetMonitorInfoW(hmon, &mut mi) }.as_bool()
+            && (mi.dwFlags & MONITORINFOF_PRIMARY) == 0
+        {
+            *out = Some((mi.rcWork.left, mi.rcWork.top));
+        }
+        TRUE
+    }
+    let mut found: Option<(i32, i32)> = None;
+    unsafe {
+        EnumDisplayMonitors(
+            None,
+            None,
+            Some(pick),
+            LPARAM(&mut found as *mut _ as isize),
+        );
+    }
+    found
 }

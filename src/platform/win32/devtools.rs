@@ -101,69 +101,73 @@ where
             .collect::<Result<Vec<_>>>()?;
         // semantic parts: `ui.part` chains inside the automation owner
         // (nested owners bound a deeper scope), plus the button's
-        // synthetic `icon` part through the shared icon geometry
+        // synthetic `icon` part through the shared icon geometry. Only
+        // nodes that own an automation_id may emit parts — a bare
+        // part-marked child is collected by its owner, not self-emitted.
         let mut parts = Vec::new();
-        if let Some(pk) = &n.part_key {
-            parts.push(d::PartNode {
-                key: pk.to_string(),
-                rect_dp: Rect {
-                    x: r.x as f64,
-                    y: r.y as f64,
-                    width: r.width as f64,
-                    height: r.height as f64,
-                },
-                rect_px: Rect {
-                    x: p.left as f64,
-                    y: p.top as f64,
-                    width: (p.right - p.left) as f64,
-                    height: (p.bottom - p.top) as f64,
-                },
-                visible: n.visibility == crate::Visibility::Visible,
-                reason: None,
-            });
-        }
-        self.collect_parts(id, &mut Vec::new(), &mut parts);
-        if let NodeData::Button {
-            icon_start,
-            icon_end,
-            icon_only,
-            size,
-            variant,
-            style,
-            invalid,
-            ..
-        } = &n.data
-        {
-            let has_icon = *icon_only || icon_start.is_some() || icon_end.is_some();
-            if has_icon {
-                let vs = crate::style::resolve_button(
-                    *variant,
-                    *size,
-                    style,
-                    crate::style::StyleState::Normal,
-                    false,
-                    false,
-                    *invalid,
-                );
-                if let Some(ir) = crate::layout::button_icon_rect(&n.data, &vs, &r, false) {
-                    let ip = ir.physical(self.peer_ctx.scale.get());
-                    parts.push(d::PartNode {
-                        key: "icon".into(),
-                        rect_dp: Rect {
-                            x: ir.x as f64,
-                            y: ir.y as f64,
-                            width: ir.width as f64,
-                            height: ir.height as f64,
-                        },
-                        rect_px: Rect {
-                            x: ip.left as f64,
-                            y: ip.top as f64,
-                            width: (ip.right - ip.left) as f64,
-                            height: (ip.bottom - ip.top) as f64,
-                        },
-                        visible: n.visibility == crate::Visibility::Visible,
-                        reason: None,
-                    });
+        if n.automation_id.is_some() {
+            if let Some(pk) = &n.part_key {
+                parts.push(d::PartNode {
+                    key: pk.to_string(),
+                    rect_dp: Rect {
+                        x: r.x as f64,
+                        y: r.y as f64,
+                        width: r.width as f64,
+                        height: r.height as f64,
+                    },
+                    rect_px: Rect {
+                        x: p.left as f64,
+                        y: p.top as f64,
+                        width: (p.right - p.left) as f64,
+                        height: (p.bottom - p.top) as f64,
+                    },
+                    visible: n.visibility == crate::Visibility::Visible,
+                    reason: None,
+                });
+            }
+            self.collect_parts(id, &mut Vec::new(), &mut parts);
+            if let NodeData::Button {
+                icon_start,
+                icon_end,
+                icon_only,
+                size,
+                variant,
+                style,
+                invalid,
+                ..
+            } = &n.data
+            {
+                let has_icon = *icon_only || icon_start.is_some() || icon_end.is_some();
+                if has_icon {
+                    let vs = crate::style::resolve_button(
+                        *variant,
+                        *size,
+                        style,
+                        crate::style::StyleState::Normal,
+                        false,
+                        false,
+                        *invalid,
+                    );
+                    if let Some(ir) = crate::layout::button_icon_rect(&n.data, &vs, &r, false) {
+                        let ip = ir.physical(self.peer_ctx.scale.get());
+                        parts.push(d::PartNode {
+                            key: "icon".into(),
+                            rect_dp: Rect {
+                                x: ir.x as f64,
+                                y: ir.y as f64,
+                                width: ir.width as f64,
+                                height: ir.height as f64,
+                            },
+                            rect_px: Rect {
+                                x: ip.left as f64,
+                                y: ip.top as f64,
+                                width: (ip.right - ip.left) as f64,
+                                height: (ip.bottom - ip.top) as f64,
+                            },
+                            visible: n.visibility == crate::Visibility::Visible,
+                            reason: None,
+                        });
+                    }
                 }
             }
         }

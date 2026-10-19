@@ -2024,11 +2024,13 @@ where
                 size,
                 style,
                 disabled,
+                invalid,
                 ..
             } => {
                 let state = crate::style::StyleState::classify(*disabled, st.pressed, st.hot);
-                let mut v =
-                    crate::style::resolve_button(*variant, *size, style, state, st.focus, dark);
+                let mut v = crate::style::resolve_button(
+                    *variant, *size, style, state, st.focus, dark, *invalid,
+                );
                 crate::style::os_enforce_visual(&mut v, forced);
                 Some(v)
             }
@@ -2040,6 +2042,7 @@ where
                 Some(crate::style::VisualStyle {
                     box_style: b,
                     text_style: crate::style::TextStyle::default(),
+                    focus_ring: crate::style::Color::Role(crate::theme::ColorRole::Focus),
                 })
             }
             NodeData::Editor { patch, .. } => {
@@ -2048,6 +2051,7 @@ where
                 Some(crate::style::VisualStyle {
                     box_style: b,
                     text_style: crate::style::TextStyle::default(),
+                    focus_ring: crate::style::Color::Role(crate::theme::ColorRole::Focus),
                 })
             }
             _ => None,

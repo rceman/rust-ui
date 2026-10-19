@@ -202,12 +202,12 @@ fn layout_for(
         // line pitch — CSS line-height: the glyph band centers inside
         // the pitch, baseline = (pitch + ascent - descent)/2
         if let Some(lh) = ts.line_height {
-            let mut line_metrics = DWRITE_LINE_METRICS::default();
+            let mut line_metrics = [DWRITE_LINE_METRICS::default()];
             let mut count = 0u32;
-            lay.GetLineMetrics(Some(&mut line_metrics), 1, &mut count)
+            lay.GetLineMetrics(Some(&mut line_metrics), &mut count)
                 .map_err(|e| UiError::Platform(format!("GetLineMetrics: {e}")))?;
-            let ascent = line_metrics.baseline;
-            let band = line_metrics.height;
+            let ascent = line_metrics[0].baseline;
+            let band = line_metrics[0].height;
             let descent = (band - ascent).max(0.0);
             let baseline = (lh.0 + ascent - descent) / 2.0;
             lay.SetLineSpacing(DWRITE_LINE_SPACING_METHOD_UNIFORM, lh.0, baseline.max(0.0))
@@ -215,11 +215,11 @@ fn layout_for(
         }
         if ts.underline {
             lay.SetUnderline(
+                true,
                 DWRITE_TEXT_RANGE {
                     startPosition: 0,
                     length: wide.len() as u32,
                 },
-                true,
             )
             .map_err(|e| UiError::Platform(format!("SetUnderline: {e}")))?;
         }
@@ -521,7 +521,7 @@ impl Renderer {
                     let c = resolve_render(*color, dark, forced);
                     let brush = unsafe { target.CreateSolidColorBrush(&c, None)? };
                     unsafe {
-                        draw_icon(&target, &self.factory, icon, *size, r, &brush)?;
+                        draw_icon(&target, &self.factory, icon, *size, &r, &brush)?;
                     }
                 }
                 NodeData::Button {
@@ -1820,7 +1820,7 @@ unsafe fn draw_icon_at(
     {
         let sink = geo.Open()?;
         let mut open = false;
-        for op in icon.ops() {
+        for op in icon.path() {
             match *op {
                 crate::icons::IconOp::MoveTo(x, y) => {
                     if open {
@@ -1839,12 +1839,44 @@ unsafe fn draw_icon_at(
                     X: r.x + x * scale,
                     Y: r.y + y * scale,
                 }),
+                crate::icons::IconOp::QuadTo(cx, cy, x, y) => {
+                    sink.AddQuadraticBezier(&D2D1_QUADRATIC_BEZIER_SEGMENT {
+                        point1: Vector2 {
+                            X: r.x + cx * scale,
+                            Y: r.y + cy * scale,
+                        },
+                        point2: Vector2 {
+                            X: r.x + x * scale,
+                            Y: r.y + y * scale,
+                        },
+                    });
+                }
+                crate::icons::IconOp::CubicTo(cx1, cy1, cx2, cy2, x, y) => {
+                    sink.AddBezier(&D2D1_BEZIER_SEGMENT {
+                        point1: Vector2 {
+                            X: r.x + cx1 * scale,
+                            Y: r.y + cy1 * scale,
+                        },
+                        point2: Vector2 {
+                            X: r.x + cx2 * scale,
+                            Y: r.y + cy2 * scale,
+                        },
+                        point3: Vector2 {
+                            X: r.x + x * scale,
+                            Y: r.y + y * scale,
+                        },
+                    });
+                }
+                crate::icons::IconOp::Close => {
+                    if open {
+                        sink.EndFigure(D2D1_FIGURE_END_CLOSED);
+                        open = false;
+                    }
+                }
                 crate::icons::IconOp::ArcTo {
-                    cx,
-                    cy,
                     rx,
                     ry,
-                    x_rot,
+                    x_axis_rotation,
                     large_arc,
                     sweep,
                     x,
@@ -1858,7 +1890,7 @@ unsafe fn draw_icon_at(
                         width: rx * scale,
                         height: ry * scale,
                     },
-                    rotationAngle: x_rot,
+                    rotationAngle: x_axis_rotation,
                     sweepDirection: if sweep {
                         D2D1_SWEEP_DIRECTION_CLOCKWISE
                     } else {
@@ -1870,7 +1902,7 @@ unsafe fn draw_icon_at(
                         D2D1_ARC_SIZE_SMALL
                     },
                 }),
-                crate::icons::IconOp::Circle(cx, cy, rad) => {
+                crate::icons::IconOp::Circle { cx, cy, r: rad } => {
                     if open {
                         sink.EndFigure(D2D1_FIGURE_END_OPEN);
                         open = false;
@@ -1909,9 +1941,9 @@ unsafe fn draw_icon_at(
                         sweepDirection: D2D1_SWEEP_DIRECTION_CLOCKWISE,
                         arcSize: D2D1_ARC_SIZE_LARGE,
                     });
-                    sink.EndFigure(D2D1_FIGURE_END_HOLLOW);
+                    sink.EndFigure(D2D1_FIGURE_END_CLOSED);
                 }
-                crate::icons::IconOp::RoundRect { x, y, w, h, rad } => {
+                crate::icons::IconOp::RoundRect { x, y, w, h, r: rad } => {
                     if open {
                         sink.EndFigure(D2D1_FIGURE_END_OPEN);
                         open = false;
@@ -1936,13 +1968,16 @@ unsafe fn draw_icon_at(
         }
         sink.Close()?;
     }
-    let style = factory.CreateStrokeStyle(&D2D1_STROKE_STYLE_PROPERTIES {
-        startCap: D2D1_CAP_STYLE_ROUND,
-        endCap: D2D1_CAP_STYLE_ROUND,
-        dashCap: D2D1_CAP_STYLE_ROUND,
-        lineJoin: D2D1_LINE_JOIN_ROUND,
-        ..Default::default()
-    })?;
+    let style = factory.CreateStrokeStyle(
+        &D2D1_STROKE_STYLE_PROPERTIES {
+            startCap: D2D1_CAP_STYLE_ROUND,
+            endCap: D2D1_CAP_STYLE_ROUND,
+            dashCap: D2D1_CAP_STYLE_ROUND,
+            lineJoin: D2D1_LINE_JOIN_ROUND,
+            ..Default::default()
+        },
+        None,
+    )?;
     target.DrawGeometry(&geo, brush, 2.0 * scale, &style);
     Ok(())
 }

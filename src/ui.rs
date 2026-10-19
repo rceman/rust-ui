@@ -239,6 +239,9 @@ impl Surface {
 #[derive(Copy, Clone, Debug, Default, PartialEq)]
 pub struct Card {
     pub size: crate::theme::CardSize,
+    /// optional fixed width — the frozen card specimen is 288dp; unset
+    /// keeps content/stretch sizing
+    pub width: Option<crate::geom::Dp>,
     /// surgical patch over `card_recipe`
     pub patch: crate::style::BoxStylePatch,
 }
@@ -249,6 +252,10 @@ impl Card {
     }
     pub fn size(mut self, s: crate::theme::CardSize) -> Self {
         self.size = s;
+        self
+    }
+    pub fn width(mut self, w: crate::geom::Dp) -> Self {
+        self.width = Some(w);
         self
     }
     /// surgical patch — later `.style` calls deep-merge, `None` never erases
@@ -744,11 +751,17 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
     /// Compose parts with generic `column`/`row`/`box_`/`part` — the
     /// card itself stays a plain styled container.
     pub fn card(&mut self, props: Card, draw: impl FnOnce(&mut Ui<'_, '_, M>)) {
+        let layout = props
+            .width
+            .map_or_else(LayoutSpec::default, |w| LayoutSpec {
+                width: crate::geom::Length::Fixed(w),
+                ..Default::default()
+            });
         self.tx.stage_container(
             crate::node::KIND_CARD,
             None,
             props.props(),
-            LayoutSpec::default(),
+            layout,
             EventFactorySet::default(),
             Visibility::Visible,
             draw,

@@ -12,8 +12,8 @@ use windows::Win32::Foundation::RECT;
 
 use crate::geom::{Align, Length, Visibility};
 use crate::node::{
-    KIND_ACTION, KIND_BOX, KIND_COLUMN, KIND_GROUP, KIND_ROW, KIND_SCOPE, KIND_STACK, KIND_SURFACE,
-    NodeData,
+    KIND_ACTION, KIND_BOX, KIND_CARD, KIND_COLUMN, KIND_GROUP, KIND_ROW, KIND_SCOPE, KIND_STACK,
+    KIND_SURFACE, NodeData,
 };
 use crate::runtime::UpdateCtx;
 use crate::style::Insets;
@@ -460,7 +460,9 @@ impl LayoutCache {
             other => other,
         };
         match effective {
-            KIND_COLUMN => {
+            // Card is column semantics — parts lay out vertically inside
+            // the chrome. KIND_CARD joins the column branch.
+            KIND_COLUMN | KIND_CARD => {
                 let gap = props.gap.map(space_px).unwrap_or(0.0);
                 let items: Vec<Item> = ids
                     .iter()

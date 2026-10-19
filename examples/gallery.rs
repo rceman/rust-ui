@@ -9,8 +9,55 @@ use rust_ui::{Icon, Typography};
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 enum Page {
+    All,
     Components,
+    Forms,
+    Navigation,
     Typography,
+    Overlays,
+    NativeText,
+}
+
+impl Page {
+    const ALL: [Page; 7] = [
+        Page::All,
+        Page::Components,
+        Page::Forms,
+        Page::Navigation,
+        Page::Typography,
+        Page::Overlays,
+        Page::NativeText,
+    ];
+
+    fn id(self) -> &'static str {
+        match self {
+            Page::All => "all",
+            Page::Components => "components",
+            Page::Forms => "forms",
+            Page::Navigation => "navigation",
+            Page::Typography => "typography",
+            Page::Overlays => "overlays",
+            Page::NativeText => "native-text",
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Page::All => "All",
+            Page::Components => "Components",
+            Page::Forms => "Forms",
+            Page::Navigation => "Navigation",
+            Page::Typography => "Typography",
+            Page::Overlays => "Overlays",
+            Page::NativeText => "Native Text",
+        }
+    }
+
+    /// Slice-1 ships the Components and Typography pages; the rest are
+    /// present in the shell (frozen ids) but not yet implemented.
+    fn implemented(self) -> bool {
+        matches!(self, Page::Components | Page::Typography)
+    }
 }
 
 struct Gallery {
@@ -46,6 +93,7 @@ impl Gallery {
                     match self.page {
                         Page::Components => self.components_page(ui),
                         Page::Typography => self.typography_page(ui),
+                        other => self.stub_page(ui, other),
                     }
                 },
             );
@@ -59,24 +107,18 @@ impl Gallery {
             ui.row(Row::new().gap(Space::Sm).align(Align::Center), |ui| {
                 ui.named("shell.nav", |ui| {
                     ui.row(Row::new().gap(Space::Xs).align(Align::Center), |ui| {
-                        ui.button("Components")
-                            .automation_id("nav.components")
-                            .variant(if self.page == Page::Components {
-                                ButtonVariant::Secondary
-                            } else {
-                                ButtonVariant::Ghost
-                            })
-                            .size(ControlSize::Sm)
-                            .on_press(|| Msg::SetPage(Page::Components));
-                        ui.button("Typography")
-                            .automation_id("nav.typography")
-                            .variant(if self.page == Page::Typography {
-                                ButtonVariant::Secondary
-                            } else {
-                                ButtonVariant::Ghost
-                            })
-                            .size(ControlSize::Sm)
-                            .on_press(|| Msg::SetPage(Page::Typography));
+                        for p in Page::ALL {
+                            ui.button(p.label())
+                                .automation_id(&format!("shell.nav.{}", p.id()))
+                                .variant(if self.page == p {
+                                    ButtonVariant::Secondary
+                                } else {
+                                    ButtonVariant::Ghost
+                                })
+                                .size(ControlSize::Xs)
+                                .disabled(!p.implemented())
+                                .on_press(move || Msg::SetPage(p));
+                        }
                     });
                 });
                 // theme toggle — icon-only buttons, real native names
@@ -95,19 +137,26 @@ impl Gallery {
                                     } else {
                                         ButtonVariant::Outline
                                     })
+                                    .size(ControlSize::Xs)
                                     .on_press(move || Msg::SetTheme(mode));
                             };
                         theme_btn(
                             ui,
-                            "theme.light",
+                            "shell.theme.light",
                             ThemeMode::Light,
                             Icon::Sun,
                             "Light theme",
                         );
-                        theme_btn(ui, "theme.dark", ThemeMode::Dark, Icon::Moon, "Dark theme");
                         theme_btn(
                             ui,
-                            "theme.system",
+                            "shell.theme.dark",
+                            ThemeMode::Dark,
+                            Icon::Moon,
+                            "Dark theme",
+                        );
+                        theme_btn(
+                            ui,
+                            "shell.theme.system",
                             ThemeMode::System,
                             Icon::Monitor,
                             "System theme",
@@ -123,36 +172,43 @@ impl Gallery {
     /// `normal` are devctl-driven (hover/press/focus), not force-styled.
     fn components_page(&self, ui: &mut Ui<Msg>) {
         ui.column(Column::new().gap(Space::Md).align(Align::Stretch), |ui| {
-            for variant in [
-                (ButtonVariant::Primary, "button.default", "Default"),
-                (ButtonVariant::Secondary, "button.secondary", "Secondary"),
-                (ButtonVariant::Outline, "button.outline", "Outline"),
-                (ButtonVariant::Ghost, "button.ghost", "Ghost"),
-                (
-                    ButtonVariant::Destructive,
-                    "button.destructive",
-                    "Destructive",
-                ),
-                (ButtonVariant::Link, "button.link", "Link"),
+            for pair in [
+                [
+                    (ButtonVariant::Primary, "button.default", "Default"),
+                    (ButtonVariant::Secondary, "button.secondary", "Secondary"),
+                ],
+                [
+                    (ButtonVariant::Outline, "button.outline", "Outline"),
+                    (ButtonVariant::Ghost, "button.ghost", "Ghost"),
+                ],
+                [
+                    (
+                        ButtonVariant::Destructive,
+                        "button.destructive",
+                        "Destructive",
+                    ),
+                    (ButtonVariant::Link, "button.link", "Link"),
+                ],
             ] {
-                let (v, id, label) = variant;
                 ui.row(Row::new().gap(Space::Md).align(Align::Center), |ui| {
                     // state cells — devctl drives hover/press/focus on
                     // `id`, `id.disabled`/`id.invalid` are semantic
-                    ui.button(label)
-                        .automation_id(id)
-                        .variant(v)
-                        .on_press(|| Msg::Invoke(id));
-                    ui.button("Disabled")
-                        .automation_id(&format!("{id}.disabled"))
-                        .variant(v)
-                        .disabled(true)
-                        .on_press(|| Msg::Invoke(id));
-                    ui.button("Invalid")
-                        .automation_id(&format!("{id}.invalid"))
-                        .variant(v)
-                        .invalid(true)
-                        .on_press(|| Msg::Invoke(id));
+                    for (v, id, label) in pair {
+                        ui.button(label)
+                            .automation_id(id)
+                            .variant(v)
+                            .on_press(|| Msg::Invoke(id));
+                        ui.button("Disabled")
+                            .automation_id(&format!("{id}.disabled"))
+                            .variant(v)
+                            .disabled(true)
+                            .on_press(|| Msg::Invoke(id));
+                        ui.button("Invalid")
+                            .automation_id(&format!("{id}.invalid"))
+                            .variant(v)
+                            .invalid(true)
+                            .on_press(|| Msg::Invoke(id));
+                    }
                 });
             }
             // sizes + inline icons on the shared next row
@@ -178,33 +234,39 @@ impl Gallery {
                     .icon_end(Icon::ArrowRight)
                     .on_press(|| Msg::Invoke("button.default.icon-inline-end"));
             });
-            // IconButton — variants × states on their own rows
-            for variant in [
-                (ButtonVariant::Primary, "icon-button.default"),
-                (ButtonVariant::Secondary, "icon-button.secondary"),
-                (ButtonVariant::Outline, "icon-button.outline"),
-                (ButtonVariant::Ghost, "icon-button.ghost"),
-                (ButtonVariant::Destructive, "icon-button.destructive"),
+            // IconButton — variants × states on one row; a second row for
+            // the disabled cells keeps the grid inside the client height
+            for half in [
+                &[
+                    (ButtonVariant::Primary, "icon-button.default"),
+                    (ButtonVariant::Secondary, "icon-button.secondary"),
+                    (ButtonVariant::Outline, "icon-button.outline"),
+                ][..],
+                &[
+                    (ButtonVariant::Ghost, "icon-button.ghost"),
+                    (ButtonVariant::Destructive, "icon-button.destructive"),
+                ][..],
             ] {
-                let (v, id) = variant;
                 ui.row(Row::new().gap(Space::Md).align(Align::Center), |ui| {
-                    ui.icon_button(Icon::ArrowRight, id)
-                        .automation_id(id)
-                        .variant(v)
-                        .on_press(|| Msg::Invoke(id));
-                    ui.icon_button(Icon::ArrowRight, "disabled")
-                        .automation_id(&format!("{id}.disabled"))
-                        .variant(v)
-                        .disabled(true);
+                    for &(v, id) in half {
+                        ui.icon_button(Icon::ArrowRight, id)
+                            .automation_id(id)
+                            .variant(v)
+                            .on_press(|| Msg::Invoke(id));
+                        ui.icon_button(Icon::ArrowRight, "disabled")
+                            .automation_id(&format!("{id}.disabled"))
+                            .variant(v)
+                            .disabled(true);
+                    }
                 });
             }
             // IconButton sizes
             ui.row(Row::new().gap(Space::Md).align(Align::Center), |ui| {
                 for (size, id) in [
-                    (ControlSize::Xs, "icon-button.default.icon-xs"),
-                    (ControlSize::Sm, "icon-button.default.icon-sm"),
-                    (ControlSize::Md, "icon-button.default.icon"),
-                    (ControlSize::Lg, "icon-button.default.icon-lg"),
+                    (ControlSize::Xs, "icon-button.default.size-icon-xs"),
+                    (ControlSize::Sm, "icon-button.default.size-icon-sm"),
+                    (ControlSize::Md, "icon-button.default.size-icon"),
+                    (ControlSize::Lg, "icon-button.default.size-icon-lg"),
                 ] {
                     ui.icon_button(Icon::ArrowRight, id)
                         .automation_id(id)
@@ -215,7 +277,7 @@ impl Gallery {
             // Cards
             ui.row(Row::new().gap(Space::Md).align(Align::Start), |ui| {
                 ui.named("card.default", |ui| {
-                    ui.card(Card::new(), |ui| {
+                    ui.card(Card::new().width(dp(288.0)), |ui| {
                         ui.part("header", |ui| {
                             ui.column(Column::new().gap(Space::Xs), |ui| {
                                 ui.part("title", |ui| {
@@ -245,7 +307,7 @@ impl Gallery {
                     });
                 });
                 ui.named("card.default.size-sm", |ui| {
-                    ui.card(Card::new().size(CardSize::Sm), |ui| {
+                    ui.card(Card::new().size(CardSize::Sm).width(dp(288.0)), |ui| {
                         ui.part("header", |ui| {
                             ui.column(Column::new().gap(Space::Xs), |ui| {
                                 ui.part("title", |ui| {
@@ -276,6 +338,15 @@ impl Gallery {
                 });
             });
         });
+    }
+
+    /// A slice-1 placeholder for the frozen shell tabs that aren't part
+    /// of this slice — the nav ids exist, the page is intentionally thin.
+    fn stub_page(&self, ui: &mut Ui<Msg>, page: Page) {
+        ui.typography(
+            Typography::Muted,
+            &format!("{} — not part of slice 1.", page.label()),
+        );
     }
 
     /// The frozen `typography` slice — the CORE display recipes.
