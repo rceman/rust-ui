@@ -1,9 +1,13 @@
 # Shadcn Native Gallery — Slice 1 parity evidence
 
-Candidate: rework of `8247984` (V01-V06)
-Production base: `cbb39d31985567861a68fec39f22b95728310e36`
+Candidate: `e49966d529e6da5c2cacd4d88c3048dd58f8e640`
 (branch `agent/shadcn-native-gallery-slice1-opus55`, authoritative checkout
 `/home/therceman/git/rust-ui`)
+
+Status: `SHADCN_NATIVE_GALLERY_SLICE1_READY_FOR_VISUAL_CLOSURE`
+
+Prior identities — rework base `8247984`, production `cbb39d31985567861a68fec39f22b95728310e36`,
+independent visual review `75f24a6e2bd7a8b9f3d80cb13f9d23f4f3c651cf`.
 
 Native capture: `examples/gallery` on the win32 backend, light theme
 (`shell.theme.light`), client 964×861 @ scale 1.0 on the secondary monitor.

@@ -1,0 +1,27 @@
+Slice-1 V01 — native non-client title-bar proof
+=================================================
+
+Candidate (exact): e49966d529e6da5c2cacd4d88c3048dd58f8e640
+Branch: agent/shadcn-native-gallery-slice1-opus55
+Backend: win32, examples/gallery, native window incl. DWM caption.
+Capture: full-window CopyFromScreen (client + non-client chrome),
+        unlike devctl WGC which is client-only.
+
+DWMWA_USE_IMMERSIVE_DARK_MODE (DwmGetWindowAttribute attr 20), read on
+the live HWND 3801964 (pid 18364), client 964x861 on \\.\DISPLAY2:
+
+  Theme::Light   -> DWMWA_USE_IMMERSIVE_DARK_MODE = 0  (light caption)
+  Theme::Dark    -> DWMWA_USE_IMMERSIVE_DARK_MODE = 1  (dark caption)
+  Theme::System  -> resolved dark in this environment -> = 1
+                    (window-system.png is the System-resolved capture:
+                    the Gallery process defaults to ThemeMode::System,
+                    which resolved to the dark appearance + dark caption)
+
+Caption follows the resolved theme on the EXISTING HWND at runtime
+(DwmSetWindowAttribute via Backend::sync_dark_caption); no window
+recreate and no custom-drawn title bar. Source: src/platform/win32/mod.rs.
+
+Files:
+  window-light.png   light caption over the light client
+  window-dark.png    dark caption over the #0a0a0a client (explicit dark)
+  window-system.png  system-resolved dark caption (same resolved state)
