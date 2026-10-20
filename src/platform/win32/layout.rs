@@ -195,6 +195,7 @@ where
                 (avail_w, if *multiline { 96.0 } else { 32.0 })
             }
         }
+        NodeData::Toggle { kind, size, .. } => crate::layout::toggle_natural_size(*kind, *size),
         NodeData::Custom { render, .. } => {
             // intrinsic size from CustomRender::measure within the offered box
             let want = render.measure(crate::geom::Constraints {

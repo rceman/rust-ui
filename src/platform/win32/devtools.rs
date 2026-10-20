@@ -82,6 +82,20 @@ where
                 snapshot.committed.chars().take(1024).collect(),
                 !*disabled,
             ),
+            NodeData::Toggle {
+                kind,
+                disabled,
+                label,
+                ..
+            } => (
+                match kind {
+                    crate::theme::ToggleKind::Checkbox => "checkbox",
+                    crate::theme::ToggleKind::RadioItem => "radio",
+                    crate::theme::ToggleKind::Switch => "switch",
+                },
+                label.as_deref().unwrap_or("").chars().take(1024).collect(),
+                !*disabled,
+            ),
             NodeData::Custom { .. } => ("custom", String::new(), true),
             NodeData::Icon { .. } => ("icon", String::new(), true),
         };
@@ -189,6 +203,38 @@ where
                     }
                 }
             }
+            // named toggle — synthetic geometry parts (same helpers as paint)
+            if let NodeData::Toggle {
+                kind,
+                size,
+                checked,
+                label,
+                ..
+            } = &n.data
+            {
+                for (key, pr) in
+                    toggle_part_rects(self, kind, *size, *checked, label.as_deref(), &r)
+                {
+                    let pp = pr.physical(self.peer_ctx.scale.get());
+                    parts.push(d::PartNode {
+                        key: key.into(),
+                        rect_dp: Rect {
+                            x: pr.x as f64,
+                            y: pr.y as f64,
+                            width: pr.width as f64,
+                            height: pr.height as f64,
+                        },
+                        rect_px: Rect {
+                            x: pp.left as f64,
+                            y: pp.top as f64,
+                            width: (pp.right - pp.left) as f64,
+                            height: (pp.bottom - pp.top) as f64,
+                        },
+                        visible: n.visibility == crate::Visibility::Visible,
+                        reason: None,
+                    });
+                }
+            }
         }
         // a scroll clip that fully excludes the node's rect reports the
         // truth — the node is laid out (rect is real) but painted out of
@@ -272,6 +318,46 @@ where
                     reason: None,
                 });
                 descend = true;
+            }
+            // unnamed Toggle — its intrinsic parts emit under the prefix
+            // (e.g. `thumb` inside `field.horizontal`, or
+            // `item[k].indicator` under a part-marked radio item)
+            if let NodeData::Toggle {
+                kind,
+                size,
+                checked,
+                label,
+                ..
+            } = &c.data
+            {
+                let r = self.rects.get(&cid).copied().unwrap_or_default();
+                for (key, pr) in
+                    toggle_part_rects(self, kind, *size, *checked, label.as_deref(), &r)
+                {
+                    let pp = pr.physical(self.peer_ctx.scale.get());
+                    let full = {
+                        prefix.push(key.into());
+                        prefix.join(".")
+                    };
+                    out.push(d::PartNode {
+                        key: full,
+                        rect_dp: Rect {
+                            x: pr.x as f64,
+                            y: pr.y as f64,
+                            width: pr.width as f64,
+                            height: pr.height as f64,
+                        },
+                        rect_px: Rect {
+                            x: pp.left as f64,
+                            y: pp.top as f64,
+                            width: (pp.right - pp.left) as f64,
+                            height: (pp.bottom - pp.top) as f64,
+                        },
+                        visible: c.visibility == crate::Visibility::Visible,
+                        reason: None,
+                    });
+                    prefix.pop();
+                }
             }
             if descend {
                 self.collect_parts(cid, prefix, out);
@@ -763,4 +849,58 @@ where
             }
         }
     }
+}
+
+/// Intrinsic synthetic parts of a Toggle leaf — shared key+geometry list
+/// used by `dev_node` (named toggles) and `collect_parts` (unnamed
+/// toggles inside an automation owner's subtree).
+fn toggle_part_rects<S, M, U, V>(
+    be: &Backend<S, M, U, V>,
+    kind: &crate::theme::ToggleKind,
+    size: crate::theme::ToggleSize,
+    checked: bool,
+    label: Option<&str>,
+    r: &LogicalRect,
+) -> Vec<(&'static str, LogicalRect)>
+where
+    M: 'static,
+    U: Fn(&mut S, M, &mut UpdateCtx<'_, M>),
+    V: Fn(&S, &mut crate::Ui<'_, '_, M>),
+{
+    let _ = be;
+    let mut out: Vec<(&'static str, LogicalRect)> = Vec::new();
+    match kind {
+        crate::theme::ToggleKind::Checkbox => {
+            if checked {
+                let ir = crate::layout::toggle_checkbox_indicator_rect(r);
+                out.push(("indicator", ir));
+                out.push(("indicator.icon", ir));
+            }
+            if let Some(l) = label {
+                let ts = crate::style::resolve_toggle_visual(
+                    *kind,
+                    size,
+                    checked,
+                    false,
+                    crate::style::StyleState::Normal,
+                    false,
+                    false,
+                )
+                .text_style;
+                let (tw, _) = super::render::measure_text(l, f32::MAX, &ts).unwrap_or((0.0, 14.0));
+                out.push(("label", crate::layout::toggle_label_rect(r, tw)));
+            }
+        }
+        crate::theme::ToggleKind::RadioItem => {
+            let ir = crate::layout::toggle_radio_indicator_rect(r);
+            out.push(("indicator", ir));
+            if checked {
+                out.push(("indicator.icon", crate::layout::toggle_radio_dot_rect(r)));
+            }
+        }
+        crate::theme::ToggleKind::Switch => {
+            out.push(("thumb", crate::layout::toggle_thumb_rect(size, checked, r)));
+        }
+    }
+    out
 }

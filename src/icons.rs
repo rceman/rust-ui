@@ -61,6 +61,7 @@ pub enum Icon {
     Moon,
     Monitor,
     CircleAlert,
+    Check,
 }
 
 impl Icon {
@@ -74,6 +75,7 @@ impl Icon {
             Icon::Moon => "moon",
             Icon::Monitor => "monitor",
             Icon::CircleAlert => "circle-alert",
+            Icon::Check => "check",
         }
     }
 
@@ -85,6 +87,7 @@ impl Icon {
             "moon" => Icon::Moon,
             "monitor" => Icon::Monitor,
             "circle-alert" => Icon::CircleAlert,
+            "check" => Icon::Check,
             _ => return None,
         })
     }
@@ -197,6 +200,8 @@ impl Icon {
                 MoveTo(12.0, 16.0),
                 LineTo(12.01, 16.0),
             ],
+            // check: <path d="M20 6 9 17l-5-5"/>
+            Icon::Check => &[MoveTo(20.0, 6.0), LineTo(9.0, 17.0), LineTo(4.0, 12.0)],
         }
     }
 

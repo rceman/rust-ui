@@ -101,6 +101,13 @@ pub enum ColorRole {
     Destructive40,
     /// `destructive-50-dark` — dark invalid border (`border-destructive/50`)
     Destructive50,
+    /// `input-50` — input/textarea disabled fill (`bg-input/50` light,
+    /// `bg-input/80` dark — the frozen token carries white/12 in dark)
+    InputDisabled,
+    /// `input-destructive` — input/textarea invalid border
+    /// (`aria-invalid:border-destructive` light = full destructive,
+    /// `dark:aria-invalid:border-destructive/50` = /50 in dark)
+    InputDestructive,
     /// `destructive-90` — destructive alert description
     /// (`text-destructive/90`, both themes 90% alpha)
     Destructive90,
@@ -220,6 +227,38 @@ impl ControlSize {
             ControlSize::Lg => 36.0,
         })
     }
+}
+
+/// Toggle-control kind — the three frozen selection controls share one
+/// painted leaf (`NodeData::Toggle`): a 16dp `Checkbox`, a 16dp radio
+/// `RadioItem` inside a `ui.radio_group`, and the pill `Switch`.
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
+pub enum ToggleKind {
+    #[default]
+    Checkbox,
+    RadioItem,
+    Switch,
+}
+
+/// Switch track size — frozen `switch.default` 32×18.4dp and
+/// `switch.default.size-sm` 24×14dp.
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
+pub enum ToggleSize {
+    /// 32×18.4 track, 16×16 thumb
+    #[default]
+    Default,
+    /// 24×14 track, 12×12 thumb
+    Sm,
+}
+
+/// Field layout orientation — `field.default` stacks label/control/
+/// description vertically; `field.horizontal` puts a label+description
+/// `content` part left and the control right.
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
+pub enum FieldOrientation {
+    #[default]
+    Vertical,
+    Horizontal,
 }
 
 /// Card density — frozen `--card-spacing` token: Default = 16dp,

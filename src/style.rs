@@ -1176,6 +1176,12 @@ pub fn role_color(role: ColorRole, dark: bool) -> [f32; 4] {
         (Destructive40, false) => rgba(0xe7000b, 0.40),
         (Destructive40, true) => rgba(0xff6467, 0.40),
         (Destructive50, _) => rgba(0xff6467, 0.50),
+        // frozen `input-50`: light e5e5e5@50%, dark #fff@12%
+        (InputDisabled, false) => rgba(0xe5e5e5, 0.5),
+        (InputDisabled, true) => rgba(0xffffff, 0.12),
+        // frozen `aria-invalid:border-destructive`: light full, dark /50
+        (InputDestructive, false) => rgba(0xe7000b, 1.0),
+        (InputDestructive, true) => rgba(0xff6467, 0.5),
         (Destructive90, false) => rgba(0xe7000b, 0.90),
         (Destructive90, true) => rgba(0xff6467, 0.90),
     }
@@ -1827,6 +1833,179 @@ pub fn kbd_recipe() -> VisualStyle {
 }
 
 // ---------------------------------------------------------------------------
+// forms recipes — Slice-2 forms families (toggle controls, field text,
+// input/textarea overlay). Frozen geometry per the contract: checkbox/radio
+// 16×16 with a 14dp indicator part, switch tracks 32×18.4 / 24×14, label
+// painted at +24dp. `disabled` paints a whole-control 0.5 layer at render —
+// like the button recipe it is not a style value.
+// ---------------------------------------------------------------------------
+
+/// Resolved painted style for one `NodeData::Toggle` under an interaction
+/// state — the box_style describes the indicator/track chrome (label text
+/// lives in `text_style`). The frozen palettes: checkbox/radio checked =
+/// `bg-primary` + `border-primary` + `PrimaryForeground` mark; unchecked =
+/// transparent + `Border`; switch checked track = `bg-primary`, unchecked
+/// = `bg-input`; invalid = `border-destructive` (light) /
+/// `border-destructive/50` (dark) + `ring-destructive` enforcement.
+pub fn resolve_toggle_visual(
+    kind: crate::theme::ToggleKind,
+    size: crate::theme::ToggleSize,
+    checked: bool,
+    invalid: bool,
+    state: StyleState,
+    focus_visible: bool,
+    dark: bool,
+) -> VisualStyle {
+    let _ = (size, state, focus_visible); // state branches reserved — normal only today
+    let border_color = if invalid {
+        if dark {
+            Color::Role(ColorRole::Destructive50)
+        } else {
+            Color::Role(ColorRole::Destructive)
+        }
+    } else if checked {
+        Color::Role(ColorRole::Primary)
+    } else {
+        Color::Role(ColorRole::Border)
+    };
+    let (background, radii) = match kind {
+        crate::theme::ToggleKind::Checkbox => (
+            if checked {
+                Color::Role(ColorRole::Primary)
+            } else {
+                Color::rgba(0, 0, 0, 0)
+            },
+            4.0,
+        ),
+        crate::theme::ToggleKind::RadioItem => (
+            if checked {
+                Color::Role(ColorRole::Primary)
+            } else {
+                Color::rgba(0, 0, 0, 0)
+            },
+            9999.0,
+        ),
+        crate::theme::ToggleKind::Switch => (
+            if checked {
+                Color::Role(ColorRole::Primary)
+            } else {
+                Color::Role(ColorRole::Input)
+            },
+            9999.0,
+        ),
+    };
+    VisualStyle {
+        box_style: BoxStyle {
+            background,
+            border: Border::all(BorderSide::new(Dp(1.0), border_color)),
+            radii: CornerRadii::all(Dp(radii)),
+            padding: Insets::default(),
+            shadow: None,
+        },
+        text_style: TextStyle {
+            foreground: Color::Role(ColorRole::Foreground),
+            size: TextSize::Exact(Dp(14.0)),
+            weight: TextWeight::Normal,
+            font: crate::theme::FontFamily::Sans,
+            line_height: Some(Dp(14.0)),
+            underline: false,
+            letter_spacing: 0.0,
+        },
+        focus_ring: if invalid {
+            Color::Role(ColorRole::DestructiveRing)
+        } else {
+            Color::Role(ColorRole::Focus)
+        },
+    }
+}
+
+/// `input`/`textarea` overlay chrome — the transparent top layer of the
+/// two-node stack: it carries ONLY the visible frame (border + radii 10 +
+/// optional `bg-input/50` disabled fill); the editor leaf under it owns
+/// the opaque content rect. `invalid` picks the theme-conditional
+/// `InputDestructive` border role; text metrics never touch this layer.
+pub fn input_overlay_style(disabled: bool, invalid: bool) -> BoxStyle {
+    BoxStyle {
+        background: if disabled {
+            Color::Role(ColorRole::InputDisabled)
+        } else {
+            Color::rgba(0, 0, 0, 0)
+        },
+        border: Border::all(BorderSide::new(
+            Dp(1.0),
+            if invalid {
+                Color::Role(ColorRole::InputDestructive)
+            } else {
+                Color::Role(ColorRole::Border)
+            },
+        )),
+        radii: CornerRadii::all(Dp(10.0)),
+        padding: Insets::default(),
+        shadow: None,
+    }
+}
+
+/// Editor-leaf chrome inside the input/textarea stack — border/radii
+/// stripped (the overlay owns the frame); padding carries the frozen
+/// content offset INCLUDING the overlay's 1dp border (`px-2.5` 10dp +
+/// 1dp border = 11 horizontal; input `py-1`+1 = 5 top/bottom, textarea
+/// `py-2`+1 = 9). Peer surface = element rect minus this inset.
+pub fn input_editor_chrome(multiline: bool) -> BoxStyle {
+    let pad_v = if multiline { 9.0 } else { 5.0 };
+    BoxStyle {
+        background: Color::Role(ColorRole::Background),
+        border: Border::default(),
+        radii: CornerRadii::default(),
+        padding: Insets {
+            top: Dp(pad_v),
+            right: Dp(11.0),
+            bottom: Dp(pad_v),
+            left: Dp(11.0),
+        },
+        shadow: None,
+    }
+}
+
+/// `field` label part — `text-sm` medium; the invalid field flips it to
+/// the destructive role (frozen `text-destructive` on `.invalid`).
+pub fn field_label_style(invalid: bool) -> TextStyle {
+    TextStyle {
+        foreground: Color::Role(if invalid {
+            ColorRole::Destructive
+        } else {
+            ColorRole::Foreground
+        }),
+        size: TextSize::Exact(Dp(14.0)),
+        weight: TextWeight::Medium,
+        line_height: Some(Dp(14.0)),
+        ..TextStyle::default()
+    }
+}
+
+/// `field` description part — `text-sm` muted-foreground at the frozen
+/// 21dp line box.
+pub fn field_description_style() -> TextStyle {
+    TextStyle {
+        foreground: Color::Role(ColorRole::MutedForeground),
+        size: TextSize::Exact(Dp(14.0)),
+        weight: TextWeight::Normal,
+        line_height: Some(Dp(21.0)),
+        ..TextStyle::default()
+    }
+}
+
+/// `field` error part — `text-sm` destructive at the frozen 20dp line box.
+pub fn field_error_style() -> TextStyle {
+    TextStyle {
+        foreground: Color::Role(ColorRole::Destructive),
+        size: TextSize::Exact(Dp(14.0)),
+        weight: TextWeight::Normal,
+        line_height: Some(Dp(20.0)),
+        ..TextStyle::default()
+    }
+}
+
+// ---------------------------------------------------------------------------
 // style preflight — finite numbers, nonnegative geometry, positive text size,
 /// checked before ANY native mutation at commit time
 // ---------------------------------------------------------------------------
@@ -1988,7 +2167,9 @@ pub fn system_slot(role: crate::theme::ColorRole) -> SystemColor {
         | R::DestructiveTintHover
         | R::Input30
         | R::Input50
+        | R::InputDisabled
         | R::SecondaryHover => SystemColor::Window,
+        R::InputDestructive => SystemColor::Highlight,
         R::Foreground
         | R::Destructive
         | R::Destructive90

@@ -53,18 +53,36 @@ impl Page {
         }
     }
 
-    /// Slice-1 ships the Components and Typography pages; the rest are
-    /// present in the shell (frozen ids) but not yet implemented.
+    /// Slice-2 ships Components, Typography, Forms and Native Text; the
+    /// rest are present in the shell (frozen ids) but not yet implemented.
     fn implemented(self) -> bool {
-        matches!(self, Page::Components | Page::Typography)
+        matches!(
+            self,
+            Page::Components | Page::Typography | Page::Forms | Page::NativeText
+        )
     }
 }
+
+/// forms text bindings: inputs 0..6, textareas 6..12, native-text 12..26,
+/// field controls 26..29 — every mounted editor needs a DISTINCT lease
+/// (two peers on one `TextValue` is `DuplicateTextBinding`).
+const T_INPUTS: usize = 0;
+const T_AREAS: usize = 6;
+const T_NATIVE: usize = 12;
+const T_FIELDS: usize = 26;
+const T_COUNT: usize = 29;
 
 struct Gallery {
     page: Page,
     theme: ThemeMode,
     /// app-owned page scroll offset (Dp) — reset on page change
     scroll: f32,
+    /// bound text values for input/textarea/native-text specimens
+    texts: Vec<TextValue>,
+    /// app-owned toggle state — never widget-hidden
+    cb: [bool; 7],
+    radio: [&'static str; 5],
+    sw: [bool; 8],
 }
 
 enum Msg {
@@ -72,6 +90,11 @@ enum Msg {
     SetTheme(ThemeMode),
     Invoke(&'static str),
     Scroll(f32),
+    Edit(usize, TextEdit),
+    Conflict(usize, TextConflict),
+    ToggleCb(usize),
+    SetRadio(usize, &'static str),
+    ToggleSw(usize),
 }
 
 impl Gallery {
@@ -84,6 +107,13 @@ impl Gallery {
             Msg::SetTheme(t) => self.theme = t,
             Msg::Invoke(_) => {}
             Msg::Scroll(dy) => self.scroll = (self.scroll + dy).max(0.0),
+            Msg::Edit(i, e) => {
+                let _ = self.texts[i].accept(e);
+            }
+            Msg::Conflict(_, _) => {}
+            Msg::ToggleCb(i) => self.cb[i] = !self.cb[i],
+            Msg::SetRadio(g, k) => self.radio[g] = k,
+            Msg::ToggleSw(i) => self.sw[i] = !self.sw[i],
         }
     }
 
@@ -111,6 +141,8 @@ impl Gallery {
                             |ui| match self.page {
                                 Page::Components => self.components_page(ui),
                                 Page::Typography => self.typography_page(ui),
+                                Page::Forms => self.forms_page(ui),
+                                Page::NativeText => self.native_text_page(ui),
                                 other => self.stub_page(ui, other),
                             },
                         );
@@ -503,6 +535,358 @@ impl Gallery {
         });
     }
 
+    /// The frozen `forms` slice — contract order: label → input →
+    /// textarea → checkbox → radio-group → switch → field.
+    fn forms_page(&self, ui: &mut Ui<Msg>) {
+        ui.column(Column::new().gap(Space::Lg).align(Align::Start), |ui| {
+            // label — frozen `label.default` (214×54 block carrying the
+            // `label` text part)
+            ui.named("label.default", |ui| {
+                ui.box_(
+                    BoxProps::new()
+                        .width(Length::Fixed(dp(214.0)))
+                        .height(Length::Fixed(dp(54.0))),
+                    |ui| {
+                        ui.column(Column::new().padding(Space::None).gap(Space::Xs), |ui| {
+                            ui.part("label", |ui| {
+                                ui.text("Email").style(field_label_style(false));
+                            });
+                            ui.box_(
+                                BoxProps::new()
+                                    .width(Length::Fixed(dp(360.0)))
+                                    .height(Length::Fixed(dp(32.0))),
+                                |_| {},
+                            );
+                        });
+                    },
+                );
+            });
+            // inputs — placeholder/filled/focus-visible/disabled/invalid/
+            // invalid-focus-visible at 360×32
+            for (i, (id, val, dis, inv)) in [
+                ("input.default.placeholder", "", false, false),
+                ("input.default.filled", "team@example.com", false, false),
+                (
+                    "input.default.focus-visible",
+                    "team@example.com",
+                    false,
+                    false,
+                ),
+                ("input.default.disabled", "team@example.com", true, false),
+                ("input.default.invalid", "bad value", false, true),
+                (
+                    "input.default.invalid-focus-visible",
+                    "bad value",
+                    false,
+                    true,
+                ),
+            ]
+            .iter()
+            .enumerate()
+            {
+                let idx = T_INPUTS + i;
+                let _ = val; // content pre-seeded in main()
+                ui.input(&self.texts[idx])
+                    .automation_id(id)
+                    .width(Length::Fixed(dp(360.0)))
+                    .height(Length::Fixed(dp(32.0)))
+                    .placeholder("Email")
+                    .disabled(*dis)
+                    .invalid(*inv)
+                    .on_edit(move |e| Msg::Edit(idx, e))
+                    .on_conflict(move |c| Msg::Conflict(idx, c));
+            }
+            // textareas — same state set at 360×64
+            for (i, (id, dis, inv)) in [
+                ("textarea.default.placeholder", false, false),
+                ("textarea.default.filled", false, false),
+                ("textarea.default.focus-visible", false, false),
+                ("textarea.default.disabled", true, false),
+                ("textarea.default.invalid", false, true),
+                ("textarea.default.invalid-focus-visible", false, true),
+            ]
+            .iter()
+            .enumerate()
+            {
+                let idx = T_AREAS + i;
+                ui.textarea(&self.texts[idx])
+                    .automation_id(id)
+                    .width(Length::Fixed(dp(360.0)))
+                    .height(Length::Fixed(dp(64.0)))
+                    .placeholder("Type your message here.")
+                    .disabled(*dis)
+                    .invalid(*inv)
+                    .on_edit(move |e| Msg::Edit(idx, e))
+                    .on_conflict(move |c| Msg::Conflict(idx, c));
+            }
+            // checkboxes — 7 frozen specimens; app model owns `checked`
+            ui.row(Row::new().gap(Space::Lg).align(Align::Center), |ui| {
+                for (i, (id, dis, inv, lbl)) in [
+                    ("checkbox.default.unchecked", false, false, "Unchecked"),
+                    ("checkbox.default.checked", false, false, "Checked"),
+                    (
+                        "checkbox.default.focus-visible",
+                        false,
+                        false,
+                        "Focus visible",
+                    ),
+                    ("checkbox.default.disabled", true, false, "Disabled"),
+                    (
+                        "checkbox.default.disabled-checked",
+                        true,
+                        false,
+                        "Disabled checked",
+                    ),
+                    ("checkbox.default.invalid", false, true, "Invalid"),
+                    (
+                        "checkbox.default.invalid-checked",
+                        false,
+                        true,
+                        "Invalid checked",
+                    ),
+                ]
+                .iter()
+                .enumerate()
+                {
+                    ui.named(id, |ui| {
+                        ui.checkbox(
+                            Checkbox {
+                                checked: self.cb[i],
+                                disabled: *dis,
+                                invalid: *inv,
+                                label: Some(lbl),
+                                ..Default::default()
+                            },
+                            move || Msg::ToggleCb(i),
+                        );
+                    });
+                }
+            });
+            // radio groups — 5 frozen specimens, app-owned `selected`
+            ui.row(Row::new().gap(Space::Lg).align(Align::Start), |ui| {
+                for (g, (id, dis, inv)) in [
+                    ("radio-group.default.unselected", false, false),
+                    ("radio-group.default.selected", false, false),
+                    ("radio-group.default.focus-visible", false, false),
+                    ("radio-group.default.invalid", false, true),
+                    ("radio-group.default.disabled", true, false),
+                ]
+                .iter()
+                .enumerate()
+                {
+                    let sel = self.radio[g];
+                    // frozen group box is 360×40 — a fixed box carries the
+                    // element rect; items stack inside at the 8dp gap
+                    ui.named(id, |ui| {
+                        ui.box_(BoxProps::new().width(Length::Fixed(dp(360.0))), |ui| {
+                            ui.column(Column::new().gap(Space::Sm).padding(Space::None), |ui| {
+                                ui.radio_group(
+                                    sel,
+                                    move |k| Msg::SetRadio(g, k),
+                                    |rg| {
+                                        rg.item(
+                                            "option-a",
+                                            "Option A",
+                                            RadioItemOpts {
+                                                disabled: *dis,
+                                                invalid: *inv,
+                                            },
+                                        );
+                                        rg.item(
+                                            "option-b",
+                                            "Option B",
+                                            RadioItemOpts {
+                                                disabled: *dis,
+                                                invalid: *inv,
+                                            },
+                                        );
+                                    },
+                                );
+                            });
+                        });
+                    });
+                }
+            });
+            // switches — 8 frozen specimens
+            ui.row(Row::new().gap(Space::Lg).align(Align::Center), |ui| {
+                for (i, (id, dis, inv, sm)) in [
+                    ("switch.default.unchecked", false, false, false),
+                    ("switch.default.checked", false, false, false),
+                    ("switch.default.focus-visible", false, false, false),
+                    ("switch.default.disabled", true, false, false),
+                    ("switch.default.disabled-checked", true, false, false),
+                    ("switch.default.invalid", false, true, false),
+                    ("switch.default.size-sm", false, false, true),
+                    ("switch.default.size-sm-unchecked", false, false, true),
+                ]
+                .iter()
+                .enumerate()
+                {
+                    ui.named(id, |ui| {
+                        ui.switch(
+                            Switch {
+                                checked: self.sw[i],
+                                disabled: *dis,
+                                invalid: *inv,
+                                size: if *sm {
+                                    ToggleSize::Sm
+                                } else {
+                                    ToggleSize::Default
+                                },
+                                ..Default::default()
+                            },
+                            move || Msg::ToggleSw(i),
+                        );
+                    });
+                }
+            });
+            // fields — vertical default (+invalid +disabled) + horizontal
+            ui.row(Row::new().gap(Space::Lg).align(Align::Start), |ui| {
+                for (fi, (id, inv, dis)) in [
+                    ("field.default", false, false),
+                    ("field.default.invalid", true, false),
+                    ("field.default.disabled", false, true),
+                ]
+                .iter()
+                .enumerate()
+                {
+                    ui.named(id, |ui| {
+                        ui.field(
+                            Field {
+                                orientation: FieldOrientation::Vertical,
+                                width: Some(dp(288.0)),
+                            },
+                            |ui| {
+                                ui.part("label", |ui| {
+                                    ui.text("Email").style(field_label_style(*inv));
+                                });
+                                let idx = T_FIELDS + fi;
+                                ui.part("control", |ui| {
+                                    ui.input(&self.texts[idx])
+                                        .height(Length::Fixed(dp(32.0)))
+                                        .disabled(*dis)
+                                        .invalid(*inv)
+                                        .placeholder("Email")
+                                        .on_edit(move |e| Msg::Edit(idx, e));
+                                });
+                                if *inv {
+                                    ui.part("error", |ui| {
+                                        ui.text("Enter a valid email address.")
+                                            .style(field_error_style());
+                                    });
+                                } else {
+                                    ui.part("description", |ui| {
+                                        ui.text("We'll only use this for notifications.")
+                                            .style(field_description_style());
+                                    });
+                                }
+                            },
+                        );
+                    });
+                }
+                ui.named("field.horizontal", |ui| {
+                    ui.field(
+                        Field {
+                            orientation: FieldOrientation::Horizontal,
+                            width: Some(dp(288.0)),
+                        },
+                        |ui| {
+                            ui.part("content", |ui| {
+                                ui.box_(
+                                    BoxProps::new()
+                                        .width(Length::Fixed(dp(248.0)))
+                                        .height(Length::Fixed(dp(37.0))),
+                                    |ui| {
+                                        ui.column(
+                                            Column::new().padding(Space::None).gap(Space::Xs),
+                                            |ui| {
+                                                ui.part("label", |ui| {
+                                                    ui.text("Enable notifications")
+                                                        .style(field_label_style(false));
+                                                });
+                                                ui.part("description", |ui| {
+                                                    ui.text("Receive product updates.")
+                                                        .style(field_description_style());
+                                                });
+                                            },
+                                        );
+                                    },
+                                );
+                            });
+                            ui.switch(
+                                Switch {
+                                    checked: self.sw[1],
+                                    ..Default::default()
+                                },
+                                || Msg::ToggleSw(1),
+                            );
+                        },
+                    );
+                });
+            });
+        });
+    }
+
+    /// The frozen `native-text` slice — single-line and multiline editors
+    /// under the same input/textarea stack chrome.
+    fn native_text_page(&self, ui: &mut Ui<Msg>) {
+        ui.column(Column::new().gap(Space::Lg).align(Align::Start), |ui| {
+            for (i, (id, dis, ro, inv, h)) in [
+                (
+                    "native-text.single-line.placeholder",
+                    false,
+                    false,
+                    false,
+                    32.0,
+                ),
+                ("native-text.single-line.filled", false, false, false, 32.0),
+                ("native-text.single-line.focused", false, false, false, 32.0),
+                (
+                    "native-text.single-line.selection",
+                    false,
+                    false,
+                    false,
+                    32.0,
+                ),
+                ("native-text.single-line.disabled", true, false, false, 32.0),
+                ("native-text.single-line.readonly", false, true, false, 32.0),
+                ("native-text.single-line.invalid", false, false, true, 32.0),
+                (
+                    "native-text.multiline.placeholder",
+                    false,
+                    false,
+                    false,
+                    64.0,
+                ),
+                ("native-text.multiline.filled", false, false, false, 78.0),
+                ("native-text.multiline.focused", false, false, false, 64.0),
+                ("native-text.multiline.selection", false, false, false, 78.0),
+                ("native-text.multiline.disabled", true, false, false, 64.0),
+                ("native-text.multiline.readonly", false, true, false, 64.0),
+                ("native-text.multiline.invalid", false, false, true, 64.0),
+            ]
+            .iter()
+            .enumerate()
+            {
+                let idx = T_NATIVE + i;
+                let b = if *h > 40.0 {
+                    ui.textarea(&self.texts[idx])
+                } else {
+                    ui.input(&self.texts[idx])
+                };
+                b.automation_id(id)
+                    .width(Length::Fixed(dp(360.0)))
+                    .height(Length::Fixed(dp(*h)))
+                    .placeholder("Type here…")
+                    .disabled(*dis)
+                    .read_only(*ro)
+                    .invalid(*inv)
+                    .on_edit(move |e| Msg::Edit(idx, e))
+                    .on_conflict(move |c| Msg::Conflict(idx, c));
+            }
+        });
+    }
+
     /// A slice-1 placeholder for the frozen shell tabs that aren't part
     /// of this slice — the nav ids exist, the page is intentionally thin.
     fn stub_page(&self, ui: &mut Ui<Msg>, page: Page) {
@@ -621,11 +1005,58 @@ fn card_parts(ui: &mut Ui<Msg>, cs: CardSize, id: &'static str) {
 }
 
 fn main() -> UiResult {
+    let mut texts: Vec<TextValue> = Vec::with_capacity(T_COUNT);
+    let seeds = [
+        "",
+        "team@example.com",
+        "team@example.com",
+        "team@example.com",
+        "bad value",
+        "bad value",
+        "",
+        "Thanks for the update.\nSee you soon.",
+        "Thanks for the update.\nSee you soon.",
+        "Thanks for the update.\nSee you soon.",
+        "bad body",
+        "bad body",
+    ];
+    for s in seeds {
+        texts.push(TextValue::new(s));
+    }
+    for (i, s) in [
+        "",
+        "alice@example.com",
+        "alice@example.com",
+        "alice@example.com",
+        "alice@example.com",
+        "alice@example.com",
+        "bad value",
+        "",
+        "Line one.\nLine two.\nLine three.",
+        "Line one.\nLine two.\nLine three.",
+        "Line one.\nLine two.\nLine three.",
+        "Line one.\nLine two.\nLine three.",
+        "Line one.\nLine two.\nLine three.",
+        "bad body",
+    ]
+    .iter()
+    .enumerate()
+    {
+        texts.push(TextValue::new(*s));
+        let _ = i;
+    }
+    for _ in 0..3 {
+        texts.push(TextValue::new("field@example.com"));
+    }
     let app = App::new(
         Gallery {
             page: Page::Components,
             theme: ThemeMode::System,
             scroll: 0.0,
+            texts,
+            cb: [false, true, true, false, true, false, true],
+            radio: ["", "option-a", "option-a", "option-a", "option-a"],
+            sw: [false, true, true, false, true, false, true, false],
         },
         Gallery::update,
         Gallery::view,

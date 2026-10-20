@@ -33,6 +33,11 @@ pub(crate) const KIND_CARD: u8 = 15;
 /// unbounded height, translated by the app-owned offset; painting and
 /// hit-testing clip descendants to the viewport inner rect.
 pub(crate) const KIND_SCROLL: u8 = 16;
+/// Painted toggle leaf — the three frozen selection controls
+/// (`ToggleKind::{Checkbox,RadioItem,Switch}`) share one node kind: an
+/// actionable leaf owning hit/focus/press and its own painted indicator/
+/// track/thumb.
+pub(crate) const KIND_TOGGLE: u8 = 17;
 
 /// Everything the platform needs to build one native editor peer —
 /// behavior gates are part of the spec so a mounted editor never defaults
@@ -388,7 +393,27 @@ pub(crate) enum NodeData {
         /// capability-limited chrome+foreground patch — chrome paints the
         /// frame, only `foreground` reaches the peer (approved boundary)
         patch: crate::style::TextInputStylePatch,
+        /// semantic `aria-invalid` — the frozen invalid ring is
+        /// unconditional (always-on `ring-destructive`), orthogonal to
+        /// focus/disabled
+        invalid: bool,
         sync: TextPeerSync,
+    },
+    /// `ui.checkbox` / `ui.switch` / `ui.radio_group` item — one painted
+    /// selection-control leaf. App model owns `checked`; `on_change`
+    /// factories ride the shared Press path (click + Space/Enter).
+    Toggle {
+        kind: crate::theme::ToggleKind,
+        checked: bool,
+        disabled: bool,
+        /// semantic `aria-invalid` — destructive indicator border + ring
+        invalid: bool,
+        size: crate::theme::ToggleSize,
+        /// optional visible label painted at the frozen +24dp offset —
+        /// app-owned text, decorative (the node owns all interaction)
+        label: Option<Rc<str>>,
+        /// accessible name when the visible label isn't the control name
+        accessible_name: Option<Rc<str>>,
     },
     Custom {
         render: Rc<dyn crate::ui::CustomRender>,
@@ -732,6 +757,7 @@ pub(crate) fn dirty_diff(
                 accessible_label: aal,
                 submit: asu,
                 patch: ap,
+                invalid: ainv,
                 ..
             },
             NodeData::Editor {
@@ -743,12 +769,16 @@ pub(crate) fn dirty_diff(
                 accessible_label: bal,
                 submit: bsu,
                 patch: bp,
+                invalid: binv,
                 ..
             },
         ) => {
             let mut d = 0;
             if aml != bml {
                 d |= LAYOUT;
+            }
+            if ainv != binv {
+                d |= PAINT;
             }
             // committed text feeds the peer's natural measurement — a
             // content change can change the natural extent, so it is a
@@ -771,6 +801,38 @@ pub(crate) fn dirty_diff(
                 box_dirty(&ca, &cb, dark, &mut d);
             }
             if aro != bro || ad != bd || aal != bal || asu != bsu {
+                d |= SEMANTICS;
+            }
+            d
+        }
+        (
+            NodeData::Toggle {
+                kind: ak,
+                checked: ac,
+                disabled: ad,
+                invalid: ai,
+                size: asz,
+                label: al,
+                accessible_name: aan,
+            },
+            NodeData::Toggle {
+                kind: bk,
+                checked: bc,
+                disabled: bd,
+                invalid: bi,
+                size: bsz,
+                label: bl,
+                accessible_name: ban,
+            },
+        ) => {
+            let mut d = 0;
+            if ak != bk || asz != bsz {
+                d |= LAYOUT | PAINT;
+            }
+            if ac != bc || ai != bi || al != bl {
+                d |= PAINT;
+            }
+            if ad != bd || aan != ban {
                 d |= SEMANTICS;
             }
             d
@@ -877,6 +939,7 @@ impl Node {
             NodeData::Custom { .. } => KIND_CUSTOM,
             NodeData::Action { .. } => KIND_ACTION,
             NodeData::Icon { .. } => KIND_ICON,
+            NodeData::Toggle { .. } => KIND_TOGGLE,
         }
     }
 
@@ -890,6 +953,7 @@ impl Node {
             NodeData::Button { disabled, .. } => !disabled,
             NodeData::Editor { disabled, .. } => !disabled,
             NodeData::Action { disabled, .. } => !disabled,
+            NodeData::Toggle { disabled, .. } => !disabled,
             _ => true,
         }
     }

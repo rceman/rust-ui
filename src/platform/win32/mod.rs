@@ -1858,7 +1858,10 @@ where
                 match &n.data {
                     // disabled/non-interactive nodes are inert chrome — no
                     // hover, pressed, focus, or activation state attaches
-                    NodeData::Button { .. } | NodeData::Editor { .. } | NodeData::Action { .. }
+                    NodeData::Button { .. }
+                    | NodeData::Editor { .. }
+                    | NodeData::Action { .. }
+                    | NodeData::Toggle { .. }
                         if n.interactive() =>
                     {
                         return Some(id);
@@ -2208,7 +2211,10 @@ where
                     && n.interactive()
                     && matches!(
                         n.data,
-                        NodeData::Button { .. } | NodeData::Editor { .. } | NodeData::Action { .. }
+                        NodeData::Button { .. }
+                            | NodeData::Editor { .. }
+                            | NodeData::Action { .. }
+                            | NodeData::Toggle { .. }
                     )
             })
             .collect();
@@ -2326,13 +2332,32 @@ where
                     focus_ring: crate::style::Color::Role(crate::theme::ColorRole::Focus),
                 })
             }
-            NodeData::Editor { patch, .. } => {
+            NodeData::Toggle {
+                kind,
+                size,
+                checked,
+                invalid,
+                disabled,
+                ..
+            } => {
+                let state = crate::style::StyleState::classify(*disabled, st.pressed, st.hot);
+                let mut v = crate::style::resolve_toggle_visual(
+                    *kind, *size, *checked, *invalid, state, st.focus, dark,
+                );
+                crate::style::os_enforce_visual(&mut v, forced);
+                Some(v)
+            }
+            NodeData::Editor { patch, invalid, .. } => {
                 let mut b = crate::style::resolve_text_input_chrome(patch);
                 crate::style::os_enforce_box(&mut b, forced);
                 Some(crate::style::VisualStyle {
                     box_style: b,
                     text_style: crate::style::TextStyle::default(),
-                    focus_ring: crate::style::Color::Role(crate::theme::ColorRole::Focus),
+                    focus_ring: if *invalid {
+                        crate::style::Color::Role(crate::theme::ColorRole::DestructiveRing)
+                    } else {
+                        crate::style::Color::Role(crate::theme::ColorRole::Focus)
+                    },
                 })
             }
             _ => None,
@@ -2553,6 +2578,30 @@ where
                     UIA_EditControlTypeId,
                     "Edit",
                 ),
+                NodeData::Toggle {
+                    kind,
+                    label,
+                    accessible_name,
+                    ..
+                } => {
+                    (
+                        accessible_name
+                            .as_deref()
+                            .or(label.as_deref())
+                            .unwrap_or("toggle")
+                            .to_string(),
+                        match kind {
+                            crate::theme::ToggleKind::Checkbox
+                            | crate::theme::ToggleKind::Switch => UIA_CheckBoxControlTypeId,
+                            crate::theme::ToggleKind::RadioItem => UIA_RadioButtonControlTypeId,
+                        },
+                        match kind {
+                            crate::theme::ToggleKind::Checkbox
+                            | crate::theme::ToggleKind::Switch => "CheckBox",
+                            crate::theme::ToggleKind::RadioItem => "RadioButton",
+                        },
+                    )
+                }
                 NodeData::Custom { render, .. } => {
                     let s = render.semantics();
                     let (ct, loc) = match s.role {

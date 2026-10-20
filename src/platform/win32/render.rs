@@ -782,8 +782,143 @@ impl Renderer {
                         }
                     }
                 }
+                NodeData::Toggle {
+                    kind,
+                    size,
+                    checked,
+                    disabled,
+                    invalid,
+                    label,
+                    ..
+                } => {
+                    let state = crate::style::StyleState::classify(
+                        *disabled,
+                        be.pressed == Some(id),
+                        be.hot == Some(id),
+                    );
+                    let vs = crate::style::resolve_toggle_visual(
+                        *kind,
+                        *size,
+                        *checked,
+                        *invalid,
+                        state,
+                        be.focus == Some(id),
+                        dark,
+                    );
+                    let r_dp = crate::geom::Rect {
+                        x: r.x,
+                        y: r.y,
+                        width: r.width,
+                        height: r.height,
+                    };
+                    unsafe {
+                        if *disabled {
+                            target.PushLayer(
+                                &D2D1_LAYER_PARAMETERS {
+                                    opacity: 0.5,
+                                    ..Default::default()
+                                },
+                                None,
+                            );
+                        }
+                        paint_box(
+                            &target,
+                            &clip,
+                            &vs.box_style,
+                            dark,
+                            forced,
+                            dpi,
+                            &self.shadow_cache,
+                            self.target_gen.get(),
+                        )?;
+                        let mark = resolve_render(
+                            crate::style::Color::Role(crate::theme::ColorRole::PrimaryForeground),
+                            dark,
+                            forced,
+                        );
+                        let mark_brush = target.CreateSolidColorBrush(&mark, None)?;
+                        match kind {
+                            crate::theme::ToggleKind::Checkbox => {
+                                if *checked {
+                                    let ir = crate::layout::toggle_checkbox_indicator_rect(&r_dp);
+                                    draw_icon_at(
+                                        &target,
+                                        &self.factory,
+                                        &crate::icons::Icon::Check,
+                                        &ir,
+                                        &mark_brush,
+                                    )?;
+                                }
+                            }
+                            crate::theme::ToggleKind::RadioItem => {
+                                if *checked {
+                                    let dr = crate::layout::toggle_radio_dot_rect(&r_dp);
+                                    target.FillEllipse(
+                                        &D2D1_ELLIPSE {
+                                            point: Vector2 {
+                                                X: dr.x + dr.width / 2.0,
+                                                Y: dr.y + dr.height / 2.0,
+                                            },
+                                            radiusX: dr.width / 2.0,
+                                            radiusY: dr.height / 2.0,
+                                        },
+                                        &mark_brush,
+                                    );
+                                }
+                            }
+                            crate::theme::ToggleKind::Switch => {
+                                let tr = crate::layout::toggle_thumb_rect(*size, *checked, &r_dp);
+                                let white = resolve_render(
+                                    crate::style::Color::rgba(255, 255, 255, 255),
+                                    dark,
+                                    forced,
+                                );
+                                let wb = target.CreateSolidColorBrush(&white, None)?;
+                                target.FillEllipse(
+                                    &D2D1_ELLIPSE {
+                                        point: Vector2 {
+                                            X: tr.x + tr.width / 2.0,
+                                            Y: tr.y + tr.height / 2.0,
+                                        },
+                                        radiusX: tr.width / 2.0,
+                                        radiusY: tr.height / 2.0,
+                                    },
+                                    &wb,
+                                );
+                            }
+                        }
+                        // focus-visible OR unconditional invalid ring —
+                        // destructive tint when invalid
+                        if (be.focus == Some(id) || *invalid) && !*disabled {
+                            paint_ring_color(&target, &clip, vs.focus_ring, dark, forced)?;
+                        }
+                        if let Some(lbl) = label {
+                            if let Ok(lay) =
+                                layout_for(lbl, f32::MAX, r.height.max(1.0), &vs.text_style)
+                            {
+                                let fg = resolve_render(vs.text_style.foreground, dark, forced);
+                                let fgb = target.CreateSolidColorBrush(&fg, None)?;
+                                target.DrawTextLayout(
+                                    Vector2 {
+                                        X: r.x + 24.0,
+                                        Y: r.y + 1.0,
+                                    },
+                                    &lay,
+                                    &fgb,
+                                    D2D1_DRAW_TEXT_OPTIONS_NONE,
+                                );
+                            }
+                        }
+                        if *disabled {
+                            target.PopLayer();
+                        }
+                    }
+                }
                 NodeData::Editor {
-                    patch, disabled, ..
+                    patch,
+                    disabled,
+                    invalid,
+                    ..
                 } => {
                     // authored chrome paints the frame (the peer draws its
                     // own text/selection inside the safety inset)
@@ -800,9 +935,23 @@ impl Renderer {
                             &self.shadow_cache,
                             self.target_gen.get(),
                         )?;
-                        // focus ENFORCEMENT — same independent ring layer
-                        if be.focus == Some(id) && !*disabled {
-                            paint_focus_ring(&target, &clip, dark, forced)?;
+                        // focus ENFORCEMENT — same independent ring layer;
+                        // `invalid` fires the destructive ring
+                        // unconditionally (frozen `aria-invalid` rule)
+                        if (be.focus == Some(id) || *invalid) && !*disabled {
+                            paint_ring_color(
+                                &target,
+                                &clip,
+                                if *invalid {
+                                    crate::style::Color::Role(
+                                        crate::theme::ColorRole::DestructiveRing,
+                                    )
+                                } else {
+                                    crate::style::Color::Role(crate::theme::ColorRole::Focus)
+                                },
+                                dark,
+                                forced,
+                            )?;
                         }
                     }
                     // NOTE: no axis-aligned clip around the peer draw —
@@ -1903,15 +2052,26 @@ unsafe fn paint_focus_ring(
     dark: bool,
     forced: Option<&dyn Fn(crate::style::SystemColor) -> [f32; 4]>,
 ) -> Result<()> {
+    paint_ring_color(
+        target,
+        r,
+        crate::style::Color::Role(crate::theme::ColorRole::Focus),
+        dark,
+        forced,
+    )
+}
+
+/// Ring painter with an explicit authored color — the destructive variant
+/// used by invalid controls.
+unsafe fn paint_ring_color(
+    target: &ID2D1RenderTarget,
+    r: &D2D_RECT_F,
+    color: crate::style::Color,
+    dark: bool,
+    forced: Option<&dyn Fn(crate::style::SystemColor) -> [f32; 4]>,
+) -> Result<()> {
     unsafe {
-        let ring = target.CreateSolidColorBrush(
-            &resolve_render(
-                crate::style::Color::Role(crate::theme::ColorRole::Focus),
-                dark,
-                forced,
-            ),
-            None,
-        )?;
+        let ring = target.CreateSolidColorBrush(&resolve_render(color, dark, forced), None)?;
         let outer = D2D1_ROUNDED_RECT {
             rect: D2D_RECT_F {
                 left: r.left - 2.0,
