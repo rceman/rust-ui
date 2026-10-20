@@ -279,6 +279,46 @@ impl Card {
     }
 }
 
+/// Scroll viewport props — children lay out as a vertical column inside
+/// the viewport at unbounded height. `offset` is APP-OWNED state passed
+/// back in each view (like `Checkbox`'s checked) — the runtime clamps it
+/// to the measured content extent at layout, it never lives in the
+/// backend. Wheel/devctl input arrives through `on_scroll` deltas.
+#[derive(Copy, Clone, Debug, Default, PartialEq)]
+pub struct Scroll {
+    /// app-owned vertical offset in Dp — the `ui.scroll` `offset`
+    /// argument is authoritative when both are supplied
+    pub offset: crate::geom::Dp,
+    pub gap: Space,
+    pub padding: Space,
+}
+
+impl Scroll {
+    pub fn new() -> Self {
+        Self::default()
+    }
+    pub fn offset(mut self, o: crate::geom::Dp) -> Self {
+        self.offset = o;
+        self
+    }
+    pub fn gap(mut self, g: Space) -> Self {
+        self.gap = g;
+        self
+    }
+    pub fn padding(mut self, p: Space) -> Self {
+        self.padding = p;
+        self
+    }
+    pub(crate) fn props(&self) -> ContainerProps {
+        ContainerProps {
+            gap: Some(self.gap),
+            padding: Some(self.padding),
+            scroll: self.offset,
+            ..Default::default()
+        }
+    }
+}
+
 // ------------------------- staging internals -------------------------------
 
 /// Flat staged node — children are indices into `Tx.nodes`, so the whole
@@ -739,6 +779,42 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
             false,
             |props| NodeData::Container {
                 kind: crate::node::KIND_SURFACE,
+                props,
+            },
+        );
+    }
+
+    /// `ui.scroll` — vertical scroll viewport. `offset` is the app's
+    /// committed scroll position (Dp); wheel and devctl scroll intents
+    /// arrive as `ScrollOffset` deltas through `on_scroll`, producing `M`
+    /// so `update` can own the state. The viewport fills the remaining
+    /// main-axis space it is offered (`height: Fill(1)`); children stack
+    /// as a column at unbounded height and clip to the viewport inner.
+    pub fn scroll(
+        &mut self,
+        props: Scroll,
+        offset: crate::geom::Dp,
+        on_scroll: impl Fn(crate::event::ScrollOffset) -> M + 'static,
+        draw: impl FnOnce(&mut Ui<'_, '_, M>),
+    ) {
+        let mut factories = EventFactorySet::default();
+        factories.on_scroll = Some(Box::new(move |o| Box::new(on_scroll(o))));
+        // the explicit argument is authoritative over any staged field
+        let props = Scroll { offset, ..props };
+        self.tx.stage_container(
+            crate::node::KIND_SCROLL,
+            None,
+            props.props(),
+            LayoutSpec {
+                height: crate::geom::Length::Fill(1),
+                ..Default::default()
+            },
+            factories,
+            Visibility::Visible,
+            draw,
+            false,
+            |props| NodeData::Container {
+                kind: crate::node::KIND_SCROLL,
                 props,
             },
         );

@@ -17,7 +17,7 @@ use windows::core::*;
 use crate::runtime::UpdateCtx;
 use crate::{Ui, UiResult};
 
-use super::{Backend, ResizeSample, WM_PUMP, WM_UIA_FOCUS, WM_UIA_PRESS, RESIZE};
+use super::{Backend, RESIZE, ResizeSample, WM_PUMP, WM_UIA_FOCUS, WM_UIA_PRESS};
 
 pub(super) const DEADLINE_TIMER: usize = 1;
 /// Peer-timer ID namespace — framework timers are small ints; every
@@ -542,8 +542,7 @@ pub(crate) mod wndproc {
                 LRESULT(0)
             }
             WM_MOUSEWHEEL => {
-                be.send_focused(msg, wparam.0, lparam.0)?;
-                be.service_peer_events()?;
+                be.wheel(msg, wparam.0, lparam.0)?;
                 LRESULT(0)
             }
             WM_SIZE => {

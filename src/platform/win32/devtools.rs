@@ -190,6 +190,15 @@ where
                 }
             }
         }
+        // a scroll clip that fully excludes the node's rect reports the
+        // truth — the node is laid out (rect is real) but painted out of
+        // the viewport and unhittable
+        let clipped_out = self.clips.get(&id).is_some_and(|c| {
+            r.x + r.width <= c.x
+                || r.x >= c.x + c.width
+                || r.y + r.height <= c.y
+                || r.y >= c.y + c.height
+        });
         Ok(Node {
             automation_id: n.automation_id.as_deref().map(str::to_owned),
             kind: kind.into(),
@@ -206,7 +215,10 @@ where
                 width: (p.right - p.left) as f64,
                 height: (p.bottom - p.top) as f64,
             },
-            visible: n.visibility == crate::Visibility::Visible && r.width > 0. && r.height > 0.,
+            visible: !clipped_out
+                && n.visibility == crate::Visibility::Visible
+                && r.width > 0.
+                && r.height > 0.,
             enabled,
             focused: self.focus == Some(id),
             focus_visible: self.focus == Some(id),
@@ -455,12 +467,9 @@ where
                     let v = args[k]
                         .as_i64()
                         .or_else(|| args[k].as_str().and_then(|s| s.parse().ok()))
-                        .ok_or_else(|| {
-                            Error::new("INVALID_ARGUMENT", format!("{k} required"))
-                        })?;
-                    i32::try_from(v).map_err(|_| {
-                        Error::new("INVALID_ARGUMENT", format!("{k} out of range"))
-                    })
+                        .ok_or_else(|| Error::new("INVALID_ARGUMENT", format!("{k} required")))?;
+                    i32::try_from(v)
+                        .map_err(|_| Error::new("INVALID_ARGUMENT", format!("{k} out of range")))
                 };
                 let (w, h) = (num("width")?, num("height")?);
                 if !(64..=16384).contains(&w) || !(64..=16384).contains(&h) {
@@ -486,6 +495,108 @@ where
                     let _ = GetClientRect(self.hwnd, &mut c);
                 }
                 Ok(json!({"resized":[w,h],"client_px":[c.left,c.top,c.right,c.bottom]}))
+            }
+            "scroll" => {
+                // inject a scroll DELTA into the scroll viewport's own
+                // factories — the app still owns the offset; this only
+                // drives the same NodeEvent wheel routing produces
+                let id = self.dev_target(args)?;
+                let dy = args["dy"]
+                    .as_f64()
+                    .or_else(|| args["dy"].as_str().and_then(|s| s.parse().ok()))
+                    .ok_or_else(|| Error::new("INVALID_ARGUMENT", "dy required"))?;
+                if !dy.is_finite() {
+                    return Err(Error::new("INVALID_ARGUMENT", "dy not finite"));
+                }
+                let n = self
+                    .rt
+                    .arena
+                    .get(id)
+                    .ok_or_else(|| Error::new("TARGET_NOT_FOUND", "stale node"))?;
+                if !matches!(&n.data, NodeData::Container { kind, .. } if *kind == crate::node::KIND_SCROLL)
+                {
+                    return Err(Error::new(
+                        "NOT_SUPPORTED",
+                        "target is not a scroll viewport",
+                    ));
+                }
+                self.push_input(
+                    id,
+                    NodeEvent::Scroll(crate::event::ScrollOffset {
+                        x: 0.,
+                        y: dy as f32,
+                    }),
+                )
+                .map_err(platform)?;
+                self.turn().map_err(platform)?;
+                Ok(json!({"scrolled":dy,"id":args["id"]}))
+            }
+            "scroll-into-view" => {
+                // the delta needed to bring a descendant into its NEAREST
+                // scroll ancestor's viewport inner rect — injected into
+                // the scroll node's factories (app-owned offset preserved)
+                let id = self.dev_target(args)?;
+                let Some(target) = self.rects.get(&id).copied() else {
+                    return Err(Error::new("TARGET_NOT_VISIBLE", "no layout"));
+                };
+                // nearest KIND_SCROLL ancestor via the retained parent chain
+                let mut cur = self.rt.arena.get(id).and_then(|n| n.parent);
+                let mut scr = None;
+                while let Some(slot) = cur {
+                    match self.rt.arena.slot(slot) {
+                        Some(pn) => {
+                            if matches!(&pn.data, NodeData::Container { kind, .. } if *kind == crate::node::KIND_SCROLL)
+                            {
+                                scr = Some(NodeId {
+                                    slot,
+                                    generation: self.rt.arena.generation_of(slot),
+                                });
+                                break;
+                            }
+                            cur = pn.parent;
+                        }
+                        None => break,
+                    }
+                }
+                let Some(scr) = scr else {
+                    return Ok(json!({"scrolled":0.0,"id":args["id"]}));
+                };
+                // the viewport clip the scroll node applies = its inner
+                // rect — the same value its descendants carry in clips
+                let vp = {
+                    let sn = self.rt.arena.get(scr).unwrap();
+                    let ins = crate::layout::node_insets(
+                        scr,
+                        sn,
+                        &crate::layout::Interaction {
+                            dark: self.rt.theme.dark,
+                            ..Default::default()
+                        },
+                    );
+                    let r = self.rects.get(&scr).copied().unwrap_or_default();
+                    LogicalRect {
+                        x: r.x + ins.left.0,
+                        y: r.y + ins.top.0,
+                        width: (r.width - ins.left.0 - ins.right.0).max(0.),
+                        height: (r.height - ins.top.0 - ins.bottom.0).max(0.),
+                    }
+                };
+                let dy = if target.y < vp.y {
+                    target.y - vp.y
+                } else if target.y + target.height > vp.y + vp.height {
+                    target.y + target.height - (vp.y + vp.height)
+                } else {
+                    0.
+                };
+                if dy != 0. {
+                    self.push_input(
+                        scr,
+                        NodeEvent::Scroll(crate::event::ScrollOffset { x: 0., y: dy }),
+                    )
+                    .map_err(platform)?;
+                    self.turn().map_err(platform)?;
+                }
+                Ok(json!({"scrolled":dy,"id":args["id"]}))
             }
             "perf" => Ok(super::RESIZE.snapshot()),
             "perf-reset" => {

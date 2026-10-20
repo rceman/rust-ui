@@ -41,7 +41,7 @@ use windows::Win32::UI::Input::KeyboardAndMouse::*;
 use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::core::*;
 
-use crate::event::{Key, KeyEvent, Modifiers, PointerButton, PointerEvent};
+use crate::event::{Key, KeyEvent, Modifiers, PointerButton, PointerEvent, ScrollOffset};
 use crate::geom::{Point, Visibility};
 use crate::node::{NodeData, NodeEvent, QueuedEvent};
 use crate::runtime::UpdateCtx;
@@ -507,6 +507,10 @@ where
     pub rects: HashMap<NodeId, LogicalRect>,
     /// depth-first paint/hit order (cached each layout pass)
     pub order: Vec<NodeId>,
+    /// per-node scroll-viewport clip (DIP), populated for descendants of
+    /// KIND_SCROLL containers — paint pushes it, hit-test rejects outside
+    /// it, peer bounds intersect it, devtools reports exclusion
+    pub clips: HashMap<NodeId, LogicalRect>,
     pub focus: Option<NodeId>,
     pub hot: Option<NodeId>,
     pub pressed: Option<NodeId>,
@@ -615,6 +619,7 @@ where
             renderer: RefCell::new(Renderer::new()?),
             rects: HashMap::new(),
             order: Vec::new(),
+            clips: HashMap::new(),
             focus: None,
             hot: None,
             pressed: None,
@@ -1171,6 +1176,78 @@ where
         Ok(())
     }
 
+    /// The innermost KIND_SCROLL viewport containing `pos` (respecting
+    /// its own inherited clip when nested). Wheel scroll targets the
+    /// viewport under the point, not focus — depth-first `order` means
+    /// a later (deeper/more nested) viewport wins in rev iteration.
+    fn scroll_viewport_at(&self, pos: Point) -> Option<NodeId> {
+        for &id in self.order.iter().rev() {
+            let Some(n) = self.rt.arena.get(id) else {
+                continue;
+            };
+            if n.visibility != Visibility::Visible
+                || !matches!(&n.data, NodeData::Container { kind, .. } if *kind == crate::node::KIND_SCROLL)
+            {
+                continue;
+            }
+            let Some(r) = self.rects.get(&id) else {
+                continue;
+            };
+            if !r.contains(pos) {
+                continue;
+            }
+            if let Some(c) = self.clips.get(&id)
+                && !c.contains(pos)
+            {
+                continue;
+            }
+            return Some(id);
+        }
+        None
+    }
+
+    /// `WM_MOUSEWHEEL` — wheel lparams arrive in SCREEN px (unlike other
+    /// mouse messages). Routing: an interactive editor peer UNDER the
+    /// point consumes the wheel natively (msftedit internal scroll);
+    /// otherwise the semantic scroll viewport under the point receives a
+    /// `NodeEvent::Scroll` delta through its retained factories — the
+    /// offset stays app-owned. Absent both, the legacy focused-peer
+    /// route stands.
+    pub(crate) fn wheel(&mut self, msg: u32, wparam: usize, lparam: isize) -> UiResult {
+        let pos = space::screen_to_client(
+            self.hwnd,
+            space::ScreenPhysicalPoint(space::PhysicalPoint {
+                x: lparam as i16 as i32,
+                y: ((lparam >> 16) as i16) as i32,
+            }),
+        )
+        .map(|c| {
+            let s = self.peer_ctx.scale.get();
+            c.0.logical(s)
+        });
+        if let Some(p) = pos
+            && let Some(id) = self.hit_test(p)
+            && self.peer_for(id).is_some()
+        {
+            self.deliver_native(id, msg, wparam, lparam)?;
+            self.service_peer_events()?;
+            return Ok(());
+        }
+        if let Some(p) = pos
+            && let Some(id) = self.scroll_viewport_at(p)
+        {
+            // WHEEL_DELTA(120) per notch; ~3 lines × 16dp per notch —
+            // the delta is already in logical Dp, no px conversion
+            let delta = ((wparam >> 16) & 0xffff) as i16 as f32;
+            let dy = -(delta / 120.0) * 48.0;
+            self.push_input(id, NodeEvent::Scroll(ScrollOffset { x: 0.0, y: dy }))?;
+            return self.turn();
+        }
+        self.send_focused(msg, wparam, lparam)?;
+        self.service_peer_events()?;
+        Ok(())
+    }
+
     /// IME delivery owner — the pinned composition peer while a
     /// composition is live; the focus-captured target otherwise. An
     /// explicitly OWNERLESS start (`Some(None)`) resolves to None — it
@@ -1568,10 +1645,11 @@ where
         self.peer_ctx.pressed.set(self.pressed);
         self.peer_ctx.focus.set(self.focus);
         let mut layout = LayoutCache::new(self.peer_ctx.scale.get());
-        let (rects, order) = layout.run(&mut self.rt, &self.peer_ctx)?;
+        let (rects, order, clips) = layout.run(&mut self.rt, &self.peer_ctx)?;
         // prune stale ids — backend cache holds live NodeIds only
         self.rects = rects;
         self.order = order;
+        self.clips = clips;
         // Damage contract: compute the PROPOSED ink for the new layout and
         // union old-committed + proposed into `damage` — but do NOT
         // install it. `committed_ink` is owned exclusively by successful
@@ -1770,6 +1848,13 @@ where
                 continue;
             };
             if r.contains(p) {
+                // a scroll clip that excludes the point un-hits the node
+                // even though its (translated) rect contains it
+                if let Some(c) = self.clips.get(&id)
+                    && !c.contains(p)
+                {
+                    continue;
+                }
                 match &n.data {
                     // disabled/non-interactive nodes are inert chrome — no
                     // hover, pressed, focus, or activation state attaches
@@ -3136,6 +3221,7 @@ where
         renderer: RefCell::new(Renderer::new()?),
         rects: HashMap::new(),
         order: Vec::new(),
+        clips: HashMap::new(),
         focus: None,
         hot: None,
         pressed: None,

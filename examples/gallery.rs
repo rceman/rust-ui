@@ -63,20 +63,27 @@ impl Page {
 struct Gallery {
     page: Page,
     theme: ThemeMode,
+    /// app-owned page scroll offset (Dp) — reset on page change
+    scroll: f32,
 }
 
 enum Msg {
     SetPage(Page),
     SetTheme(ThemeMode),
     Invoke(&'static str),
+    Scroll(f32),
 }
 
 impl Gallery {
     fn update(&mut self, msg: Msg, _cx: &mut UpdateCtx<Msg>) {
         match msg {
-            Msg::SetPage(p) => self.page = p,
+            Msg::SetPage(p) => {
+                self.page = p;
+                self.scroll = 0.0;
+            }
             Msg::SetTheme(t) => self.theme = t,
             Msg::Invoke(_) => {}
+            Msg::Scroll(dy) => self.scroll = (self.scroll + dy).max(0.0),
         }
     }
 
@@ -90,11 +97,24 @@ impl Gallery {
                     .align(Align::Stretch),
                 |ui| {
                     self.header(ui);
-                    match self.page {
-                        Page::Components => self.components_page(ui),
-                        Page::Typography => self.typography_page(ui),
-                        other => self.stub_page(ui, other),
-                    }
+                    // the page area scrolls inside its viewport — the
+                    // offset is Gallery state dispatched back by the
+                    // scroll node's on_scroll factory
+                    ui.named("page.scroll", |ui| {
+                        ui.scroll(
+                            // padding None — the viewport must not inset
+                            // the page: zero-offset geometry is the
+                            // frozen slice-1 layout
+                            Scroll::new().padding(Space::None),
+                            dp(self.scroll),
+                            |o| Msg::Scroll(o.y),
+                            |ui| match self.page {
+                                Page::Components => self.components_page(ui),
+                                Page::Typography => self.typography_page(ui),
+                                other => self.stub_page(ui, other),
+                            },
+                        );
+                    });
                 },
             );
         });
@@ -412,6 +432,7 @@ fn main() -> UiResult {
         Gallery {
             page: Page::Components,
             theme: ThemeMode::System,
+            scroll: 0.0,
         },
         Gallery::update,
         Gallery::view,

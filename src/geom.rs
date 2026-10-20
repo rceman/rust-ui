@@ -75,6 +75,22 @@ impl Rect {
         }
     }
 
+    /// Largest rect inside both — the scroll-viewport clip primitive. A
+    /// disjoint pair yields a zero-size rect pinned at the second's
+    /// nearest corner (never negative extents).
+    pub fn intersection(&self, o: Rect) -> Rect {
+        let x0 = self.x.max(o.x);
+        let y0 = self.y.max(o.y);
+        let x1 = (self.x + self.width).min(o.x + o.width);
+        let y1 = (self.y + self.height).min(o.y + o.height);
+        Rect {
+            x: x0,
+            y: y0,
+            width: (x1 - x0).max(0.0),
+            height: (y1 - y0).max(0.0),
+        }
+    }
+
     /// A local-space rect `(0,0,w,h)` — peer/client surfaces hand these
     /// to native APIs as their own origin.
     pub fn local(w: f32, h: f32) -> Rect {

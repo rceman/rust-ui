@@ -551,6 +551,23 @@ impl Renderer {
             let Some(n) = be.rt.arena.get(id) else {
                 continue;
             };
+            // scroll-viewport clip — uniform for EVERY painted kind.
+            // A guard so a `?` inside the draw arm can never strand the
+            // pushed clip on the shared target.
+            let _clip_guard = be.clips.get(&id).map(|c| {
+                unsafe {
+                    target.PushAxisAlignedClip(
+                        &D2D_RECT_F {
+                            left: c.x,
+                            top: c.y,
+                            right: c.x + c.width,
+                            bottom: c.y + c.height,
+                        },
+                        D2D1_ANTIALIAS_MODE_ALIASED,
+                    );
+                }
+                ClipGuard(&target)
+            });
             let clip = D2D_RECT_F {
                 left: r.x,
                 top: r.y,
@@ -1005,6 +1022,17 @@ unsafe extern "system" fn tip_wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPAR
             LRESULT(0)
         }
         _ => unsafe { DefWindowProcW(hwnd, msg, wp, lp) },
+    }
+}
+
+/// Pops one axis-aligned clip on drop — scroll viewports confine every
+/// descendant's paint; unwinding (a `?` inside a draw arm) must never
+/// leave a stale clip on the shared target.
+struct ClipGuard<'a>(&'a ID2D1RenderTarget);
+
+impl Drop for ClipGuard<'_> {
+    fn drop(&mut self) {
+        unsafe { self.0.PopAxisAlignedClip() };
     }
 }
 

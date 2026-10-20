@@ -53,8 +53,8 @@ pub use theme::{
 pub use typography::Typography;
 pub use ui::{
     ActionBuilder, ButtonBuilder, Canvas, Card, Column, CustomBuilder, CustomRender, IconBuilder,
-    LabelBuilder, Paint, Path2d, PathOp, Role, Row, Semantics, SemanticsAction, Stack, Surface,
-    TextBuilder, TextInputBuilder, TextRun, Ui,
+    LabelBuilder, Paint, Path2d, PathOp, Role, Row, Scroll, Semantics, SemanticsAction, Stack,
+    Surface, TextBuilder, TextInputBuilder, TextRun, Ui,
 };
 
 /// `use rust_ui::prelude::*` — the documented consumer surface in one place.
@@ -82,7 +82,7 @@ pub mod prelude {
     };
     pub use crate::typography::Typography;
     pub use crate::ui::{
-        Canvas, Card, Column, CustomRender, Paint, Path2d, PathOp, Role, Row, Semantics,
+        Canvas, Card, Column, CustomRender, Paint, Path2d, PathOp, Role, Row, Scroll, Semantics,
         SemanticsAction, Stack, Surface, TextRun, Ui,
     };
     pub use crate::{AssetError, SendError, TaskSender, UiDiagnostic, UiError, UiProxy, UiResult};

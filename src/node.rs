@@ -29,6 +29,10 @@ pub(crate) const KIND_BOX: u8 = 12;
 pub(crate) const KIND_ACTION: u8 = 13;
 pub(crate) const KIND_ICON: u8 = 14;
 pub(crate) const KIND_CARD: u8 = 15;
+/// Scroll viewport container — children lay out as a vertical column at
+/// unbounded height, translated by the app-owned offset; painting and
+/// hit-testing clip descendants to the viewport inner rect.
+pub(crate) const KIND_SCROLL: u8 = 16;
 
 /// Everything the platform needs to build one native editor peer —
 /// behavior gates are part of the spec so a mounted editor never defaults
@@ -296,6 +300,10 @@ pub(crate) struct ContainerProps {
     pub full: Option<crate::style::BoxStyle>,
     /// card: density token selecting the `--card-spacing` recipe
     pub card_size: Option<crate::theme::CardSize>,
+    /// scroll viewport: app-owned vertical offset in Dp — staged state,
+    /// never backend-hidden (the layout pass clamps it to the measured
+    /// content extent; `Dp::default()` = top)
+    pub scroll: crate::geom::Dp,
 }
 
 impl ContainerProps {
@@ -833,8 +841,22 @@ impl ContainerProps {
     fn visual_clone(&self) -> (crate::style::BoxStylePatch, Option<crate::style::BoxStyle>) {
         (self.patch, self.full)
     }
-    fn layout_clone(&self) -> (Option<Space>, Option<Align>, Option<Justify>, Option<Space>) {
-        (self.gap, self.align, self.justify, self.padding)
+    fn layout_clone(
+        &self,
+    ) -> (
+        Option<Space>,
+        Option<Align>,
+        Option<Justify>,
+        Option<Space>,
+        crate::geom::Dp,
+    ) {
+        (
+            self.gap,
+            self.align,
+            self.justify,
+            self.padding,
+            self.scroll,
+        )
     }
 }
 

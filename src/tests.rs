@@ -5738,6 +5738,7 @@ fn resolved_dirty_classification() {
             patch,
             full: None,
             card_size: None,
+            scroll: Dp::default(),
         },
     };
     // same authored descriptor -> no dirty
@@ -8579,6 +8580,7 @@ fn column_and_row_justify_position_children_on_main_axis() {
         let ctx = PeerCtx::for_test().unwrap();
         let mut rects = std::collections::HashMap::new();
         let mut order = Vec::new();
+        let mut clips = std::collections::HashMap::new();
         LayoutCache::new(ScaleFactor::ONE)
             .walk(
                 &mut rt,
@@ -8592,6 +8594,8 @@ fn column_and_row_justify_position_children_on_main_axis() {
                 },
                 &mut rects,
                 &mut order,
+                &mut clips,
+                None,
                 KIND_COLUMN,
             )
             .unwrap();
@@ -8641,6 +8645,7 @@ fn column_and_row_justify_position_children_on_main_axis() {
         let ctx = PeerCtx::for_test().unwrap();
         let mut rects = std::collections::HashMap::new();
         let mut order = Vec::new();
+        let mut clips = std::collections::HashMap::new();
         LayoutCache::new(ScaleFactor::ONE)
             .walk(
                 &mut rt,
@@ -8654,6 +8659,8 @@ fn column_and_row_justify_position_children_on_main_axis() {
                 },
                 &mut rects,
                 &mut order,
+                &mut clips,
+                None,
                 KIND_ROW,
             )
             .unwrap();
