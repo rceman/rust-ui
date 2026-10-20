@@ -1,0 +1,35 @@
+{
+  "automation_id": "checkbox.default.focus-visible",
+  "capture_backend": "Windows.Graphics.Capture",
+  "client_crop": {
+    "height": 861,
+    "width": 964,
+    "x": 1,
+    "y": 31
+  },
+  "client_dp": {
+    "height": 861.0,
+    "width": 964.0,
+    "x": 0.0,
+    "y": 0.0
+  },
+  "client_px": {
+    "height": 861.0,
+    "width": 964.0,
+    "x": 0.0,
+    "y": 0.0
+  },
+  "coordinate_space": "client-physical-pixels",
+  "element_crop": {
+    "bottom": 845,
+    "left": 112,
+    "right": 128,
+    "top": 829
+  },
+  "frame_height": 893,
+  "frame_width": 966,
+  "height": 16,
+  "scale_factor": 1.0,
+  "stable_retained_scene": true,
+  "width": 16
+}
