@@ -1,10 +1,10 @@
 # Shadcn Native Gallery — Slice 1 parity evidence
 
-Candidate: `e49966d529e6da5c2cacd4d88c3048dd58f8e640`
+Candidate: `c8d8147f4c9a6c63a0fe9c0288f03d31ea2f40ea`
 (branch `agent/shadcn-native-gallery-slice1-opus55`, authoritative checkout
 `/home/therceman/git/rust-ui`)
 
-Status: `SHADCN_NATIVE_GALLERY_SLICE1_READY_FOR_VISUAL_CLOSURE`
+Status: `SHADCN_NATIVE_GALLERY_SLICE1_PUBLISHED`
 
 Prior identities — rework base `8247984`, production `cbb39d31985567861a68fec39f22b95728310e36`,
 independent visual review `75f24a6e2bd7a8b9f3d80cb13f9d23f4f3c651cf`.
@@ -43,6 +43,6 @@ canonical raster. One `el-<id>/` dir per element: `reference.png`,
 
 ## Status
 
-`SHADCN_NATIVE_GALLERY_SLICE1_READY_FOR_VISUAL_CLOSURE` — implementation is
-frozen and the deterministic evidence is committed; visual approval is a
-separate review-context responsibility.
+`SHADCN_NATIVE_GALLERY_SLICE1_PUBLISHED` — code frozen at `c8d8147`, system
+and visual authorities both approved the exact SHA, evidence committed.
+See `docs/SHADCN_NATIVE_GALLERY_SLICE1_FREEZE.md`.
