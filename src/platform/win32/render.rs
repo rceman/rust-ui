@@ -927,6 +927,8 @@ impl Renderer {
                     patch,
                     disabled,
                     invalid,
+                    snapshot,
+                    placeholder,
                     ..
                 } => {
                     // authored chrome paints the frame (the peer draws its
@@ -982,6 +984,31 @@ impl Renderer {
                         let clipped_out = be.clips.get(&id).map_or(false, |cl| !c.intersects(*cl));
                         if !clipped_out {
                             peer.borrow().draw(&target, c, self.target_gen.get())?;
+                        }
+                    }
+                    // placeholder — staged hint text drawn muted over the
+                    // (empty) peer surface; matches the peer's 14dp font
+                    if snapshot.committed.is_empty()
+                        && let Some(ph) = placeholder
+                    {
+                        let c = super::layout::editor_content_rect(r, &chrome);
+                        if c.width > 1.0 && c.height > 1.0 {
+                            let mut ts = crate::style::TextStyle::new();
+                            ts.foreground =
+                                crate::style::Color::Role(crate::theme::ColorRole::MutedForeground);
+                            ts.size = crate::style::TextSize::Exact(crate::geom::Dp(14.0));
+                            if let Ok(layout) = layout_for(ph, c.width, c.height, &ts) {
+                                let col = resolve_render(ts.foreground, dark, forced);
+                                unsafe {
+                                    let brush = target.CreateSolidColorBrush(&col, None)?;
+                                    target.DrawTextLayout(
+                                        Vector2 { X: c.x, Y: c.y },
+                                        &layout,
+                                        &brush,
+                                        D2D1_DRAW_TEXT_OPTIONS_NONE,
+                                    );
+                                }
+                            }
                         }
                     }
                 }
