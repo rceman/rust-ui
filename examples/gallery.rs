@@ -64,13 +64,15 @@ impl Page {
 }
 
 /// forms text bindings: inputs 0..6, textareas 6..12, native-text 12..26,
-/// field controls 26..29 — every mounted editor needs a DISTINCT lease
+/// field controls 26..29, the `label.default` sibling input 29 — every
+/// mounted editor needs a DISTINCT lease
 /// (two peers on one `TextValue` is `DuplicateTextBinding`).
 const T_INPUTS: usize = 0;
 const T_AREAS: usize = 6;
 const T_NATIVE: usize = 12;
 const T_FIELDS: usize = 26;
-const T_COUNT: usize = 29;
+const T_LABEL: usize = 29;
+const T_COUNT: usize = 30;
 
 struct Gallery {
     page: Page,
@@ -198,26 +200,22 @@ impl Gallery {
                                     .size(ControlSize::Xs)
                                     .on_press(move || Msg::SetTheme(mode));
                             };
+                        // frozen shell.theme.* recorded content is the
+                        // bare mode name ("Light"/"Dark"/"System")
                         theme_btn(
                             ui,
                             "shell.theme.light",
                             ThemeMode::Light,
                             Icon::Sun,
-                            "Light theme",
+                            "Light",
                         );
-                        theme_btn(
-                            ui,
-                            "shell.theme.dark",
-                            ThemeMode::Dark,
-                            Icon::Moon,
-                            "Dark theme",
-                        );
+                        theme_btn(ui, "shell.theme.dark", ThemeMode::Dark, Icon::Moon, "Dark");
                         theme_btn(
                             ui,
                             "shell.theme.system",
                             ThemeMode::System,
                             Icon::Monitor,
-                            "System theme",
+                            "System",
                         );
                     });
                 });
@@ -551,82 +549,103 @@ impl Gallery {
     /// textarea → checkbox → radio-group → switch → field.
     fn forms_page(&self, ui: &mut Ui<Msg>) {
         ui.column(Column::new().gap(Space::Lg).align(Align::Start), |ui| {
-            // label — frozen `label.default` (214×54 block carrying the
-            // `label` text part)
+            // label — frozen `label.default` (214×54 block): part `label`
+            // ("Label") stacked over a sibling input whose recorded hint
+            // is "With a label" (frozen flex-col gap-2 = 8dp)
             ui.named("label.default", |ui| {
                 ui.box_(
                     BoxProps::new()
                         .width(Length::Fixed(dp(214.0)))
                         .height(Length::Fixed(dp(54.0))),
                     |ui| {
-                        ui.column(Column::new().padding(Space::None).gap(Space::Xs), |ui| {
+                        ui.column(Column::new().padding(Space::None).gap(Space::Sm), |ui| {
                             ui.part("label", |ui| {
-                                ui.text("Email").style(field_label_style(false));
+                                ui.text("Label").style(field_label_style(false));
                             });
-                            ui.box_(
-                                BoxProps::new()
-                                    .width(Length::Fixed(dp(360.0)))
-                                    .height(Length::Fixed(dp(32.0))),
-                                |_| {},
-                            );
+                            ui.input(&self.texts[T_LABEL])
+                                .width(Length::Fixed(dp(214.0)))
+                                .height(Length::Fixed(dp(32.0)))
+                                .placeholder("With a label")
+                                .on_edit(move |e| Msg::Edit(T_LABEL, e))
+                                .on_conflict(move |c| Msg::Conflict(T_LABEL, c));
                         });
                     },
                 );
             });
             // inputs — placeholder/filled/focus-visible/disabled/invalid/
-            // invalid-focus-visible at 360×32
-            for (i, (id, val, dis, inv)) in [
-                ("input.default.placeholder", "", false, false),
-                ("input.default.filled", "team@example.com", false, false),
+            // invalid-focus-visible at 360×32. Frozen strings: only the
+            // placeholder + disabled specimens carry a placeholder
+            // attribute ("Placeholder text" / "Disabled input") — the
+            // disabled one mounts EMPTY so the muted hint is its
+            // recorded text
+            for (i, (id, ph, dis, inv)) in [
                 (
-                    "input.default.focus-visible",
-                    "team@example.com",
+                    "input.default.placeholder",
+                    Some("Placeholder text"),
                     false,
                     false,
                 ),
-                ("input.default.disabled", "team@example.com", true, false),
-                ("input.default.invalid", "bad value", false, true),
+                ("input.default.filled", None, false, false),
+                ("input.default.focus-visible", None, false, false),
                 (
-                    "input.default.invalid-focus-visible",
-                    "bad value",
-                    false,
+                    "input.default.disabled",
+                    Some("Disabled input"),
                     true,
+                    false,
                 ),
+                ("input.default.invalid", None, false, true),
+                ("input.default.invalid-focus-visible", None, false, true),
             ]
             .iter()
             .enumerate()
             {
                 let idx = T_INPUTS + i;
-                let _ = val; // content pre-seeded in main()
-                ui.input(&self.texts[idx])
+                let mut b = ui
+                    .input(&self.texts[idx])
                     .automation_id(id)
                     .width(Length::Fixed(dp(360.0)))
-                    .height(Length::Fixed(dp(32.0)))
-                    .placeholder("Email")
-                    .disabled(*dis)
+                    .height(Length::Fixed(dp(32.0)));
+                if let Some(p) = *ph {
+                    b = b.placeholder(p);
+                }
+                b.disabled(*dis)
                     .invalid(*inv)
                     .on_edit(move |e| Msg::Edit(idx, e))
                     .on_conflict(move |c| Msg::Conflict(idx, c));
             }
-            // textareas — same state set at 360×64
-            for (i, (id, dis, inv)) in [
-                ("textarea.default.placeholder", false, false),
-                ("textarea.default.filled", false, false),
-                ("textarea.default.focus-visible", false, false),
-                ("textarea.default.disabled", true, false),
-                ("textarea.default.invalid", false, true),
-                ("textarea.default.invalid-focus-visible", false, true),
+            // textareas — same state set at 360×64; frozen hints are
+            // "Write something..." / "Disabled textarea" (disabled empty)
+            for (i, (id, ph, dis, inv)) in [
+                (
+                    "textarea.default.placeholder",
+                    Some("Write something..."),
+                    false,
+                    false,
+                ),
+                ("textarea.default.filled", None, false, false),
+                ("textarea.default.focus-visible", None, false, false),
+                (
+                    "textarea.default.disabled",
+                    Some("Disabled textarea"),
+                    true,
+                    false,
+                ),
+                ("textarea.default.invalid", None, false, true),
+                ("textarea.default.invalid-focus-visible", None, false, true),
             ]
             .iter()
             .enumerate()
             {
                 let idx = T_AREAS + i;
-                ui.textarea(&self.texts[idx])
+                let mut b = ui
+                    .textarea(&self.texts[idx])
                     .automation_id(id)
                     .width(Length::Fixed(dp(360.0)))
-                    .height(Length::Fixed(dp(64.0)))
-                    .placeholder("Type your message here.")
-                    .disabled(*dis)
+                    .height(Length::Fixed(dp(64.0)));
+                if let Some(p) = *ph {
+                    b = b.placeholder(p);
+                }
+                b.disabled(*dis)
                     .invalid(*inv)
                     .on_edit(move |e| Msg::Edit(idx, e))
                     .on_conflict(move |c| Msg::Conflict(idx, c));
@@ -638,28 +657,30 @@ impl Gallery {
             // with its neighbour (N1). Spacer cells reserve the label run
             // (longest ≈102dp) inside a two-row layout like the frozen
             // 4+3 wrapping.
+            // frozen label text = state name with dashes as spaces
+            // (lowercase); the focus-visible row passes "Focus visible"
             const CHECKBOXES: [(&str, bool, bool, &str); 7] = [
-                ("checkbox.default.unchecked", false, false, "Unchecked"),
-                ("checkbox.default.checked", false, false, "Checked"),
+                ("checkbox.default.unchecked", false, false, "unchecked"),
+                ("checkbox.default.checked", false, false, "checked"),
                 (
                     "checkbox.default.focus-visible",
                     false,
                     false,
                     "Focus visible",
                 ),
-                ("checkbox.default.disabled", true, false, "Disabled"),
+                ("checkbox.default.disabled", true, false, "disabled"),
                 (
                     "checkbox.default.disabled-checked",
                     true,
                     false,
-                    "Disabled checked",
+                    "disabled checked",
                 ),
-                ("checkbox.default.invalid", false, true, "Invalid"),
+                ("checkbox.default.invalid", false, true, "invalid"),
                 (
                     "checkbox.default.invalid-checked",
                     false,
                     true,
-                    "Invalid checked",
+                    "invalid checked",
                 ),
             ];
             for chunk in CHECKBOXES.chunks(4) {
@@ -801,13 +822,13 @@ impl Gallery {
                                                             .gap(Space::Xs),
                                                         |ui| {
                                                             ui.part("label", |ui| {
-                                                                ui.text("Enable notifications")
+                                                                ui.text("Two-factor auth")
                                                                     .style(field_label_style(
                                                                         false,
                                                                     ));
                                                             });
                                                             ui.part("description", |ui| {
-                                                                ui.text("Receive product updates.")
+                                                                ui.text("Require a second factor at sign-in.")
                                                                     .style(
                                                                         field_description_style(),
                                                                     );
@@ -830,6 +851,28 @@ impl Gallery {
                             continue;
                         }
                         let fi = FIELDS.iter().position(|f| f.0 == id).unwrap();
+                        // frozen field() composition: label + control +
+                        // tail. The tail is part "error" only on invalid
+                        // (else "description"), and only the disabled
+                        // specimen's input carries data-part="control".
+                        // Frozen control strings: default/disabled mount
+                        // placeholder "you@example.com" (empty value);
+                        // invalid mounts value "not-an-email", no hint
+                        let (tail, control_part, control_ph) = match id {
+                            "field.default.invalid" => {
+                                ("Enter a valid email address.", false, None)
+                            }
+                            "field.default.disabled" => (
+                                "Locked for this account.",
+                                true,
+                                Some("you@example.com"),
+                            ),
+                            _ => (
+                                "We'll only use this for notifications.",
+                                false,
+                                Some("you@example.com"),
+                            ),
+                        };
                         ui.named(id, |ui| {
                             ui.field(
                                 Field {
@@ -841,23 +884,29 @@ impl Gallery {
                                         ui.text("Email").style(field_label_style(inv));
                                     });
                                     let idx = T_FIELDS + fi;
-                                    ui.part("control", |ui| {
-                                        ui.input(&self.texts[idx])
+                                    let stage_control = |ui: &mut Ui<Msg>| {
+                                        let mut b = ui
+                                            .input(&self.texts[idx])
                                             .height(Length::Fixed(dp(32.0)))
                                             .disabled(dis)
-                                            .invalid(inv)
-                                            .placeholder("Email")
-                                            .on_edit(move |e| Msg::Edit(idx, e));
-                                    });
+                                            .invalid(inv);
+                                        if let Some(p) = control_ph {
+                                            b = b.placeholder(p);
+                                        }
+                                        b.on_edit(move |e| Msg::Edit(idx, e));
+                                    };
+                                    if control_part {
+                                        ui.part("control", stage_control);
+                                    } else {
+                                        stage_control(ui);
+                                    }
                                     if inv {
                                         ui.part("error", |ui| {
-                                            ui.text("Enter a valid email address.")
-                                                .style(field_error_style());
+                                            ui.text(tail).style(field_error_style());
                                         });
                                     } else {
                                         ui.part("description", |ui| {
-                                            ui.text("We'll only use this for notifications.")
-                                                .style(field_description_style());
+                                            ui.text(tail).style(field_description_style());
                                         });
                                     }
                                 },
@@ -873,39 +922,123 @@ impl Gallery {
     /// under the same input/textarea stack chrome.
     fn native_text_page(&self, ui: &mut Ui<Msg>) {
         ui.column(Column::new().gap(Space::Lg).align(Align::Start), |ui| {
-            for (i, (id, dis, ro, inv, h)) in [
+            // frozen hints: "Placeholder text" on both placeholder
+            // specimens; the disabled pair mounts EMPTY with "Disabled
+            // input" / "Disabled textarea" — the muted hint is the
+            // recorded text
+            for (i, (id, ph, dis, ro, inv, h)) in [
                 (
                     "native-text.single-line.placeholder",
+                    Some("Placeholder text"),
                     false,
                     false,
                     false,
                     32.0,
                 ),
-                ("native-text.single-line.filled", false, false, false, 32.0),
-                ("native-text.single-line.focused", false, false, false, 32.0),
+                (
+                    "native-text.single-line.filled",
+                    None,
+                    false,
+                    false,
+                    false,
+                    32.0,
+                ),
+                (
+                    "native-text.single-line.focused",
+                    None,
+                    false,
+                    false,
+                    false,
+                    32.0,
+                ),
                 (
                     "native-text.single-line.selection",
+                    None,
                     false,
                     false,
                     false,
                     32.0,
                 ),
-                ("native-text.single-line.disabled", true, false, false, 32.0),
-                ("native-text.single-line.readonly", false, true, false, 32.0),
-                ("native-text.single-line.invalid", false, false, true, 32.0),
+                (
+                    "native-text.single-line.disabled",
+                    Some("Disabled input"),
+                    true,
+                    false,
+                    false,
+                    32.0,
+                ),
+                (
+                    "native-text.single-line.readonly",
+                    None,
+                    false,
+                    true,
+                    false,
+                    32.0,
+                ),
+                (
+                    "native-text.single-line.invalid",
+                    None,
+                    false,
+                    false,
+                    true,
+                    32.0,
+                ),
                 (
                     "native-text.multiline.placeholder",
+                    Some("Placeholder text"),
                     false,
                     false,
                     false,
                     64.0,
                 ),
-                ("native-text.multiline.filled", false, false, false, 78.0),
-                ("native-text.multiline.focused", false, false, false, 64.0),
-                ("native-text.multiline.selection", false, false, false, 78.0),
-                ("native-text.multiline.disabled", true, false, false, 64.0),
-                ("native-text.multiline.readonly", false, true, false, 64.0),
-                ("native-text.multiline.invalid", false, false, true, 64.0),
+                (
+                    "native-text.multiline.filled",
+                    None,
+                    false,
+                    false,
+                    false,
+                    78.0,
+                ),
+                (
+                    "native-text.multiline.focused",
+                    None,
+                    false,
+                    false,
+                    false,
+                    64.0,
+                ),
+                (
+                    "native-text.multiline.selection",
+                    None,
+                    false,
+                    false,
+                    false,
+                    78.0,
+                ),
+                (
+                    "native-text.multiline.disabled",
+                    Some("Disabled textarea"),
+                    true,
+                    false,
+                    false,
+                    64.0,
+                ),
+                (
+                    "native-text.multiline.readonly",
+                    None,
+                    false,
+                    true,
+                    false,
+                    64.0,
+                ),
+                (
+                    "native-text.multiline.invalid",
+                    None,
+                    false,
+                    false,
+                    true,
+                    64.0,
+                ),
             ]
             .iter()
             .enumerate()
@@ -916,11 +1049,14 @@ impl Gallery {
                 } else {
                     ui.input(&self.texts[idx])
                 };
-                b.automation_id(id)
+                let mut b = b
+                    .automation_id(id)
                     .width(Length::Fixed(dp(360.0)))
-                    .height(Length::Fixed(dp(*h)))
-                    .placeholder("Type here…")
-                    .disabled(*dis)
+                    .height(Length::Fixed(dp(*h)));
+                if let Some(p) = *ph {
+                    b = b.placeholder(p);
+                }
+                b.disabled(*dis)
                     .read_only(*ro)
                     .invalid(*inv)
                     .on_edit(move |e| Msg::Edit(idx, e))
@@ -929,12 +1065,12 @@ impl Gallery {
         });
     }
 
-    /// A slice-1 placeholder for the frozen shell tabs that aren't part
-    /// of this slice — the nav ids exist, the page is intentionally thin.
+    /// A placeholder for the frozen shell tabs that aren't part of this
+    /// slice — the nav ids exist, the page is intentionally thin.
     fn stub_page(&self, ui: &mut Ui<Msg>, page: Page) {
         ui.typography(
             Typography::Muted,
-            &format!("{} — not part of slice 1.", page.label()),
+            &format!("{} — not part of slice 2.", page.label()),
         );
     }
 
@@ -1051,49 +1187,50 @@ fn card_parts(ui: &mut Ui<Msg>, cs: CardSize, id: &'static str) {
 }
 
 fn main() -> UiResult {
-    let mut texts: Vec<TextValue> = Vec::with_capacity(T_COUNT);
-    let seeds = [
+    // frozen recorded text is the authority — every staged string below
+    // is the contract `captures.text.content` (text_runs source "value")
+    // for that specimen's owner id, in T_* binding order. Specimens
+    // whose frozen text runs carry source "placeholder" mount EMPTY
+    // here; their hint string lives in the staged placeholder above
+    const TEXT_SEEDS: [&str; T_COUNT] = [
+        // input.default.{placeholder,filled,focus-visible,disabled,invalid,invalid-focus-visible}
         "",
-        "team@example.com",
-        "team@example.com",
-        "team@example.com",
-        "bad value",
-        "bad value",
+        "Filled value",
+        "Focused input",
         "",
-        "Thanks for the update.\nSee you soon.",
-        "Thanks for the update.\nSee you soon.",
-        "Thanks for the update.\nSee you soon.",
-        "bad body",
-        "bad body",
+        "bad@input",
+        "bad@input",
+        // textarea.default.* (same state order)
+        "",
+        "A longer message spanning\ntwo lines of text.",
+        "Focused textarea",
+        "",
+        "invalid",
+        "invalid",
+        // native-text.single-line.{placeholder,filled,focused,selection,disabled,readonly,invalid}
+        "",
+        "A line of prose",
+        "Focused text",
+        "Select this phrase",
+        "",
+        "Read-only value",
+        "not-an-email",
+        // native-text.multiline.* (same state order)
+        "",
+        "First line of a note.\nSecond line with more text.\nThird line closes it out.",
+        "Focused multiline text\nwith a second line.",
+        "First line of a note.\nSecond line with more text.\nThird line closes it out.",
+        "",
+        "Read-only body.\nNo editing allowed.",
+        "not-an-email",
+        // field.default / .invalid / .disabled controls
+        "",
+        "not-an-email",
+        "",
+        // label.default sibling input (hint "With a label")
+        "",
     ];
-    for s in seeds {
-        texts.push(TextValue::new(s));
-    }
-    for (i, s) in [
-        "",
-        "alice@example.com",
-        "alice@example.com",
-        "alice@example.com",
-        "alice@example.com",
-        "alice@example.com",
-        "bad value",
-        "",
-        "Line one.\nLine two.\nLine three.",
-        "Line one.\nLine two.\nLine three.",
-        "Line one.\nLine two.\nLine three.",
-        "Line one.\nLine two.\nLine three.",
-        "Line one.\nLine two.\nLine three.",
-        "bad body",
-    ]
-    .iter()
-    .enumerate()
-    {
-        texts.push(TextValue::new(*s));
-        let _ = i;
-    }
-    for _ in 0..3 {
-        texts.push(TextValue::new("field@example.com"));
-    }
+    let texts: Vec<TextValue> = TEXT_SEEDS.iter().map(|s| TextValue::new(*s)).collect();
     let app = App::new(
         Gallery {
             page: Page::Components,
