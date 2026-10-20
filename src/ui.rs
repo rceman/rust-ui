@@ -97,6 +97,11 @@ pub struct Row {
     pub align: Align,
     pub justify: Justify,
     pub padding: Space,
+    /// cross-axis (height) sizing hint — `Content` (default) measures;
+    /// `Fill` takes the parent's remaining cross-axis space
+    pub height: Length,
+    /// main-axis (width) sizing hint — same Length contract as leaves
+    pub width: Length,
 }
 
 impl Row {
@@ -119,6 +124,14 @@ impl Row {
         self.padding = p;
         self
     }
+    pub fn height(mut self, h: Length) -> Self {
+        self.height = h;
+        self
+    }
+    pub fn width(mut self, w: Length) -> Self {
+        self.width = w;
+        self
+    }
     pub(crate) fn props(&self) -> ContainerProps {
         ContainerProps {
             gap: Some(self.gap),
@@ -136,6 +149,14 @@ pub struct Column {
     pub align: Align,
     pub justify: Justify,
     pub padding: Space,
+    /// main-axis (height) sizing hint — `Content` (default) measures;
+    /// `Fill` takes the parent's remaining main-axis space. A ROOT
+    /// column fills the window client with `Fill(1)` — that is how an
+    /// interior `Fill` child (e.g. a scroll viewport) sees leftover
+    /// space instead of the column's natural content height.
+    pub height: Length,
+    /// cross-axis (width) sizing hint — same Length contract as leaves
+    pub width: Length,
 }
 
 impl Column {
@@ -156,6 +177,14 @@ impl Column {
     }
     pub fn padding(mut self, p: Space) -> Self {
         self.padding = p;
+        self
+    }
+    pub fn height(mut self, h: Length) -> Self {
+        self.height = h;
+        self
+    }
+    pub fn width(mut self, w: Length) -> Self {
+        self.width = w;
         self
     }
     pub(crate) fn props(&self) -> ContainerProps {
@@ -887,7 +916,11 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
             crate::node::KIND_COLUMN,
             None,
             props.props(),
-            LayoutSpec::default(),
+            LayoutSpec {
+                width: props.width,
+                height: props.height,
+                ..Default::default()
+            },
             EventFactorySet::default(),
             Visibility::Visible,
             draw,
@@ -903,7 +936,11 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
             crate::node::KIND_ROW,
             None,
             props.props(),
-            LayoutSpec::default(),
+            LayoutSpec {
+                width: props.width,
+                height: props.height,
+                ..Default::default()
+            },
             EventFactorySet::default(),
             Visibility::Visible,
             draw,
@@ -2445,7 +2482,11 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
             crate::theme::FieldOrientation::Vertical => self.tx.stage_container(
                 crate::node::KIND_COLUMN,
                 None,
-                Column::new().gap(Space::Sm).align(Align::Stretch).props(),
+                Column::new()
+                    .gap(Space::Sm)
+                    .align(Align::Stretch)
+                    .padding(Space::None)
+                    .props(),
                 layout,
                 EventFactorySet::default(),
                 Visibility::Visible,
@@ -2459,7 +2500,11 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
             crate::theme::FieldOrientation::Horizontal => self.tx.stage_container(
                 crate::node::KIND_ROW,
                 None,
-                Row::new().gap(Space::Sm).align(Align::Center).props(),
+                Row::new()
+                    .gap(Space::Sm)
+                    .align(Align::Center)
+                    .padding(Space::None)
+                    .props(),
                 layout,
                 EventFactorySet::default(),
                 Visibility::Visible,

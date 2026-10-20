@@ -81,7 +81,7 @@ where
     if n.visibility == Visibility::Hidden {
         return (0.0, 0.0);
     }
-    match &n.data {
+    let (nw, nh) = match &n.data {
         NodeData::Label {
             text,
             wrap,
@@ -273,7 +273,29 @@ where
             (w.min(avail_w.max(0.0)), h)
         }
         _ => (avail_w, 0.0),
-    }
+    };
+    // The node's OWN LayoutSpec is part of its intrinsic size, not just a
+    // waterfill input: a `Fixed` length pins the axis regardless of
+    // measured content (an empty Fixed(64) box still measures 64), and
+    // min/max clamp the result. Parent containers consume this natural
+    // size to shape THEIR measure — honoring it here is what lets a
+    // fixed-size container propagate its authored extent upward instead
+    // of collapsing to its (possibly empty) children's measure.
+    let spec = n.layout;
+    let axis = |len: Length, mn: Option<crate::geom::Dp>, mx: Option<crate::geom::Dp>, nat: f32| {
+        let base = match len {
+            Length::Fixed(d) => d.0,
+            _ => nat,
+        };
+        base.clamp(
+            mn.map(|d| d.0).unwrap_or(0.0),
+            mx.map(|d| d.0).unwrap_or(f32::MAX),
+        )
+    };
+    (
+        axis(spec.width, spec.min_width, spec.max_width, nw),
+        axis(spec.height, spec.min_height, spec.max_height, nh),
+    )
 }
 
 /// One child's main-axis request before waterfill — the id rides along;
@@ -696,7 +718,14 @@ fn cross(align: Align, len: Length, inner: LogicalRect, natural_w: f32) -> (f32,
         Length::Fill(_) | Length::Content => natural_w.min(inner.width),
     };
     match align {
-        Align::Stretch => (inner.width, inner.x),
+        // stretch fills the cross axis only for UNSIZED children — an
+        // authored Fixed length is an explicit extent and wins (the
+        // frozen `align-items:stretch` rule: stretch applies when the
+        // cross size is auto)
+        Align::Stretch => match len {
+            Length::Fixed(_) => (want, inner.x),
+            _ => (inner.width, inner.x),
+        },
         Align::Start => (want, inner.x),
         Align::Center => (want, inner.x + (inner.width - want) / 2.0),
         Align::End => (want, inner.x + inner.width - want),
@@ -711,7 +740,12 @@ fn cross_v(align: Align, len: Length, inner: LogicalRect, natural_h: f32) -> (f3
         Length::Fill(_) | Length::Content => natural_h.min(inner.height),
     };
     match align {
-        Align::Stretch => (inner.height, inner.y),
+        // same stretch-vs-fixed rule as `cross` — an authored Fixed
+        // height keeps its extent inside a stretch-aligned row
+        Align::Stretch => match len {
+            Length::Fixed(_) => (want, inner.y),
+            _ => (inner.height, inner.y),
+        },
         Align::Start => (want, inner.y),
         Align::Center => (want, inner.y + (inner.height - want) / 2.0),
         Align::End => (want, inner.y + inner.height - want),

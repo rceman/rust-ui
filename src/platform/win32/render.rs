@@ -815,8 +815,17 @@ impl Renderer {
                         // same disabled alpha-fade as Button — RAII so a
                         // `?` below can never strand the 0.5 layer
                         let _layer_guard = (*disabled).then(|| {
+                            // contentBounds must be unbounded — a
+                            // Default (0,0,0,0) bounds clips every draw
+                            // inside the layer to nothing
                             target.PushLayer(
                                 &D2D1_LAYER_PARAMETERS {
+                                    contentBounds: D2D_RECT_F {
+                                        left: f32::MIN,
+                                        top: f32::MIN,
+                                        right: f32::MAX,
+                                        bottom: f32::MAX,
+                                    },
                                     opacity: 0.5,
                                     ..Default::default()
                                 },
@@ -2085,12 +2094,15 @@ unsafe fn paint_ring_color(
 ) -> Result<()> {
     unsafe {
         let ring = target.CreateSolidColorBrush(&resolve_render(color, dark, forced), None)?;
+        // the frozen `ring-3` band: 3dp stroke centered ±1.5dp outside
+        // the border box (same geometry the Button arm draws) — a thin
+        // 1.5dp stroke reads saturated where the soft 3dp band is frozen
         let outer = D2D1_ROUNDED_RECT {
             rect: D2D_RECT_F {
-                left: r.left - 2.0,
-                top: r.top - 2.0,
-                right: r.right + 2.0,
-                bottom: r.bottom + 2.0,
+                left: r.left - 1.5,
+                top: r.top - 1.5,
+                right: r.right + 1.5,
+                bottom: r.bottom + 1.5,
             },
             radiusX: 7.0,
             radiusY: 7.0,
@@ -2098,7 +2110,7 @@ unsafe fn paint_ring_color(
         let og: ID2D1RoundedRectangleGeometry = target
             .GetFactory()?
             .CreateRoundedRectangleGeometry(&outer)?;
-        target.DrawGeometry(&og, &ring, 1.5, None);
+        target.DrawGeometry(&og, &ring, 3.0, None);
     }
     Ok(())
 }

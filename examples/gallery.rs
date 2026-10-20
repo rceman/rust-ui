@@ -124,7 +124,13 @@ impl Gallery {
                 Column::new()
                     .gap(Space::Md)
                     .padding(Space::Lg)
-                    .align(Align::Stretch),
+                    .align(Align::Stretch)
+                    // the root column fills the client: the page
+                    // scroll viewport inside gets the column's
+                    // remaining space after the header (a Content
+                    // column would cap it at natural content height —
+                    // zero scroll extent and dead space below)
+                    .height(Length::Fill(1)),
                 |ui| {
                     self.header(ui);
                     // the page area scrolls inside its viewport — the
@@ -414,7 +420,13 @@ impl Gallery {
                         AlertVariant::Destructive,
                         "alert.destructive",
                         "Something went wrong",
-                        "Your session has expired. Please sign in again.",
+                        // the frozen capture is a 2-line wrap at 274dp
+                        // ("…sign in" / "again."); DirectWrite measures
+                        // the one-line advance ~1dp inside 274 where
+                        // Chromium's wraps — the explicit break
+                        // reproduces the frozen lines at the same wrap
+                        // boundary (content differs by whitespace kind)
+                        "Your session has expired. Please sign in\nagain.",
                     ),
                 ] {
                     ui.named(id, |ui| {
@@ -662,51 +674,57 @@ impl Gallery {
                     });
                 }
             });
-            // radio groups — 5 frozen specimens, app-owned `selected`
-            ui.row(Row::new().gap(Space::Lg).align(Align::Start), |ui| {
-                for (g, (id, dis, inv)) in [
-                    ("radio-group.default.unselected", false, false),
-                    ("radio-group.default.selected", false, false),
-                    ("radio-group.default.focus-visible", false, false),
-                    ("radio-group.default.invalid", false, true),
-                    ("radio-group.default.disabled", true, false),
-                ]
-                .iter()
-                .enumerate()
-                {
-                    let sel = self.radio[g];
-                    // frozen group box is 360×40 — a fixed box carries the
-                    // element rect; items stack inside at the 8dp gap
-                    ui.named(id, |ui| {
-                        ui.box_(BoxProps::new().width(Length::Fixed(dp(360.0))), |ui| {
-                            ui.column(Column::new().gap(Space::Sm).padding(Space::None), |ui| {
-                                ui.radio_group(
-                                    sel,
-                                    move |k| Msg::SetRadio(g, k),
-                                    |rg| {
-                                        rg.item(
-                                            "option-a",
-                                            "Option A",
-                                            RadioItemOpts {
-                                                disabled: *dis,
-                                                invalid: *inv,
-                                            },
-                                        );
-                                        rg.item(
-                                            "option-b",
-                                            "Option B",
-                                            RadioItemOpts {
-                                                disabled: *dis,
-                                                invalid: *inv,
+            // radio groups — 5 frozen specimens, app-owned `selected`.
+            // Wrapped at 2 per row like the frozen page: five 360dp
+            // groups never fit one row inside the client
+            const RADIO: [(&str, bool, bool); 5] = [
+                ("radio-group.default.unselected", false, false),
+                ("radio-group.default.selected", false, false),
+                ("radio-group.default.focus-visible", false, false),
+                ("radio-group.default.invalid", false, true),
+                ("radio-group.default.disabled", true, false),
+            ];
+            for chunk in RADIO.chunks(2) {
+                ui.row(Row::new().gap(Space::Lg).align(Align::Start), |ui| {
+                    for &(id, dis, inv) in chunk {
+                        let g = RADIO.iter().position(|r| r.0 == id).unwrap();
+                        let sel = self.radio[g];
+                        // frozen group box is 360×40 — a fixed box carries
+                        // the element rect; items stack at the 8dp gap
+                        ui.named(id, |ui| {
+                            ui.box_(BoxProps::new().width(Length::Fixed(dp(360.0))), |ui| {
+                                ui.column(
+                                    Column::new().gap(Space::Sm).padding(Space::None),
+                                    |ui| {
+                                        ui.radio_group(
+                                            sel,
+                                            move |k| Msg::SetRadio(g, k),
+                                            |rg| {
+                                                rg.item(
+                                                    "option-a",
+                                                    "Option A",
+                                                    RadioItemOpts {
+                                                        disabled: dis,
+                                                        invalid: inv,
+                                                    },
+                                                );
+                                                rg.item(
+                                                    "option-b",
+                                                    "Option B",
+                                                    RadioItemOpts {
+                                                        disabled: dis,
+                                                        invalid: inv,
+                                                    },
+                                                );
                                             },
                                         );
                                     },
                                 );
                             });
                         });
-                    });
-                }
-            });
+                    }
+                });
+            }
             // switches — 8 frozen specimens
             ui.row(Row::new().gap(Space::Lg).align(Align::Center), |ui| {
                 for (i, (id, dis, inv, sm)) in [
@@ -740,90 +758,103 @@ impl Gallery {
                     });
                 }
             });
-            // fields — vertical default (+invalid +disabled) + horizontal
-            ui.row(Row::new().gap(Space::Lg).align(Align::Start), |ui| {
-                for (fi, (id, inv, dis)) in [
-                    ("field.default", false, false),
-                    ("field.default.invalid", true, false),
-                    ("field.default.disabled", false, true),
-                ]
-                .iter()
-                .enumerate()
-                {
-                    ui.named(id, |ui| {
-                        ui.field(
-                            Field {
-                                orientation: FieldOrientation::Vertical,
-                                width: Some(dp(288.0)),
-                            },
-                            |ui| {
-                                ui.part("label", |ui| {
-                                    ui.text("Email").style(field_label_style(*inv));
-                                });
-                                let idx = T_FIELDS + fi;
-                                ui.part("control", |ui| {
-                                    ui.input(&self.texts[idx])
-                                        .height(Length::Fixed(dp(32.0)))
-                                        .disabled(*dis)
-                                        .invalid(*inv)
-                                        .placeholder("Email")
-                                        .on_edit(move |e| Msg::Edit(idx, e));
-                                });
-                                if *inv {
-                                    ui.part("error", |ui| {
-                                        ui.text("Enter a valid email address.")
-                                            .style(field_error_style());
-                                    });
-                                } else {
-                                    ui.part("description", |ui| {
-                                        ui.text("We'll only use this for notifications.")
-                                            .style(field_description_style());
-                                    });
-                                }
-                            },
-                        );
-                    });
-                }
-                ui.named("field.horizontal", |ui| {
-                    ui.field(
-                        Field {
-                            orientation: FieldOrientation::Horizontal,
-                            width: Some(dp(288.0)),
-                        },
-                        |ui| {
-                            ui.part("content", |ui| {
-                                ui.box_(
-                                    BoxProps::new()
-                                        .width(Length::Fixed(dp(248.0)))
-                                        .height(Length::Fixed(dp(37.0))),
+            // fields — vertical default (+invalid +disabled) + horizontal.
+            // Wrapped: four 288dp fields never fit one row inside the
+            // client — the frozen page wraps them too
+            const FIELDS: [(&str, bool, bool); 4] = [
+                ("field.default", false, false),
+                ("field.default.invalid", true, false),
+                ("field.default.disabled", false, true),
+                ("field.horizontal", false, false),
+            ];
+            for chunk in FIELDS.chunks(2) {
+                ui.row(Row::new().gap(Space::Lg).align(Align::Start), |ui| {
+                    for &(id, inv, dis) in chunk {
+                        if id == "field.horizontal" {
+                            ui.named(id, |ui| {
+                                ui.field(
+                                    Field {
+                                        orientation: FieldOrientation::Horizontal,
+                                        width: Some(dp(288.0)),
+                                    },
                                     |ui| {
-                                        ui.column(
-                                            Column::new().padding(Space::None).gap(Space::Xs),
-                                            |ui| {
-                                                ui.part("label", |ui| {
-                                                    ui.text("Enable notifications")
-                                                        .style(field_label_style(false));
-                                                });
-                                                ui.part("description", |ui| {
-                                                    ui.text("Receive product updates.")
-                                                        .style(field_description_style());
-                                                });
+                                        ui.part("content", |ui| {
+                                            ui.box_(
+                                                BoxProps::new()
+                                                    .width(Length::Fixed(dp(248.0)))
+                                                    .height(Length::Fixed(dp(37.0))),
+                                                |ui| {
+                                                    ui.column(
+                                                        Column::new()
+                                                            .padding(Space::None)
+                                                            .gap(Space::Xs),
+                                                        |ui| {
+                                                            ui.part("label", |ui| {
+                                                                ui.text("Enable notifications")
+                                                                    .style(field_label_style(
+                                                                        false,
+                                                                    ));
+                                                            });
+                                                            ui.part("description", |ui| {
+                                                                ui.text("Receive product updates.")
+                                                                    .style(
+                                                                        field_description_style(),
+                                                                    );
+                                                            });
+                                                        },
+                                                    );
+                                                },
+                                            );
+                                        });
+                                        ui.switch(
+                                            Switch {
+                                                checked: self.sw[1],
+                                                ..Default::default()
                                             },
+                                            || Msg::ToggleSw(1),
                                         );
                                     },
                                 );
                             });
-                            ui.switch(
-                                Switch {
-                                    checked: self.sw[1],
-                                    ..Default::default()
+                            continue;
+                        }
+                        let fi = FIELDS.iter().position(|f| f.0 == id).unwrap();
+                        ui.named(id, |ui| {
+                            ui.field(
+                                Field {
+                                    orientation: FieldOrientation::Vertical,
+                                    width: Some(dp(288.0)),
                                 },
-                                || Msg::ToggleSw(1),
+                                |ui| {
+                                    ui.part("label", |ui| {
+                                        ui.text("Email").style(field_label_style(inv));
+                                    });
+                                    let idx = T_FIELDS + fi;
+                                    ui.part("control", |ui| {
+                                        ui.input(&self.texts[idx])
+                                            .height(Length::Fixed(dp(32.0)))
+                                            .disabled(dis)
+                                            .invalid(inv)
+                                            .placeholder("Email")
+                                            .on_edit(move |e| Msg::Edit(idx, e));
+                                    });
+                                    if inv {
+                                        ui.part("error", |ui| {
+                                            ui.text("Enter a valid email address.")
+                                                .style(field_error_style());
+                                        });
+                                    } else {
+                                        ui.part("description", |ui| {
+                                            ui.text("We'll only use this for notifications.")
+                                                .style(field_description_style());
+                                        });
+                                    }
+                                },
                             );
-                        },
-                    );
+                        });
+                    }
                 });
-            });
+            }
         });
     }
 

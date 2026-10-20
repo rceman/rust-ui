@@ -1,0 +1,187 @@
+{
+  "evidence_classes": {
+    "borders": "not_measured",
+    "flat_fills": "not_measured",
+    "geometry": "measured",
+    "glyph_raster": "not_measured",
+    "icons": "not_measured",
+    "note": "Chromium and DirectWrite/D2D glyph pixels are not expected to be byte-identical; geometry is contract authority; canonical raster is a visual signal",
+    "radii": "not_measured",
+    "text_bounds_baseline": "not_measured",
+    "whole_component_raster": "measured"
+  },
+  "geometry": {
+    "actual": {
+      "height": 16.0,
+      "width": 16.0,
+      "x": 144.0,
+      "y": 954.0
+    },
+    "delta": {
+      "height": 0.0,
+      "width": 0.0,
+      "x": -692.109,
+      "y": -311.5
+    },
+    "expected": {
+      "height": 16.0,
+      "width": 16.0,
+      "x": 836.109,
+      "y": 1265.5
+    },
+    "id": "checkbox.default.disabled",
+    "native_id": "checkbox.default.disabled",
+    "pass": true,
+    "tier": "core",
+    "tolerance": 0.5
+  },
+  "id": "checkbox.default.disabled",
+  "native_id": "checkbox.default.disabled",
+  "normalization": {
+    "canonical_dimensions": [
+      16,
+      16
+    ],
+    "identity": true,
+    "resampler": "area-box/1",
+    "source_dimensions": [
+      16,
+      16
+    ],
+    "source_scale": 1.0,
+    "target_scale": 1.0,
+    "transform": {
+      "canonical_rect_dp": {
+        "bottom": 970,
+        "left": 144,
+        "right": 160,
+        "top": 954
+      },
+      "mapping": "source_px = canonical_px * source_scale",
+      "source_footprint_px": {
+        "height": 16.0,
+        "width": 16.0,
+        "x": 144.0,
+        "y": 954.0
+      }
+    }
+  },
+  "padding_comparison_px": 0.0,
+  "pass": false,
+  "raster": {
+    "native_canonical": {
+      "canonical_rect_dp": {
+        "bottom": 970,
+        "left": 144,
+        "right": 160,
+        "top": 954
+      },
+      "dimensions": [
+        16,
+        16
+      ],
+      "file": "native-canonical.png",
+      "scale_px_per_dp": 1.0
+    },
+    "native_raw": {
+      "crop_rect_px": {
+        "bottom": 970,
+        "left": 144,
+        "right": 160,
+        "top": 954
+      },
+      "dimensions": [
+        16,
+        16
+      ],
+      "file": "native-raw.png",
+      "scale_px_per_dp": 1.0
+    },
+    "reference": {
+      "canonical_rect_dp": {
+        "bottom": 1282,
+        "left": 836,
+        "right": 852,
+        "top": 1266
+      },
+      "crop_rect_px": {
+        "bottom": 1282,
+        "left": 836,
+        "right": 852,
+        "top": 1266
+      },
+      "dimensions": [
+        16,
+        16
+      ],
+      "file": "reference.png",
+      "scale_px_per_dp": 1.0
+    }
+  },
+  "schema": "rust-ui.devctl.compare-element/0.2",
+  "scope": {
+    "tier_of_target": "core",
+    "tiers": [
+      "core"
+    ]
+  },
+  "visual_canonical": {
+    "actual": [
+      16,
+      16
+    ],
+    "difference_bbox": {
+      "height": 10.0,
+      "width": 16.0,
+      "x": 0.0,
+      "y": 4.0
+    },
+    "dimensions": [
+      16,
+      16
+    ],
+    "dimensions_match": true,
+    "expected": [
+      16,
+      16
+    ],
+    "max_channel_delta": 235,
+    "mean_absolute_channel_error": 56.1572265625,
+    "mismatch_percent": 44.140625,
+    "mismatched_pixels": 113,
+    "missing_pixels": 0,
+    "pass": false,
+    "pixel_domain": "union canvas; absent samples transparent; missing pixels always mismatch",
+    "tolerance": 24
+  },
+  "visual_raw": {
+    "actual": [
+      16,
+      16
+    ],
+    "computed": true,
+    "difference_bbox": {
+      "height": 10.0,
+      "width": 16.0,
+      "x": 0.0,
+      "y": 4.0
+    },
+    "dimensions": [
+      16,
+      16
+    ],
+    "dimensions_match": true,
+    "expected": [
+      16,
+      16
+    ],
+    "max_channel_delta": 235,
+    "mean_absolute_channel_error": 56.1572265625,
+    "mismatch_percent": 44.140625,
+    "mismatched_pixels": 113,
+    "missing_pixels": 0,
+    "pass": false,
+    "pixel_domain": "union canvas; absent samples transparent; missing pixels always mismatch",
+    "tolerance": 24
+  }
+}
