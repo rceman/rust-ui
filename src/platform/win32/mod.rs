@@ -95,7 +95,8 @@ impl PerfCounters {
 
 /// One instrumented WM_SIZE dispatch — phase split plus per-event
 /// resource-creation deltas. Bounded by `RESIZE_SAMPLE_CAP`.
-#[derive(Debug, Clone, Copy, serde::Serialize)]
+#[derive(Debug, Clone, Copy)]
+#[cfg_attr(feature = "devtools", derive(serde::Serialize))]
 pub(crate) struct ResizeSample {
     /// 0 = WM_SIZE delivery, 1 = WM_PAINT delivery
     pub kind: u8,
@@ -178,6 +179,7 @@ impl ResizeCounters {
         }
         ring.push_back(s);
     }
+    #[cfg(feature = "devtools")]
     pub(crate) fn snapshot(&self) -> serde_json::Value {
         let r = |a: &AtomicU64| a.load(Ordering::Relaxed);
         let samples: Vec<ResizeSample> = self.samples.lock().unwrap().iter().copied().collect();
