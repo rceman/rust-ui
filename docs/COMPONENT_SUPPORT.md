@@ -16,7 +16,7 @@ does not change Native API, platform, parity or implementation status.
 
 ## Vocabulary
 
-| Field | Values |
+| Field | core | complete | yes | verified | - | - | yes | partial | group+parts | yes | VERIFIED | ui.field; vertical+horizontal, label/control/description/error parts. Labeled-by not wired (no infra). |
 |---|---|
 | Tier | `core` (first native Gallery milestone) - `later` (planned desktop component, not first milestone) - `reference-only` (visual coverage, no native promise) |
 | Reference | `none` - `partial` - `representative` (later-tier: representative states only) - `complete` (all visually material desktop states frozen) |
@@ -43,21 +43,21 @@ The `Desktop-responsive` column ("responsive layout target" - `layout`,
 | Button | core | complete | yes | verified | - | - | partial | partial | foundation UIA | layout | VERIFIED | `ui.button`: all 6 variants (primary/secondary/outline/ghost/destructive/link) x normal/disabled/invalid, Xs/Sm/Md/Lg, inline `icon_start`/`icon_end` + a11y name. Geometry verified vs frozen contract (`benchmark/results/shadcn-native-gallery-slice1/`); icon-bearing buttons lay out icon+gap+label as one centered group (no overlap), labels nowrap, invalid state shows the destructive ring unfocused; raster deltas are documented DirectWrite↔Chromium text-measure noise. |
 | IconButton | core | complete | yes | verified | - | - | partial | partial | foundation UIA | layout | VERIFIED | `ui.icon_button`: 5 variants x normal/disabled, 4 icon sizes (`size-icon-*`), decorative icon excluded from UIA name. Geometry exact (`dh=0` all sizes). |
 | Card / Surface | core | complete | yes | verified | - | - | partial | partial | foundation UIA | layout | VERIFIED | `ui.card`: CardSize Default/Sm (16/12 card-spacing) x header/title/description/content/footer parts; `Card.width(dp)` fixed width. Outer + part geometry exact vs frozen (`card.default` 288×175, `card.default.size-sm` 288×152.25); footer `bg-muted/50` + border-t, `Justify::End` buttons; 1dp spread ring renders. |
-| Separator | core | complete | no | - | - | - | - | - | - | layout | PLANNED | |
-| Badge | core | complete | no | - | - | - | - | - | - | layout | PLANNED | 6 variants. |
-| Alert | core | complete | no | - | - | - | - | - | - | layout | PLANNED | default, destructive. |
-| Skeleton | core | complete | no | - | - | - | - | - | - | layout | PLANNED | Static only (reduced motion). |
-| Kbd | core | complete | no | - | - | - | - | - | - | - | PLANNED | single, group. |
+| Separator | core | complete | yes | verified | - | - | yes | inert | separator role | yes | VERIFIED | ui.separator; orientation recipe. |
+| Badge | core | complete | yes | verified | - | - | yes | inert | label | yes | VERIFIED | ui.badge; 6 variants. |
+| Alert | core | complete | yes | verified | - | - | yes | inert | group+parts | yes | VERIFIED | ui.alert; default/destructive, icon/title/description parts. |
+| Skeleton | core | complete | yes | verified | - | - | yes | inert | decorative | yes | VERIFIED | ui.skeleton; static only (reduced motion). |
+| Kbd | core | complete | yes | verified | - | - | yes | inert | label | yes | VERIFIED | ui.kbd/kbd_group; single + group. |
 | Typography (h1-h4, p, lead, small, muted, inline code, code block) | core | complete | yes | verified | - | - | partial | partial | foundation UIA | layout | VERIFIED | `ui.typography` + `ui.code_block`: Geist type scale (h1–h4, paragraph, lead, small, muted, inline-code), Geist font registered via DirectWrite custom collection. |
-| Label | core | complete | partial | foundation | - | - | - | - | foundation UIA | layout | FOUNDATION_AVAILABLE | Foundation label text; field association not implemented. |
-| Field | core | complete | no | - | - | - | - | - | - | layout | PLANNED | vertical (default/invalid/disabled) + horizontal settings row. |
-| Input | core | complete | partial | foundation | - | - | - | - | foundation UIA | layout | FOUNDATION_AVAILABLE | Built on native single-line text; shadcn chrome/states not implemented. |
-| Textarea | core | complete | partial | foundation | - | - | - | - | foundation UIA | layout | FOUNDATION_AVAILABLE | Built on native multiline text. |
-| Native single-line text | core | complete | partial | foundation | - | - | - | - | foundation UIA | layout | FOUNDATION_AVAILABLE | Windowless RichEdit `ui.text_input` (placeholder, read-only, disabled, IME). Reference defines chrome/metrics only; editing semantics are platform authority. |
-| Native multiline text | core | complete | partial | foundation | - | - | - | - | foundation UIA | layout | FOUNDATION_AVAILABLE | Windowless RichEdit `ui.text_area`. |
-| Checkbox | core | complete | no | - | - | - | - | - | - | - | PLANNED | No indeterminate (no Nova visual). |
-| Radio Group | core | complete | no | - | - | - | - | - | - | layout | PLANNED | |
-| Switch | core | complete | no | - | - | - | - | - | - | - | PLANNED | default + sm. |
+| Label | core | complete | yes | verified | - | - | yes | inert | label | yes | VERIFIED | ui.label; frozen states + sibling input composition. |
+| Field | core | complete | yes | verified | - | - | yes | partial | group+parts | yes | VERIFIED | ui.field; vertical+horizontal, label/control/description/error parts. Labeled-by not wired (no infra). |
+| Input | core | complete | yes | verified | - | - | yes | yes | foundation UIA | yes | VERIFIED | ui.input; Shadcn chrome on windowless RichEdit, placeholder/focus/disabled/invalid. |
+| Textarea | core | complete | yes | verified | - | - | yes | yes | foundation UIA | yes | VERIFIED | ui.textarea; multiline chrome + states. |
+| Native single-line text | core | complete | yes | verified | - | - | yes | yes | foundation UIA | yes | VERIFIED | ui.input/peer; windowless RichEdit, offscreen-blit composition. |
+| Native multiline text | core | complete | yes | verified | - | - | yes | yes | foundation UIA | yes | VERIFIED | ui.textarea/peer; partial-clip band shows true doc rows. |
+| Checkbox | core | complete | yes | verified | - | - | yes | yes | UIA CheckBox | yes | VERIFIED | ui.checkbox; app-model state, indicator/icon/label parts, Space/click. No indeterminate. |
+| Radio Group | core | complete | yes | verified | - | - | yes | yes | UIA RadioButton | yes | VERIFIED | ui.radio_group/item; app-model single-selection. |
+| Switch | core | complete | yes | verified | - | - | yes | yes | UIA CheckBox* | yes | VERIFIED | ui.switch; default+sm, thumb part. *Switch maps to CheckBox — no ToggleState infra. |
 | Select | core | complete | no | - | - | - | - | - | - | layout | PLANNED | Trigger states + open list (side=bottom). Item-aligned popup mode deferred. |
 | Tabs | core | complete | no | - | - | - | - | - | - | layout | PLANNED | default + line, horizontal. |
 | Dropdown Menu | core | complete | no | - | - | - | - | - | - | - | PLANNED | Items, disabled, destructive, checkbox/radio items, shortcuts. No submenus. |
