@@ -75,6 +75,33 @@ impl Rect {
         }
     }
 
+    /// Largest rect inside both — the scroll-viewport clip primitive. A
+    /// disjoint pair yields a zero-size rect pinned at the second's
+    /// nearest corner (never negative extents).
+    pub fn intersection(&self, o: Rect) -> Rect {
+        let x0 = self.x.max(o.x);
+        let y0 = self.y.max(o.y);
+        let x1 = (self.x + self.width).min(o.x + o.width);
+        let y1 = (self.y + self.height).min(o.y + o.height);
+        Rect {
+            x: x0,
+            y: y0,
+            width: (x1 - x0).max(0.0),
+            height: (y1 - y0).max(0.0),
+        }
+    }
+
+    /// Do the rects share any positive area? Edge-touching does NOT
+    /// intersect — a zero-area overlap is no overlap. The single
+    /// authority for "a clip fully excludes this rect" (paint, hit-test,
+    /// focus, devtools, UIA all share this reading).
+    pub fn intersects(&self, o: Rect) -> bool {
+        self.x < o.x + o.width
+            && o.x < self.x + self.width
+            && self.y < o.y + o.height
+            && o.y < self.y + self.height
+    }
+
     /// A local-space rect `(0,0,w,h)` — peer/client surfaces hand these
     /// to native APIs as their own origin.
     pub fn local(w: f32, h: f32) -> Rect {

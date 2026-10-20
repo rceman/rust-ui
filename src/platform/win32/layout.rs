@@ -12,8 +12,8 @@ use windows::Win32::Foundation::RECT;
 
 use crate::geom::{Align, Length, Visibility};
 use crate::node::{
-    KIND_ACTION, KIND_BOX, KIND_CARD, KIND_COLUMN, KIND_GROUP, KIND_ROW, KIND_SCOPE, KIND_STACK,
-    KIND_SURFACE, NodeData,
+    KIND_ACTION, KIND_BOX, KIND_CARD, KIND_COLUMN, KIND_GROUP, KIND_ROW, KIND_SCOPE, KIND_SCROLL,
+    KIND_STACK, KIND_SURFACE, NodeData,
 };
 use crate::runtime::UpdateCtx;
 use crate::style::Insets;
@@ -81,7 +81,7 @@ where
     if n.visibility == Visibility::Hidden {
         return (0.0, 0.0);
     }
-    match &n.data {
+    let (nw, nh) = match &n.data {
         NodeData::Label {
             text,
             wrap,
@@ -195,6 +195,7 @@ where
                 (avail_w, if *multiline { 96.0 } else { 32.0 })
             }
         }
+        NodeData::Toggle { kind, size, .. } => crate::layout::toggle_natural_size(*kind, *size),
         NodeData::Custom { render, .. } => {
             // intrinsic size from CustomRender::measure within the offered box
             let want = render.measure(crate::geom::Constraints {
@@ -272,7 +273,29 @@ where
             (w.min(avail_w.max(0.0)), h)
         }
         _ => (avail_w, 0.0),
-    }
+    };
+    // The node's OWN LayoutSpec is part of its intrinsic size, not just a
+    // waterfill input: a `Fixed` length pins the axis regardless of
+    // measured content (an empty Fixed(64) box still measures 64), and
+    // min/max clamp the result. Parent containers consume this natural
+    // size to shape THEIR measure — honoring it here is what lets a
+    // fixed-size container propagate its authored extent upward instead
+    // of collapsing to its (possibly empty) children's measure.
+    let spec = n.layout;
+    let axis = |len: Length, mn: Option<crate::geom::Dp>, mx: Option<crate::geom::Dp>, nat: f32| {
+        let base = match len {
+            Length::Fixed(d) => d.0,
+            _ => nat,
+        };
+        base.clamp(
+            mn.map(|d| d.0).unwrap_or(0.0),
+            mx.map(|d| d.0).unwrap_or(f32::MAX),
+        )
+    };
+    (
+        axis(spec.width, spec.min_width, spec.max_width, nw),
+        axis(spec.height, spec.min_height, spec.max_height, nh),
+    )
 }
 
 /// One child's main-axis request before waterfill — the id rides along;
@@ -316,7 +339,11 @@ impl LayoutCache {
         &mut self,
         rt: &mut crate::runtime::Runtime<S, M, U, V>,
         ctx: &PeerCtx,
-    ) -> UiResult<(HashMap<NodeId, LogicalRect>, Vec<NodeId>)>
+    ) -> UiResult<(
+        HashMap<NodeId, LogicalRect>,
+        Vec<NodeId>,
+        HashMap<NodeId, LogicalRect>,
+    )>
     where
         M: 'static,
         U: Fn(&mut S, M, &mut UpdateCtx<'_, M>),
@@ -324,6 +351,9 @@ impl LayoutCache {
     {
         let mut rects: HashMap<NodeId, LogicalRect> = HashMap::new();
         let mut order: Vec<NodeId> = Vec::new();
+        // scroll-clip map: descendant NodeId -> the viewport clip that
+        // bounds its paint/hit/peer geometry (nested viewports intersect)
+        let mut clips: HashMap<NodeId, LogicalRect> = HashMap::new();
         // window client size in DIP
         let (w, h) = client_dip(ctx.hwnd.get(), self.scale)?;
         let root_children = rt
@@ -364,15 +394,23 @@ impl LayoutCache {
                     x: padding,
                     y,
                     width: w - padding * 2.0,
-                    height: *size,
+                    // the window bounds the layout space: a root child
+                    // never gets more than the remaining client height,
+                    // so a Fill scroll viewport inside it measures
+                    // against the VISIBLE area — identical while content
+                    // fits (min is a no-op), engaging exactly when the
+                    // page would overflow the window
+                    height: (*size).min((h - y).max(0.0)),
                 },
                 &mut rects,
                 &mut order,
+                &mut clips,
+                None,
                 KIND_COLUMN,
             )?;
             y += *size + space_px(Space::Sm);
         }
-        Ok((rects, order))
+        Ok((rects, order, clips))
     }
 
     /// Recursively place one node: layout containers split, transparent
@@ -386,6 +424,8 @@ impl LayoutCache {
         rect: LogicalRect,
         rects: &mut HashMap<NodeId, LogicalRect>,
         order: &mut Vec<NodeId>,
+        clips: &mut HashMap<NodeId, LogicalRect>,
+        clip: Option<LogicalRect>,
         parent_axis: u8,
     ) -> UiResult
     where
@@ -399,6 +439,11 @@ impl LayoutCache {
         if n.visibility == Visibility::Hidden {
             // footprint retained — no rect/order entry
             return Ok(());
+        }
+        // a scroll viewport ancestor confines this node: paint, hit-test
+        // and peer geometry all consume the same effective clip
+        if let Some(c) = clip {
+            clips.insert(id, c);
         }
         let kind = match &n.data {
             NodeData::Container { kind, .. } => *kind,
@@ -417,9 +462,17 @@ impl LayoutCache {
             && let NodeData::Editor { patch, .. } = &n.data
         {
             // relatch errors surface through the layout result — a failed
-            // deactivation must not leave a stale-scale view silently
+            // deactivation must not leave a stale-scale view silently.
+            // apply_bounds receives the FULL translated content rect —
+            // the peer surface IS the whole document: the frame's pushed
+            // clip cuts the visible band out of the peer's blit (peers
+            // composite through a per-peer scratch target, so clips reach
+            // them at blit time), and pointer/caret math maps window
+            // coordinates onto TRUE document offsets — a top clip shows
+            // mid-document content and clicks land on the glyphs seen.
+            let full = editor_content_rect(rect, &editor_chrome(patch));
             peer.borrow()
-                .apply_bounds(editor_content_rect(rect, &editor_chrome(patch)), self.scale)
+                .apply_bounds(full, self.scale)
                 .map_err(|e| crate::UiError::Platform(format!("apply_bounds: {e}")))?;
         }
         rects.insert(id, rect);
@@ -455,6 +508,63 @@ impl LayoutCache {
             other => other,
         };
         match effective {
+            // Scroll viewport: children stack as a column at UNBOUNDED
+            // height, translated by the app-owned offset clamped to the
+            // measured extent. Descendant rects are stored TRANSLATED
+            // (below-fold = off-viewport) — clipping is enforced at
+            // paint/hit/peer-boundaries through the clips map.
+            KIND_SCROLL => {
+                let gap = props.gap.map(space_px).unwrap_or(0.0);
+                let mut laid: Vec<(NodeId, crate::geom::LayoutSpec, f32, f32)> =
+                    Vec::with_capacity(ids.len());
+                for &cid in &ids {
+                    let spec = rt.arena.get(cid).unwrap().layout;
+                    let (nw, nh) = natural(rt, ctx, cid, inner.width, &mut measurer);
+                    // unbounded axis — no waterfill: Fixed wins, every
+                    // other length takes the natural measure, spec
+                    // min/max still clamp
+                    let h = match spec.height {
+                        Length::Fixed(d) => d.0,
+                        _ => nh,
+                    }
+                    .clamp(
+                        spec.min_height.map(|d| d.0).unwrap_or(0.0),
+                        spec.max_height.map(|d| d.0).unwrap_or(f32::MAX),
+                    );
+                    laid.push((cid, spec, nw, h));
+                }
+                let used = laid.iter().map(|i| i.3).sum::<f32>()
+                    + gap * laid.len().saturating_sub(1) as f32;
+                let max_scroll = (used - inner.height).max(0.0);
+                let applied = props.scroll.0.clamp(0.0, max_scroll);
+                // the viewport clip is the scroll's INNER rect; a nested
+                // viewport intersects the inherited one
+                let child_clip = clip.map_or(inner, |c| c.intersection(inner));
+                let mut y = inner.y - applied;
+                for (cid, spec, nw, h) in laid {
+                    let (w, x) = cross(props.align.unwrap_or_default(), spec.width, inner, nw);
+                    // transparent children project onto the column axis —
+                    // the scroll arm is consumed HERE, not re-applied by
+                    // a group/scope descendant
+                    self.walk(
+                        rt,
+                        ctx,
+                        cid,
+                        LogicalRect {
+                            x,
+                            y,
+                            width: w,
+                            height: h,
+                        },
+                        rects,
+                        order,
+                        clips,
+                        Some(child_clip),
+                        KIND_COLUMN,
+                    )?;
+                    y += h + gap;
+                }
+            }
             // Card is column semantics — parts lay out vertically inside
             // the chrome. KIND_CARD joins the column branch.
             KIND_COLUMN | KIND_CARD => {
@@ -505,6 +615,8 @@ impl LayoutCache {
                         },
                         rects,
                         order,
+                        clips,
+                        clip,
                         kind,
                     )?;
                     y += *sz + gap;
@@ -558,6 +670,8 @@ impl LayoutCache {
                         },
                         rects,
                         order,
+                        clips,
+                        clip,
                         kind,
                     )?;
                     x += *sz + gap;
@@ -567,7 +681,7 @@ impl LayoutCache {
             // (declaration order paints later siblings on top).
             _ => {
                 for cid in ids {
-                    self.walk(rt, ctx, cid, inner, rects, order, kind)?;
+                    self.walk(rt, ctx, cid, inner, rects, order, clips, clip, kind)?;
                 }
             }
         }
@@ -605,7 +719,14 @@ fn cross(align: Align, len: Length, inner: LogicalRect, natural_w: f32) -> (f32,
         Length::Fill(_) | Length::Content => natural_w.min(inner.width),
     };
     match align {
-        Align::Stretch => (inner.width, inner.x),
+        // stretch fills the cross axis only for UNSIZED children — an
+        // authored Fixed length is an explicit extent and wins (the
+        // frozen `align-items:stretch` rule: stretch applies when the
+        // cross size is auto)
+        Align::Stretch => match len {
+            Length::Fixed(_) => (want, inner.x),
+            _ => (inner.width, inner.x),
+        },
         Align::Start => (want, inner.x),
         Align::Center => (want, inner.x + (inner.width - want) / 2.0),
         Align::End => (want, inner.x + inner.width - want),
@@ -620,7 +741,12 @@ fn cross_v(align: Align, len: Length, inner: LogicalRect, natural_h: f32) -> (f3
         Length::Fill(_) | Length::Content => natural_h.min(inner.height),
     };
     match align {
-        Align::Stretch => (inner.height, inner.y),
+        // same stretch-vs-fixed rule as `cross` — an authored Fixed
+        // height keeps its extent inside a stretch-aligned row
+        Align::Stretch => match len {
+            Length::Fixed(_) => (want, inner.y),
+            _ => (inner.height, inner.y),
+        },
         Align::Start => (want, inner.y),
         Align::Center => (want, inner.y + (inner.height - want) / 2.0),
         Align::End => (want, inner.y + inner.height - want),

@@ -1,0 +1,35 @@
+{
+  "automation_id": "native-text.multiline.focused",
+  "capture_backend": "Windows.Graphics.Capture",
+  "client_crop": {
+    "height": 861,
+    "width": 964,
+    "x": 1,
+    "y": 31
+  },
+  "client_dp": {
+    "height": 861.0,
+    "width": 964.0,
+    "x": 0.0,
+    "y": 0.0
+  },
+  "client_px": {
+    "height": 861.0,
+    "width": 964.0,
+    "x": 0.0,
+    "y": 0.0
+  },
+  "coordinate_space": "client-physical-pixels",
+  "element_crop": {
+    "bottom": 682,
+    "left": 40,
+    "right": 400,
+    "top": 618
+  },
+  "frame_height": 893,
+  "frame_width": 966,
+  "height": 64,
+  "scale_factor": 1.0,
+  "stable_retained_scene": true,
+  "width": 360
+}

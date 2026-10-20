@@ -41,7 +41,7 @@ use windows::Win32::UI::Input::KeyboardAndMouse::*;
 use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::core::*;
 
-use crate::event::{Key, KeyEvent, Modifiers, PointerButton, PointerEvent};
+use crate::event::{Key, KeyEvent, Modifiers, PointerButton, PointerEvent, ScrollOffset};
 use crate::geom::{Point, Visibility};
 use crate::node::{NodeData, NodeEvent, QueuedEvent};
 use crate::runtime::UpdateCtx;
@@ -92,6 +92,145 @@ impl PerfCounters {
         }
     }
 }
+
+/// One instrumented WM_SIZE dispatch — phase split plus per-event
+/// resource-creation deltas. Bounded by `RESIZE_SAMPLE_CAP`.
+#[derive(Debug, Clone, Copy)]
+#[cfg_attr(feature = "devtools", derive(serde::Serialize))]
+pub(crate) struct ResizeSample {
+    /// 0 = WM_SIZE delivery, 1 = WM_PAINT delivery
+    pub kind: u8,
+    pub wm_size_us: u64,
+    pub resize_us: u64,
+    pub layout_us: u64,
+    pub uia_us: u64,
+    pub paint_us: u64,
+    pub text_layouts: u64,
+    pub shadow_rasters: u64,
+}
+
+/// The resize-path report — atomic counters (every caller) plus a capped
+/// ring of per-WM_SIZE samples for percentile analysis. Counters are plain
+/// atomics: near-free in production, never logs; retrieved only through the
+/// devctl `perf` pull.
+pub(crate) struct ResizeCounters {
+    pub events: AtomicU64,
+    pub layout_runs: AtomicU64,
+    pub layout_us: AtomicU64,
+    pub layout_max_us: AtomicU64,
+    pub paint_runs: AtomicU64,
+    pub paint_us: AtomicU64,
+    pub paint_max_us: AtomicU64,
+    pub uia_runs: AtomicU64,
+    pub uia_us: AtomicU64,
+    pub uia_max_us: AtomicU64,
+    pub resize_runs: AtomicU64,
+    pub resize_us: AtomicU64,
+    pub resize_max_us: AtomicU64,
+    pub text_layout_creates: AtomicU64,
+    pub shadow_rasters: AtomicU64,
+    pub wm_size_us: AtomicU64,
+    pub wm_size_max_us: AtomicU64,
+    pub samples: std::sync::Mutex<std::collections::VecDeque<ResizeSample>>,
+}
+
+/// Bounded sample ring — worst case ~8192 × ~64B.
+pub(crate) const RESIZE_SAMPLE_CAP: usize = 8192;
+
+impl ResizeCounters {
+    const fn new() -> Self {
+        use std::sync::atomic::AtomicU64 as A;
+        ResizeCounters {
+            events: A::new(0),
+            layout_runs: A::new(0),
+            layout_us: A::new(0),
+            layout_max_us: A::new(0),
+            paint_runs: A::new(0),
+            paint_us: A::new(0),
+            paint_max_us: A::new(0),
+            uia_runs: A::new(0),
+            uia_us: A::new(0),
+            uia_max_us: A::new(0),
+            resize_runs: A::new(0),
+            resize_us: A::new(0),
+            resize_max_us: A::new(0),
+            text_layout_creates: A::new(0),
+            shadow_rasters: A::new(0),
+            wm_size_us: A::new(0),
+            wm_size_max_us: A::new(0),
+            samples: std::sync::Mutex::new(std::collections::VecDeque::new()),
+        }
+    }
+    pub(crate) fn bump(c: &AtomicU64, sum: &AtomicU64, max: &AtomicU64, us: u64) {
+        c.fetch_add(1, Ordering::Relaxed);
+        sum.fetch_add(us, Ordering::Relaxed);
+        max.fetch_max(us, Ordering::Relaxed);
+    }
+    pub(crate) fn record(&self, s: ResizeSample) {
+        Self::bump(
+            &self.events,
+            &self.wm_size_us,
+            &self.wm_size_max_us,
+            s.wm_size_us,
+        );
+        let mut ring = self.samples.lock().unwrap();
+        if ring.len() == RESIZE_SAMPLE_CAP {
+            ring.pop_front();
+        }
+        ring.push_back(s);
+    }
+    #[cfg(feature = "devtools")]
+    pub(crate) fn snapshot(&self) -> serde_json::Value {
+        let r = |a: &AtomicU64| a.load(Ordering::Relaxed);
+        let samples: Vec<ResizeSample> = self.samples.lock().unwrap().iter().copied().collect();
+        serde_json::json!({
+            "wm_size_events": r(&self.events),
+            "wm_size_us": r(&self.wm_size_us),
+            "wm_size_max_us": r(&self.wm_size_max_us),
+            "layout_runs": r(&self.layout_runs),
+            "layout_us": r(&self.layout_us),
+            "layout_max_us": r(&self.layout_max_us),
+            "paint_runs": r(&self.paint_runs),
+            "paint_us": r(&self.paint_us),
+            "paint_max_us": r(&self.paint_max_us),
+            "uia_runs": r(&self.uia_runs),
+            "uia_us": r(&self.uia_us),
+            "uia_max_us": r(&self.uia_max_us),
+            "render_resizes": r(&self.resize_runs),
+            "render_resize_us": r(&self.resize_us),
+            "render_resize_max_us": r(&self.resize_max_us),
+            "text_layout_creates": r(&self.text_layout_creates),
+            "shadow_rasters": r(&self.shadow_rasters),
+            "samples": samples,
+        })
+    }
+    pub(crate) fn reset(&self) {
+        let r = |a: &AtomicU64| a.store(0, Ordering::Relaxed);
+        r(&self.events);
+        r(&self.layout_runs);
+        r(&self.layout_us);
+        r(&self.layout_max_us);
+        r(&self.paint_runs);
+        r(&self.paint_us);
+        r(&self.paint_max_us);
+        r(&self.uia_runs);
+        r(&self.uia_us);
+        r(&self.uia_max_us);
+        r(&self.resize_runs);
+        r(&self.resize_us);
+        r(&self.resize_max_us);
+        r(&self.text_layout_creates);
+        r(&self.shadow_rasters);
+        r(&self.wm_size_us);
+        r(&self.wm_size_max_us);
+        self.samples.lock().unwrap().clear();
+    }
+}
+
+/// Process-wide resize instrumentation — atomics in a `static`, so the
+/// free-function hot paths (`layout_for`, `draw_shadow`) can count without
+/// plumbing a handle through the renderer.
+pub(crate) static RESIZE: ResizeCounters = ResizeCounters::new();
 
 /// Shared context the `peer_factory` hands to each `PeerHandle` — the
 /// registry is a ROUTING INDEX (weak handles), not a second owner: the
@@ -370,6 +509,11 @@ where
     pub rects: HashMap<NodeId, LogicalRect>,
     /// depth-first paint/hit order (cached each layout pass)
     pub order: Vec<NodeId>,
+    /// per-node scroll-viewport clip (DIP), populated for descendants of
+    /// KIND_SCROLL containers — paint pushes it (peers included), hit-test
+    /// rejects outside it, focus skips the fully excluded, devtools and
+    /// UIA report the same visibility/bounds truth
+    pub clips: HashMap<NodeId, LogicalRect>,
     pub focus: Option<NodeId>,
     pub hot: Option<NodeId>,
     pub pressed: Option<NodeId>,
@@ -411,6 +555,11 @@ where
     /// handler — classified: bit0 relayout (a metric-bearing branch
     /// transitioned), bit1 repaint; consumed by turn_body
     state_dirty: std::cell::Cell<u8>,
+    /// a WM_SIZE resized the target but layout/paint have not yet run —
+    /// coalesced into the next delivered WM_PAINT (OS-batched during the
+    /// modal sizing loop) so one frame's work runs per paint delivery,
+    /// never per mouse-move step
+    size_pending: std::cell::Cell<bool>,
     /// replay-owner discriminator: `None` = live dispatch (resolve current
     /// focus); `Some(c)` = replaying — `c` is the captured arrival owner,
     /// `None` inside means EXPLICITLY no owner (never fall through)
@@ -473,6 +622,7 @@ where
             renderer: RefCell::new(Renderer::new()?),
             rects: HashMap::new(),
             order: Vec::new(),
+            clips: HashMap::new(),
             focus: None,
             hot: None,
             pressed: None,
@@ -494,6 +644,7 @@ where
             pump_queued: std::cell::Cell::new(false),
             deferred_native: std::collections::VecDeque::new(),
             state_dirty: std::cell::Cell::new(0),
+            size_pending: std::cell::Cell::new(false),
             damage: std::cell::Cell::new(None),
             committed_ink: std::cell::RefCell::new(HashMap::new()),
             applied_palette: std::cell::RefCell::new(None),
@@ -1028,6 +1179,78 @@ where
         Ok(())
     }
 
+    /// The innermost KIND_SCROLL viewport containing `pos` (respecting
+    /// its own inherited clip when nested). Wheel scroll targets the
+    /// viewport under the point, not focus — depth-first `order` means
+    /// a later (deeper/more nested) viewport wins in rev iteration.
+    fn scroll_viewport_at(&self, pos: Point) -> Option<NodeId> {
+        for &id in self.order.iter().rev() {
+            let Some(n) = self.rt.arena.get(id) else {
+                continue;
+            };
+            if n.visibility != Visibility::Visible
+                || !matches!(&n.data, NodeData::Container { kind, .. } if *kind == crate::node::KIND_SCROLL)
+            {
+                continue;
+            }
+            let Some(r) = self.rects.get(&id) else {
+                continue;
+            };
+            if !r.contains(pos) {
+                continue;
+            }
+            if let Some(c) = self.clips.get(&id)
+                && !c.contains(pos)
+            {
+                continue;
+            }
+            return Some(id);
+        }
+        None
+    }
+
+    /// `WM_MOUSEWHEEL` — wheel lparams arrive in SCREEN px (unlike other
+    /// mouse messages). Routing: an interactive editor peer UNDER the
+    /// point consumes the wheel natively (msftedit internal scroll);
+    /// otherwise the semantic scroll viewport under the point receives a
+    /// `NodeEvent::Scroll` delta through its retained factories — the
+    /// offset stays app-owned. Absent both, the legacy focused-peer
+    /// route stands.
+    pub(crate) fn wheel(&mut self, msg: u32, wparam: usize, lparam: isize) -> UiResult {
+        let pos = space::screen_to_client(
+            self.hwnd,
+            space::ScreenPhysicalPoint(space::PhysicalPoint {
+                x: lparam as i16 as i32,
+                y: ((lparam >> 16) as i16) as i32,
+            }),
+        )
+        .map(|c| {
+            let s = self.peer_ctx.scale.get();
+            c.0.logical(s)
+        });
+        if let Some(p) = pos
+            && let Some(id) = self.hit_test(p)
+            && self.peer_for(id).is_some()
+        {
+            self.deliver_native(id, msg, wparam, lparam)?;
+            self.service_peer_events()?;
+            return Ok(());
+        }
+        if let Some(p) = pos
+            && let Some(id) = self.scroll_viewport_at(p)
+        {
+            // WHEEL_DELTA(120) per notch; ~3 lines × 16dp per notch —
+            // the delta is already in logical Dp, no px conversion
+            let delta = ((wparam >> 16) & 0xffff) as i16 as f32;
+            let dy = -(delta / 120.0) * 48.0;
+            self.push_input(id, NodeEvent::Scroll(ScrollOffset { x: 0.0, y: dy }))?;
+            return self.turn();
+        }
+        self.send_focused(msg, wparam, lparam)?;
+        self.service_peer_events()?;
+        Ok(())
+    }
+
     /// IME delivery owner — the pinned composition peer while a
     /// composition is live; the focus-captured target otherwise. An
     /// explicitly OWNERLESS start (`Some(None)`) resolves to None — it
@@ -1304,6 +1527,21 @@ where
             let Some(at) = org.to_client(space::PeerLocalPoint(pos.into())) else {
                 return; // unrepresentable — drop the placement
             };
+            // peer bounds are the FULL document rect now — a caret can
+            // legitimately sit outside the node's scroll-viewport clip.
+            // The system caret ignores D2D clips, so an out-of-band caret
+            // would paint over the viewport's neighbors; hide it instead.
+            if let Some(clip) = self.clips.get(&node) {
+                let cpx = clip.physical(self.peer_ctx.scale.get());
+                let inside = at.0.x >= cpx.left
+                    && at.0.x + size.cx <= cpx.right
+                    && at.0.y >= cpx.top
+                    && at.0.y + size.cy <= cpx.bottom;
+                if !inside {
+                    let _ = HideCaret(Some(self.hwnd));
+                    return;
+                }
+            }
             let _ = CreateCaret(self.hwnd, None, size.cx, size.cy);
             let _ = SetCaretPos(at.0.x, at.0.y);
             if shown {
@@ -1404,6 +1642,18 @@ where
     /// before the peer ctx has a window — layout defers to the first real
     /// turn rather than failing on a null HWND.
     pub(crate) fn relayout(&mut self) -> UiResult {
+        let t = std::time::Instant::now();
+        let r = self.relayout_inner();
+        ResizeCounters::bump(
+            &RESIZE.layout_runs,
+            &RESIZE.layout_us,
+            &RESIZE.layout_max_us,
+            t.elapsed().as_micros() as u64,
+        );
+        r
+    }
+
+    fn relayout_inner(&mut self) -> UiResult {
         if self.peer_ctx.hwnd.get().is_invalid() {
             return Ok(());
         }
@@ -1413,10 +1663,11 @@ where
         self.peer_ctx.pressed.set(self.pressed);
         self.peer_ctx.focus.set(self.focus);
         let mut layout = LayoutCache::new(self.peer_ctx.scale.get());
-        let (rects, order) = layout.run(&mut self.rt, &self.peer_ctx)?;
+        let (rects, order, clips) = layout.run(&mut self.rt, &self.peer_ctx)?;
         // prune stale ids — backend cache holds live NodeIds only
         self.rects = rects;
         self.order = order;
+        self.clips = clips;
         // Damage contract: compute the PROPOSED ink for the new layout and
         // union old-committed + proposed into `damage` — but do NOT
         // install it. `committed_ink` is owned exclusively by successful
@@ -1495,6 +1746,18 @@ where
     }
 
     fn paint_inner(&mut self, draw: impl FnOnce(&Self) -> UiResult) -> UiResult {
+        let t = std::time::Instant::now();
+        let r = self.paint_inner_impl(draw);
+        ResizeCounters::bump(
+            &RESIZE.paint_runs,
+            &RESIZE.paint_us,
+            &RESIZE.paint_max_us,
+            t.elapsed().as_micros() as u64,
+        );
+        r
+    }
+
+    fn paint_inner_impl(&mut self, draw: impl FnOnce(&Self) -> UiResult) -> UiResult {
         if self.hwnd.0.is_null() {
             return Ok(());
         }
@@ -1603,10 +1866,20 @@ where
                 continue;
             };
             if r.contains(p) {
+                // a scroll clip that excludes the point un-hits the node
+                // even though its (translated) rect contains it
+                if let Some(c) = self.clips.get(&id)
+                    && !c.contains(p)
+                {
+                    continue;
+                }
                 match &n.data {
                     // disabled/non-interactive nodes are inert chrome — no
                     // hover, pressed, focus, or activation state attaches
-                    NodeData::Button { .. } | NodeData::Editor { .. } | NodeData::Action { .. }
+                    NodeData::Button { .. }
+                    | NodeData::Editor { .. }
+                    | NodeData::Action { .. }
+                    | NodeData::Toggle { .. }
                         if n.interactive() =>
                     {
                         return Some(id);
@@ -1952,11 +2225,23 @@ where
                 let Some(n) = self.rt.arena.get(id) else {
                     return false;
                 };
+                // a scroll clip that fully excludes the node's rect means
+                // the control renders nothing — Tab must not land on an
+                // invisible target (same clip truth devtools/UIA report)
+                let clipped_out = self
+                    .rects
+                    .get(&id)
+                    .zip(self.clips.get(&id))
+                    .is_some_and(|(r, c)| !r.intersects(*c));
                 n.visibility == Visibility::Visible
+                    && !clipped_out
                     && n.interactive()
                     && matches!(
                         n.data,
-                        NodeData::Button { .. } | NodeData::Editor { .. } | NodeData::Action { .. }
+                        NodeData::Button { .. }
+                            | NodeData::Editor { .. }
+                            | NodeData::Action { .. }
+                            | NodeData::Toggle { .. }
                     )
             })
             .collect();
@@ -2074,13 +2359,32 @@ where
                     focus_ring: crate::style::Color::Role(crate::theme::ColorRole::Focus),
                 })
             }
-            NodeData::Editor { patch, .. } => {
+            NodeData::Toggle {
+                kind,
+                size,
+                checked,
+                invalid,
+                disabled,
+                ..
+            } => {
+                let state = crate::style::StyleState::classify(*disabled, st.pressed, st.hot);
+                let mut v = crate::style::resolve_toggle_visual(
+                    *kind, *size, *checked, *invalid, state, st.focus, dark,
+                );
+                crate::style::os_enforce_visual(&mut v, forced);
+                Some(v)
+            }
+            NodeData::Editor { patch, invalid, .. } => {
                 let mut b = crate::style::resolve_text_input_chrome(patch);
                 crate::style::os_enforce_box(&mut b, forced);
                 Some(crate::style::VisualStyle {
                     box_style: b,
                     text_style: crate::style::TextStyle::default(),
-                    focus_ring: crate::style::Color::Role(crate::theme::ColorRole::Focus),
+                    focus_ring: if *invalid {
+                        crate::style::Color::Role(crate::theme::ColorRole::DestructiveRing)
+                    } else {
+                        crate::style::Color::Role(crate::theme::ColorRole::Focus)
+                    },
                 })
             }
             _ => None,
@@ -2255,8 +2559,15 @@ where
             let Some(r) = self.rects.get(&id).copied() else {
                 continue;
             };
+            // the published bounds are the VISIBLE band — the translated
+            // node rect intersected with its scroll-viewport clip, never
+            // a phantom off-window extent. An empty intersection means the
+            // node is fully clipped → IsOffscreen (dev_tools' `visible`
+            // reports the same truth — clip-out OR zero-size).
+            let vr = self.clips.get(&id).map_or(r, |c| r.intersection(*c));
+            let offscreen = vr.width <= 0.0 || vr.height <= 0.0;
             let scale = self.peer_ctx.scale.get();
-            let pr = r.physical(scale); // DIP -> client px (UIA wants px)
+            let pr = vr.physical(scale); // DIP -> client px (UIA wants px)
             // checked conversion — a failed ClientToScreen skips the node
             // rather than publishing unsound coordinates
             let Some(sp) = space::client_to_screen(
@@ -2301,6 +2612,30 @@ where
                     UIA_EditControlTypeId,
                     "Edit",
                 ),
+                NodeData::Toggle {
+                    kind,
+                    label,
+                    accessible_name,
+                    ..
+                } => {
+                    (
+                        accessible_name
+                            .as_deref()
+                            .or(label.as_deref())
+                            .unwrap_or("toggle")
+                            .to_string(),
+                        match kind {
+                            crate::theme::ToggleKind::Checkbox
+                            | crate::theme::ToggleKind::Switch => UIA_CheckBoxControlTypeId,
+                            crate::theme::ToggleKind::RadioItem => UIA_RadioButtonControlTypeId,
+                        },
+                        match kind {
+                            crate::theme::ToggleKind::Checkbox
+                            | crate::theme::ToggleKind::Switch => "CheckBox",
+                            crate::theme::ToggleKind::RadioItem => "RadioButton",
+                        },
+                    )
+                }
                 NodeData::Custom { render, .. } => {
                     let s = render.semantics();
                     let (ct, loc) = match s.role {
@@ -2331,6 +2666,7 @@ where
                 rect,
                 actionable: n.factories.on_press.is_some(),
                 enabled: n.interactive(),
+                offscreen,
                 peer_node: matches!(n.data, NodeData::Editor { .. }),
                 native: None,
             });
@@ -2379,6 +2715,18 @@ where
     /// see live name/enabled/bounds/order WITHOUT needing a fresh
     /// WM_GETOBJECT. No-op until the root exists.
     pub(crate) fn uia_refresh(&mut self) -> UiResult {
+        let t = std::time::Instant::now();
+        let r = self.uia_refresh_impl();
+        ResizeCounters::bump(
+            &RESIZE.uia_runs,
+            &RESIZE.uia_us,
+            &RESIZE.uia_max_us,
+            t.elapsed().as_micros() as u64,
+        );
+        r
+    }
+
+    fn uia_refresh_impl(&mut self) -> UiResult {
         if self.uia.is_none() {
             return Ok(());
         }
@@ -2957,6 +3305,7 @@ where
         renderer: RefCell::new(Renderer::new()?),
         rects: HashMap::new(),
         order: Vec::new(),
+        clips: HashMap::new(),
         focus: None,
         hot: None,
         pressed: None,
@@ -2978,6 +3327,7 @@ where
         pump_queued: std::cell::Cell::new(false),
         deferred_native: std::collections::VecDeque::new(),
         state_dirty: std::cell::Cell::new(0),
+        size_pending: std::cell::Cell::new(false),
         damage: std::cell::Cell::new(None),
         committed_ink: std::cell::RefCell::new(HashMap::new()),
         applied_palette: std::cell::RefCell::new(None),

@@ -3,6 +3,7 @@
 //! routing, tooltip/capture, `WM_GETOBJECT` for UIA, and clean shutdown.
 
 use std::sync::atomic::Ordering;
+use std::time::Instant;
 
 use windows::Win32::Foundation::*;
 use windows::Win32::Graphics::Gdi::*;
@@ -16,7 +17,7 @@ use windows::core::*;
 use crate::runtime::UpdateCtx;
 use crate::{Ui, UiResult};
 
-use super::{Backend, WM_PUMP, WM_UIA_FOCUS, WM_UIA_PRESS};
+use super::{Backend, RESIZE, ResizeSample, WM_PUMP, WM_UIA_FOCUS, WM_UIA_PRESS};
 
 pub(super) const DEADLINE_TIMER: usize = 1;
 /// Peer-timer ID namespace — framework timers are small ints; every
@@ -350,8 +351,15 @@ pub(crate) mod wndproc {
                     DefWindowProcW(hwnd, msg, wparam, lparam)
                 }
                 WM_PAINT => {
-                    // coalescible — the in-flight frame covers it
-                    let _ = ValidateRect(Some(hwnd), None);
+                    // coalescible — the in-flight frame covers it. BUT a
+                    // deferred WM_SIZE may have armed size_pending + the
+                    // invalid region: validating here would discard the
+                    // pending resize work (no real WM_PAINT would ever
+                    // arrive to run the coalesced layout+paint). Leave
+                    // the region invalid so the delivery still comes.
+                    if !(*ptr).size_pending.get() {
+                        let _ = ValidateRect(Some(hwnd), None);
+                    }
                     LRESULT(0)
                 }
                 WM_DPICHANGED => {
@@ -421,7 +429,30 @@ pub(crate) mod wndproc {
                 unsafe {
                     let _ = ValidateRect(Some(hwnd), None);
                 }
+                let tl0 = RESIZE.text_layout_creates.load(Ordering::Relaxed);
+                let sh0 = RESIZE.shadow_rasters.load(Ordering::Relaxed);
+                let t0 = Instant::now();
+                // resize-deferred work — the OS coalesces invalid rects
+                // during a drag so this runs per DELIVERED paint, not per
+                // WM_SIZE arrival
+                let t = Instant::now();
+                if be.size_pending.replace(false) {
+                    be.relayout()?;
+                    be.uia_refresh()?;
+                }
+                let layout_us = t.elapsed().as_micros() as u64;
+                let t = Instant::now();
                 be.paint()?;
+                RESIZE.record(ResizeSample {
+                    kind: 1,
+                    wm_size_us: t0.elapsed().as_micros() as u64,
+                    resize_us: 0,
+                    layout_us,
+                    uia_us: 0,
+                    paint_us: t.elapsed().as_micros() as u64,
+                    text_layouts: RESIZE.text_layout_creates.load(Ordering::Relaxed) - tl0,
+                    shadow_rasters: RESIZE.shadow_rasters.load(Ordering::Relaxed) - sh0,
+                });
                 LRESULT(0)
             }
             WM_MOUSEMOVE => {
@@ -518,18 +549,39 @@ pub(crate) mod wndproc {
                 LRESULT(0)
             }
             WM_MOUSEWHEEL => {
-                be.send_focused(msg, wparam.0, lparam.0)?;
-                be.service_peer_events()?;
+                be.wheel(msg, wparam.0, lparam.0)?;
                 LRESULT(0)
             }
             WM_SIZE => {
                 // the frame target tracks the client size — resize before
-                // layout so paint never draws into a stale surface
+                // layout so paint never draws into a stale surface. Layout+
+                // paint are deferred to the OS-coalesced WM_PAINT delivery:
+                // a drag emits WM_SIZE per mouse-move step, and painting per
+                // step was the measured stall.
+                let t0 = Instant::now();
+                let t = Instant::now();
                 be.renderer.borrow_mut().resize();
-                be.relayout()?;
-                be.uia_refresh()?;
-                be.paint()?;
+                let resize_us = t.elapsed().as_micros() as u64;
+                be.size_pending.set(true);
+                unsafe {
+                    let _ = InvalidateRect(Some(hwnd), None, false);
+                }
+                RESIZE.record(ResizeSample {
+                    kind: 0,
+                    wm_size_us: t0.elapsed().as_micros() as u64,
+                    resize_us,
+                    layout_us: 0,
+                    uia_us: 0,
+                    paint_us: 0,
+                    text_layouts: 0,
+                    shadow_rasters: 0,
+                });
                 LRESULT(0)
+            }
+            WM_ERASEBKGND => {
+                // we paint the entire client in one frame — the GDI erase
+                // would only flicker
+                LRESULT(1)
             }
             WM_MOVE => {
                 // client-space geometry is unchanged but SCREEN rects move —
@@ -554,10 +606,25 @@ pub(crate) mod wndproc {
                         SWP_NOZORDER | SWP_NOACTIVATE,
                     );
                 }
+                // SetWindowPos's nested WM_SIZE was QUEUED (the reentrant
+                // route defers it to the post-dispatch drain) — drain it
+                // NOW so its renderer.resize() lands before this frame's
+                // paint and its size_pending arm is consumed below.
+                // drain_reentrant clears in_dispatch around each item, so
+                // the outer dispatch's ownership guard is restored after.
+                let outer = be.in_dispatch.replace(true);
+                let drained = be.drain_reentrant();
+                be.in_dispatch.set(outer);
+                drained?;
                 // the resize above may be a no-op — guarantee the repaint
                 be.relayout()?;
                 be.uia_refresh()?;
                 be.paint()?;
+                // this synchronous pass IS the coalesced frame for the
+                // new scale + size — nothing may keep size_pending armed
+                // or the next delivered WM_PAINT re-runs the whole
+                // layout+uia+paint it already produced
+                be.size_pending.set(false);
                 LRESULT(0)
             }
             WM_SETTINGCHANGE => {
@@ -652,7 +719,7 @@ where
             x,
             y,
             980,
-            900,
+            1600,
             None,
             None,
             Some(inst.into()),

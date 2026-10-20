@@ -306,6 +306,87 @@ pub fn button_icon_rect(
     })
 }
 
+// ---------------------------------------------------------------------------
+// Toggle geometry — the shared authority for the toggle leaf's natural
+// size, painted indicator/track/thumb/dot/label rects, and the devtools
+// synthetic parts. Measure, paint and snapshot consume the same helpers so
+// the three paths can never drift.
+// ---------------------------------------------------------------------------
+
+/// Natural (element) size of a `ToggleKind` — checkbox/radio 16×16;
+/// switch tracks 32×18.4 default / 24×14 sm. The optional label paints
+/// outside this rect at +24dp (frozen `owner_attributed` part); it is NOT
+/// part of the element size.
+pub fn toggle_natural_size(
+    kind: crate::theme::ToggleKind,
+    size: crate::theme::ToggleSize,
+) -> (f32, f32) {
+    use crate::theme::{ToggleKind as K, ToggleSize as S};
+    match (kind, size) {
+        (K::Checkbox, _) | (K::RadioItem, _) => (16.0, 16.0),
+        (K::Switch, S::Default) => (32.0, 18.391),
+        (K::Switch, S::Sm) => (24.0, 14.0),
+    }
+}
+
+/// Checkbox indicator part — the frozen `(1,1,14,14)` inset box the check
+/// icon fills.
+pub fn toggle_checkbox_indicator_rect(r: &Rect) -> Rect {
+    Rect {
+        x: r.x + 1.0,
+        y: r.y + 1.0,
+        width: 14.0,
+        height: 14.0,
+    }
+}
+
+/// Radio indicator part — the frozen `(1,1,14,16)` ring inset.
+pub fn toggle_radio_indicator_rect(r: &Rect) -> Rect {
+    Rect {
+        x: r.x + 1.0,
+        y: r.y + 1.0,
+        width: 14.0,
+        height: 16.0,
+    }
+}
+
+/// Radio dot — the frozen `(4,4,8,8)` filled circle inside a checked item.
+pub fn toggle_radio_dot_rect(r: &Rect) -> Rect {
+    Rect {
+        x: r.x + 4.0,
+        y: r.y + 4.0,
+        width: 8.0,
+        height: 8.0,
+    }
+}
+
+/// Switch thumb rect — default `(1,1.19,16,16)` → checked `(15,…)`;
+/// sm `(1,1,12,12)` → checked `(11,…)`.
+pub fn toggle_thumb_rect(size: crate::theme::ToggleSize, checked: bool, r: &Rect) -> Rect {
+    let (d, y, xu, xc) = match size {
+        crate::theme::ToggleSize::Default => (16.0, 1.188, 1.0, 15.0),
+        crate::theme::ToggleSize::Sm => (12.0, 1.0, 1.0, 11.0),
+    };
+    Rect {
+        x: r.x + if checked { xc } else { xu },
+        y: r.y + y,
+        width: d,
+        height: d,
+    }
+}
+
+/// Toggle label part — painted at +24dp (16 box + 8 gap), 14dp high at
+/// +1dp vertical offset (the frozen `label` part rect); `text_w` is the
+/// measured ink advance.
+pub fn toggle_label_rect(r: &Rect, text_w: f32) -> Rect {
+    Rect {
+        x: r.x + 24.0,
+        y: r.y + 1.0,
+        width: text_w,
+        height: 14.0,
+    }
+}
+
 /// Content insets for a button — resolved box padding/border plus the
 /// reserved `icon_size + icon_gap` on each icon-bearing side, so the
 /// text layout box never overlaps the icon. The icon edges themselves

@@ -11,6 +11,14 @@ where
     U: Fn(&mut S, M, &mut UpdateCtx<'_, M>),
     V: Fn(&S, &mut crate::Ui<'_, '_, M>),
 {
+    /// Does `id`'s scroll-viewport clip fully exclude `r`? The one
+    /// clip-visibility truth nodes AND parts share (hit-test/paint/UIA
+    /// read the same map) — a part's rect is checked against the clip of
+    /// the node that owns it.
+    fn clip_fully_excludes(&self, id: NodeId, r: LogicalRect) -> bool {
+        self.clips.get(&id).is_some_and(|c| !r.intersects(*c))
+    }
+
     fn dev_snapshot(&self) -> Result<Snapshot> {
         let scale = self.peer_ctx.scale.get();
         let mut client = RECT::default();
@@ -82,6 +90,20 @@ where
                 snapshot.committed.chars().take(1024).collect(),
                 !*disabled,
             ),
+            NodeData::Toggle {
+                kind,
+                disabled,
+                label,
+                ..
+            } => (
+                match kind {
+                    crate::theme::ToggleKind::Checkbox => "checkbox",
+                    crate::theme::ToggleKind::RadioItem => "radio",
+                    crate::theme::ToggleKind::Switch => "switch",
+                },
+                label.as_deref().unwrap_or("").chars().take(1024).collect(),
+                !*disabled,
+            ),
             NodeData::Custom { .. } => ("custom", String::new(), true),
             NodeData::Icon { .. } => ("icon", String::new(), true),
         };
@@ -124,7 +146,8 @@ where
                         width: (p.right - p.left) as f64,
                         height: (p.bottom - p.top) as f64,
                     },
-                    visible: n.visibility == crate::Visibility::Visible,
+                    visible: n.visibility == crate::Visibility::Visible
+                        && !self.clip_fully_excludes(id, r),
                     reason: None,
                 });
                 prefix.push(pk.to_string());
@@ -174,7 +197,8 @@ where
                                     width: (ip.right - ip.left) as f64,
                                     height: (ip.bottom - ip.top) as f64,
                                 },
-                                visible: n.visibility == crate::Visibility::Visible,
+                                visible: n.visibility == crate::Visibility::Visible
+                                    && !self.clip_fully_excludes(id, ir),
                                 reason: None,
                             });
                         }
@@ -189,7 +213,44 @@ where
                     }
                 }
             }
+            // named toggle — synthetic geometry parts (same helpers as paint)
+            if let NodeData::Toggle {
+                kind,
+                size,
+                checked,
+                label,
+                ..
+            } = &n.data
+            {
+                for (key, pr) in
+                    toggle_part_rects(self, kind, *size, *checked, label.as_deref(), &r)
+                {
+                    let pp = pr.physical(self.peer_ctx.scale.get());
+                    parts.push(d::PartNode {
+                        key: key.into(),
+                        rect_dp: Rect {
+                            x: pr.x as f64,
+                            y: pr.y as f64,
+                            width: pr.width as f64,
+                            height: pr.height as f64,
+                        },
+                        rect_px: Rect {
+                            x: pp.left as f64,
+                            y: pp.top as f64,
+                            width: (pp.right - pp.left) as f64,
+                            height: (pp.bottom - pp.top) as f64,
+                        },
+                        visible: n.visibility == crate::Visibility::Visible
+                            && !self.clip_fully_excludes(id, pr),
+                        reason: None,
+                    });
+                }
+            }
         }
+        // a scroll clip that fully excludes the node's rect reports the
+        // truth — the node is laid out (rect is real) but painted out of
+        // the viewport and unhittable
+        let clipped_out = self.clip_fully_excludes(id, r);
         Ok(Node {
             automation_id: n.automation_id.as_deref().map(str::to_owned),
             kind: kind.into(),
@@ -206,7 +267,10 @@ where
                 width: (p.right - p.left) as f64,
                 height: (p.bottom - p.top) as f64,
             },
-            visible: n.visibility == crate::Visibility::Visible && r.width > 0. && r.height > 0.,
+            visible: !clipped_out
+                && n.visibility == crate::Visibility::Visible
+                && r.width > 0.
+                && r.height > 0.,
             enabled,
             focused: self.focus == Some(id),
             focus_visible: self.focus == Some(id),
@@ -256,10 +320,54 @@ where
                         width: (p.right - p.left) as f64,
                         height: (p.bottom - p.top) as f64,
                     },
-                    visible: c.visibility == crate::Visibility::Visible,
+                    // parts inherit their owner node's viewport clip —
+                    // a clipped-out node can't carry on-screen parts
+                    visible: c.visibility == crate::Visibility::Visible
+                        && !self.clip_fully_excludes(cid, r),
                     reason: None,
                 });
                 descend = true;
+            }
+            // unnamed Toggle — its intrinsic parts emit under the prefix
+            // (e.g. `thumb` inside `field.horizontal`, or
+            // `item[k].indicator` under a part-marked radio item)
+            if let NodeData::Toggle {
+                kind,
+                size,
+                checked,
+                label,
+                ..
+            } = &c.data
+            {
+                let r = self.rects.get(&cid).copied().unwrap_or_default();
+                for (key, pr) in
+                    toggle_part_rects(self, kind, *size, *checked, label.as_deref(), &r)
+                {
+                    let pp = pr.physical(self.peer_ctx.scale.get());
+                    let full = {
+                        prefix.push(key.into());
+                        prefix.join(".")
+                    };
+                    out.push(d::PartNode {
+                        key: full,
+                        rect_dp: Rect {
+                            x: pr.x as f64,
+                            y: pr.y as f64,
+                            width: pr.width as f64,
+                            height: pr.height as f64,
+                        },
+                        rect_px: Rect {
+                            x: pp.left as f64,
+                            y: pp.top as f64,
+                            width: (pp.right - pp.left) as f64,
+                            height: (pp.bottom - pp.top) as f64,
+                        },
+                        visible: c.visibility == crate::Visibility::Visible
+                            && !self.clip_fully_excludes(cid, pr),
+                        reason: None,
+                    });
+                    prefix.pop();
+                }
             }
             if descend {
                 self.collect_parts(cid, prefix, out);
@@ -445,6 +553,152 @@ where
                 self.key_msg(WM_KEYUP, vk, 0).map_err(platform)?;
                 Ok(json!({"key":name,"delivered":true}))
             }
+            "resize" => {
+                // programmatic client-size change — SetWindowPos fires the
+                // SAME synchronous WM_SIZE chain a drag step does, so perf
+                // counters observe the real path (window size is sized on
+                // the outer frame; reported client rect may differ by the
+                // non-client border)
+                let num = |k: &str| -> Result<i32> {
+                    let v = args[k]
+                        .as_i64()
+                        .or_else(|| args[k].as_str().and_then(|s| s.parse().ok()))
+                        .ok_or_else(|| Error::new("INVALID_ARGUMENT", format!("{k} required")))?;
+                    i32::try_from(v)
+                        .map_err(|_| Error::new("INVALID_ARGUMENT", format!("{k} out of range")))
+                };
+                let (w, h) = (num("width")?, num("height")?);
+                if !(64..=16384).contains(&w) || !(64..=16384).contains(&h) {
+                    return Err(Error::new(
+                        "INVALID_ARGUMENT",
+                        "width/height must be 64..=16384 px",
+                    ));
+                }
+                unsafe {
+                    SetWindowPos(
+                        self.hwnd,
+                        None,
+                        0,
+                        0,
+                        w,
+                        h,
+                        SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE,
+                    )
+                    .map_err(platform)?;
+                }
+                let mut c = RECT::default();
+                unsafe {
+                    let _ = GetClientRect(self.hwnd, &mut c);
+                }
+                Ok(json!({"resized":[w,h],"client_px":[c.left,c.top,c.right,c.bottom]}))
+            }
+            "scroll" => {
+                // inject a scroll DELTA into the scroll viewport's own
+                // factories — the app still owns the offset; this only
+                // drives the same NodeEvent wheel routing produces
+                let id = self.dev_target(args)?;
+                let dy = args["dy"]
+                    .as_f64()
+                    .or_else(|| args["dy"].as_str().and_then(|s| s.parse().ok()))
+                    .ok_or_else(|| Error::new("INVALID_ARGUMENT", "dy required"))?;
+                if !dy.is_finite() {
+                    return Err(Error::new("INVALID_ARGUMENT", "dy not finite"));
+                }
+                let n = self
+                    .rt
+                    .arena
+                    .get(id)
+                    .ok_or_else(|| Error::new("TARGET_NOT_FOUND", "stale node"))?;
+                if !matches!(&n.data, NodeData::Container { kind, .. } if *kind == crate::node::KIND_SCROLL)
+                {
+                    return Err(Error::new(
+                        "NOT_SUPPORTED",
+                        "target is not a scroll viewport",
+                    ));
+                }
+                self.push_input(
+                    id,
+                    NodeEvent::Scroll(crate::event::ScrollOffset {
+                        x: 0.,
+                        y: dy as f32,
+                    }),
+                )
+                .map_err(platform)?;
+                self.turn().map_err(platform)?;
+                Ok(json!({"scrolled":dy,"id":args["id"]}))
+            }
+            "scroll-into-view" => {
+                // the delta needed to bring a descendant into its NEAREST
+                // scroll ancestor's viewport inner rect — injected into
+                // the scroll node's factories (app-owned offset preserved)
+                let id = self.dev_target(args)?;
+                let Some(target) = self.rects.get(&id).copied() else {
+                    return Err(Error::new("TARGET_NOT_VISIBLE", "no layout"));
+                };
+                // nearest KIND_SCROLL ancestor via the retained parent chain
+                let mut cur = self.rt.arena.get(id).and_then(|n| n.parent);
+                let mut scr = None;
+                while let Some(slot) = cur {
+                    match self.rt.arena.slot(slot) {
+                        Some(pn) => {
+                            if matches!(&pn.data, NodeData::Container { kind, .. } if *kind == crate::node::KIND_SCROLL)
+                            {
+                                scr = Some(NodeId {
+                                    slot,
+                                    generation: self.rt.arena.generation_of(slot),
+                                });
+                                break;
+                            }
+                            cur = pn.parent;
+                        }
+                        None => break,
+                    }
+                }
+                let Some(scr) = scr else {
+                    return Ok(json!({"scrolled":0.0,"id":args["id"]}));
+                };
+                // the viewport clip the scroll node applies = its inner
+                // rect — the same value its descendants carry in clips
+                let vp = {
+                    let sn = self.rt.arena.get(scr).unwrap();
+                    let ins = crate::layout::node_insets(
+                        scr,
+                        sn,
+                        &crate::layout::Interaction {
+                            dark: self.rt.theme.dark,
+                            ..Default::default()
+                        },
+                    );
+                    let r = self.rects.get(&scr).copied().unwrap_or_default();
+                    LogicalRect {
+                        x: r.x + ins.left.0,
+                        y: r.y + ins.top.0,
+                        width: (r.width - ins.left.0 - ins.right.0).max(0.),
+                        height: (r.height - ins.top.0 - ins.bottom.0).max(0.),
+                    }
+                };
+                let dy = if target.y < vp.y {
+                    target.y - vp.y
+                } else if target.y + target.height > vp.y + vp.height {
+                    target.y + target.height - (vp.y + vp.height)
+                } else {
+                    0.
+                };
+                if dy != 0. {
+                    self.push_input(
+                        scr,
+                        NodeEvent::Scroll(crate::event::ScrollOffset { x: 0., y: dy }),
+                    )
+                    .map_err(platform)?;
+                    self.turn().map_err(platform)?;
+                }
+                Ok(json!({"scrolled":dy,"id":args["id"]}))
+            }
+            "perf" => Ok(super::RESIZE.snapshot()),
+            "perf-reset" => {
+                super::RESIZE.reset();
+                Ok(json!({"reset":true}))
+            }
             "shutdown" => Ok(json!({"shutdown":true})),
             _ => Err(Error::new("NOT_SUPPORTED", command)),
         }
@@ -605,4 +859,58 @@ where
             }
         }
     }
+}
+
+/// Intrinsic synthetic parts of a Toggle leaf — shared key+geometry list
+/// used by `dev_node` (named toggles) and `collect_parts` (unnamed
+/// toggles inside an automation owner's subtree).
+fn toggle_part_rects<S, M, U, V>(
+    be: &Backend<S, M, U, V>,
+    kind: &crate::theme::ToggleKind,
+    size: crate::theme::ToggleSize,
+    checked: bool,
+    label: Option<&str>,
+    r: &LogicalRect,
+) -> Vec<(&'static str, LogicalRect)>
+where
+    M: 'static,
+    U: Fn(&mut S, M, &mut UpdateCtx<'_, M>),
+    V: Fn(&S, &mut crate::Ui<'_, '_, M>),
+{
+    let _ = be;
+    let mut out: Vec<(&'static str, LogicalRect)> = Vec::new();
+    match kind {
+        crate::theme::ToggleKind::Checkbox => {
+            if checked {
+                let ir = crate::layout::toggle_checkbox_indicator_rect(r);
+                out.push(("indicator", ir));
+                out.push(("indicator.icon", ir));
+            }
+            if let Some(l) = label {
+                let ts = crate::style::resolve_toggle_visual(
+                    *kind,
+                    size,
+                    checked,
+                    false,
+                    crate::style::StyleState::Normal,
+                    false,
+                    false,
+                )
+                .text_style;
+                let (tw, _) = super::render::measure_text(l, f32::MAX, &ts).unwrap_or((0.0, 14.0));
+                out.push(("label", crate::layout::toggle_label_rect(r, tw)));
+            }
+        }
+        crate::theme::ToggleKind::RadioItem => {
+            let ir = crate::layout::toggle_radio_indicator_rect(r);
+            out.push(("indicator", ir));
+            if checked {
+                out.push(("indicator.icon", crate::layout::toggle_radio_dot_rect(r)));
+            }
+        }
+        crate::theme::ToggleKind::Switch => {
+            out.push(("thumb", crate::layout::toggle_thumb_rect(size, checked, r)));
+        }
+    }
+    out
 }

@@ -81,7 +81,10 @@ impl Typography {
             Typography::Small => {
                 s.size = crate::style::TextSize::Exact(Dp(14.0));
                 s.weight = TextWeight::Medium;
-                s.line_height = Some(Dp(14.0));
+                // the frozen <small> element rect is 18 tall even though
+                // its computed CSS line-height is 14px (Geist's metrics) —
+                // our line_height drives the element's outer box
+                s.line_height = Some(Dp(18.0));
             }
             Typography::Muted => {
                 s.foreground = Color::Role(ColorRole::MutedForeground);

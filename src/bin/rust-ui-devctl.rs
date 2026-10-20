@@ -46,6 +46,11 @@ impl Args {
             "rect" | "hover" | "press" | "release" | "click" => &["session", "timeout", "id"],
             "focus" => &["session", "timeout", "id", "modality"],
             "key" => &["session", "timeout", "key"],
+            "resize" => &["session", "timeout", "width", "height"],
+            "scroll" => &["session", "timeout", "id", "dy"],
+            "scroll-into-view" => &["session", "timeout", "id"],
+            "perf" => &["session", "timeout", "out"],
+            "perf-reset" => &["session", "timeout"],
             "screenshot" => &["session", "timeout", "id", "out", "pad"],
             "compare-layout" => &[
                 "reference",
@@ -346,7 +351,7 @@ fn native(a: &Args) -> Result<Value> {
         d::write_json(&path.with_extension("capture.json"), &meta)?;
         return Ok(meta);
     }
-    let args = json!({"id":a.id(),"key":a.get("key").or_else(||a.position.first().map(String::as_str)),"modality":a.get("modality")});
+    let args = json!({"id":a.id(),"key":a.get("key").or_else(||a.position.first().map(String::as_str)),"modality":a.get("modality"),"width":a.get("width"),"height":a.get("height"),"dy":a.get("dy")});
     let v = c::request(&session, &a.command, args, timeout)?;
     if let Some(out) = a.get("out") {
         d::write_json(Path::new(out), &v)?

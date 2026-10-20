@@ -1,0 +1,1507 @@
+{
+  "client_dp": {
+    "height": 861.0,
+    "width": 964.0,
+    "x": 0.0,
+    "y": 0.0
+  },
+  "client_px": {
+    "height": 861.0,
+    "width": 964.0,
+    "x": 0.0,
+    "y": 0.0
+  },
+  "root": {
+    "automation_id": null,
+    "children": [
+      {
+        "automation_id": "shell.root",
+        "children": [
+          {
+            "automation_id": "shell.header",
+            "children": [
+              {
+                "automation_id": "shell.nav",
+                "children": [
+                  {
+                    "automation_id": "shell.nav.all",
+                    "children": [],
+                    "enabled": false,
+                    "focus_visible": false,
+                    "focused": false,
+                    "hovered": false,
+                    "kind": "button",
+                    "label": "All",
+                    "pressed": false,
+                    "rect_dp": {
+                      "height": 24.0,
+                      "width": 34.326171875,
+                      "x": 48.0,
+                      "y": 48.0
+                    },
+                    "rect_px": {
+                      "height": 24.0,
+                      "width": 34.0,
+                      "x": 48.0,
+                      "y": 48.0
+                    },
+                    "visible": true
+                  },
+                  {
+                    "automation_id": "shell.nav.components",
+                    "children": [],
+                    "enabled": true,
+                    "focus_visible": false,
+                    "focused": false,
+                    "hovered": false,
+                    "kind": "button",
+                    "label": "Components",
+                    "pressed": false,
+                    "rect_dp": {
+                      "height": 24.0,
+                      "width": 89.533203125,
+                      "x": 86.326171875,
+                      "y": 48.0
+                    },
+                    "rect_px": {
+                      "height": 24.0,
+                      "width": 90.0,
+                      "x": 86.0,
+                      "y": 48.0
+                    },
+                    "visible": true
+                  },
+                  {
+                    "automation_id": "shell.nav.forms",
+                    "children": [],
+                    "enabled": true,
+                    "focus_visible": false,
+                    "focused": false,
+                    "hovered": false,
+                    "kind": "button",
+                    "label": "Forms",
+                    "pressed": false,
+                    "rect_dp": {
+                      "height": 24.0,
+                      "width": 53.439453125,
+                      "x": 179.859375,
+                      "y": 48.0
+                    },
+                    "rect_px": {
+                      "height": 24.0,
+                      "width": 53.0,
+                      "x": 180.0,
+                      "y": 48.0
+                    },
+                    "visible": true
+                  },
+                  {
+                    "automation_id": "shell.nav.navigation",
+                    "children": [],
+                    "enabled": false,
+                    "focus_visible": false,
+                    "focused": false,
+                    "hovered": false,
+                    "kind": "button",
+                    "label": "Navigation",
+                    "pressed": false,
+                    "rect_dp": {
+                      "height": 24.0,
+                      "width": 79.82421875,
+                      "x": 237.298828125,
+                      "y": 48.0
+                    },
+                    "rect_px": {
+                      "height": 24.0,
+                      "width": 80.0,
+                      "x": 237.0,
+                      "y": 48.0
+                    },
+                    "visible": true
+                  },
+                  {
+                    "automation_id": "shell.nav.typography",
+                    "children": [],
+                    "enabled": true,
+                    "focus_visible": false,
+                    "focused": false,
+                    "hovered": false,
+                    "kind": "button",
+                    "label": "Typography",
+                    "pressed": false,
+                    "rect_dp": {
+                      "height": 24.0,
+                      "width": 84.7578125,
+                      "x": 321.123046875,
+                      "y": 48.0
+                    },
+                    "rect_px": {
+                      "height": 24.0,
+                      "width": 85.0,
+                      "x": 321.0,
+                      "y": 48.0
+                    },
+                    "visible": true
+                  },
+                  {
+                    "automation_id": "shell.nav.overlays",
+                    "children": [],
+                    "enabled": false,
+                    "focus_visible": false,
+                    "focused": false,
+                    "hovered": false,
+                    "kind": "button",
+                    "label": "Overlays",
+                    "pressed": false,
+                    "rect_dp": {
+                      "height": 24.0,
+                      "width": 66.552734375,
+                      "x": 409.880859375,
+                      "y": 48.0
+                    },
+                    "rect_px": {
+                      "height": 24.0,
+                      "width": 66.0,
+                      "x": 410.0,
+                      "y": 48.0
+                    },
+                    "visible": true
+                  },
+                  {
+                    "automation_id": "shell.nav.native-text",
+                    "children": [],
+                    "enabled": true,
+                    "focus_visible": true,
+                    "focused": true,
+                    "hovered": true,
+                    "kind": "button",
+                    "label": "Native Text",
+                    "pressed": false,
+                    "rect_dp": {
+                      "height": 24.0,
+                      "width": 80.78515625,
+                      "x": 480.43359375,
+                      "y": 48.0
+                    },
+                    "rect_px": {
+                      "height": 24.0,
+                      "width": 81.0,
+                      "x": 480.0,
+                      "y": 48.0
+                    },
+                    "visible": true
+                  }
+                ],
+                "enabled": true,
+                "focus_visible": false,
+                "focused": false,
+                "hovered": false,
+                "kind": "container",
+                "label": "",
+                "pressed": false,
+                "rect_dp": {
+                  "height": 40.0,
+                  "width": 529.21875,
+                  "x": 40.0,
+                  "y": 40.0
+                },
+                "rect_px": {
+                  "height": 40.0,
+                  "width": 529.0,
+                  "x": 40.0,
+                  "y": 40.0
+                },
+                "visible": true
+              },
+              {
+                "automation_id": "shell.theme",
+                "children": [
+                  {
+                    "automation_id": "shell.theme.light",
+                    "children": [],
+                    "enabled": true,
+                    "focus_visible": false,
+                    "focused": false,
+                    "hovered": false,
+                    "kind": "button",
+                    "label": "Light theme",
+                    "parts": [
+                      {
+                        "key": "icon",
+                        "rect_dp": {
+                          "height": 12.0,
+                          "width": 12.0,
+                          "x": 591.21875,
+                          "y": 54.0
+                        },
+                        "rect_px": {
+                          "height": 12.0,
+                          "width": 12.0,
+                          "x": 591.0,
+                          "y": 54.0
+                        },
+                        "visible": true
+                      }
+                    ],
+                    "pressed": false,
+                    "rect_dp": {
+                      "height": 24.0,
+                      "width": 24.0,
+                      "x": 585.21875,
+                      "y": 48.0
+                    },
+                    "rect_px": {
+                      "height": 24.0,
+                      "width": 24.0,
+                      "x": 585.0,
+                      "y": 48.0
+                    },
+                    "visible": true
+                  },
+                  {
+                    "automation_id": "shell.theme.dark",
+                    "children": [],
+                    "enabled": true,
+                    "focus_visible": false,
+                    "focused": false,
+                    "hovered": false,
+                    "kind": "button",
+                    "label": "Dark theme",
+                    "parts": [
+                      {
+                        "key": "icon",
+                        "rect_dp": {
+                          "height": 12.0,
+                          "width": 12.0,
+                          "x": 619.21875,
+                          "y": 54.0
+                        },
+                        "rect_px": {
+                          "height": 12.0,
+                          "width": 12.0,
+                          "x": 619.0,
+                          "y": 54.0
+                        },
+                        "visible": true
+                      }
+                    ],
+                    "pressed": false,
+                    "rect_dp": {
+                      "height": 24.0,
+                      "width": 24.0,
+                      "x": 613.21875,
+                      "y": 48.0
+                    },
+                    "rect_px": {
+                      "height": 24.0,
+                      "width": 24.0,
+                      "x": 613.0,
+                      "y": 48.0
+                    },
+                    "visible": true
+                  },
+                  {
+                    "automation_id": "shell.theme.system",
+                    "children": [],
+                    "enabled": true,
+                    "focus_visible": false,
+                    "focused": false,
+                    "hovered": false,
+                    "kind": "button",
+                    "label": "System theme",
+                    "parts": [
+                      {
+                        "key": "icon",
+                        "rect_dp": {
+                          "height": 12.0,
+                          "width": 12.0,
+                          "x": 647.21875,
+                          "y": 54.0
+                        },
+                        "rect_px": {
+                          "height": 12.0,
+                          "width": 12.0,
+                          "x": 647.0,
+                          "y": 54.0
+                        },
+                        "visible": true
+                      }
+                    ],
+                    "pressed": false,
+                    "rect_dp": {
+                      "height": 24.0,
+                      "width": 24.0,
+                      "x": 641.21875,
+                      "y": 48.0
+                    },
+                    "rect_px": {
+                      "height": 24.0,
+                      "width": 24.0,
+                      "x": 641.0,
+                      "y": 48.0
+                    },
+                    "visible": true
+                  }
+                ],
+                "enabled": true,
+                "focus_visible": false,
+                "focused": false,
+                "hovered": false,
+                "kind": "container",
+                "label": "",
+                "pressed": false,
+                "rect_dp": {
+                  "height": 40.0,
+                  "width": 96.0,
+                  "x": 577.21875,
+                  "y": 40.0
+                },
+                "rect_px": {
+                  "height": 40.0,
+                  "width": 96.0,
+                  "x": 577.0,
+                  "y": 40.0
+                },
+                "visible": true
+              }
+            ],
+            "enabled": true,
+            "focus_visible": false,
+            "focused": false,
+            "hovered": false,
+            "kind": "container",
+            "label": "",
+            "pressed": false,
+            "rect_dp": {
+              "height": 56.0,
+              "width": 900.0,
+              "x": 32.0,
+              "y": 32.0
+            },
+            "rect_px": {
+              "height": 56.0,
+              "width": 900.0,
+              "x": 32.0,
+              "y": 32.0
+            },
+            "visible": true
+          },
+          {
+            "automation_id": "page.scroll",
+            "children": [
+              {
+                "automation_id": null,
+                "children": [
+                  {
+                    "automation_id": null,
+                    "children": [
+                      {
+                        "automation_id": "native-text.single-line.placeholder",
+                        "children": [],
+                        "enabled": true,
+                        "focus_visible": false,
+                        "focused": false,
+                        "hovered": false,
+                        "kind": "text-input",
+                        "label": "",
+                        "pressed": false,
+                        "rect_dp": {
+                          "height": 32.0,
+                          "width": 360.0,
+                          "x": 40.0,
+                          "y": -63.0
+                        },
+                        "rect_px": {
+                          "height": 32.0,
+                          "width": 360.0,
+                          "x": 40.0,
+                          "y": -63.0
+                        },
+                        "visible": false
+                      },
+                      {
+                        "automation_id": null,
+                        "children": [],
+                        "enabled": true,
+                        "focus_visible": false,
+                        "focused": false,
+                        "hovered": false,
+                        "kind": "container",
+                        "label": "",
+                        "pressed": false,
+                        "rect_dp": {
+                          "height": 32.0,
+                          "width": 360.0,
+                          "x": 40.0,
+                          "y": -63.0
+                        },
+                        "rect_px": {
+                          "height": 32.0,
+                          "width": 360.0,
+                          "x": 40.0,
+                          "y": -63.0
+                        },
+                        "visible": false
+                      }
+                    ],
+                    "enabled": true,
+                    "focus_visible": false,
+                    "focused": false,
+                    "hovered": false,
+                    "kind": "container",
+                    "label": "",
+                    "pressed": false,
+                    "rect_dp": {
+                      "height": 32.0,
+                      "width": 360.0,
+                      "x": 40.0,
+                      "y": -63.0
+                    },
+                    "rect_px": {
+                      "height": 32.0,
+                      "width": 360.0,
+                      "x": 40.0,
+                      "y": -63.0
+                    },
+                    "visible": false
+                  },
+                  {
+                    "automation_id": null,
+                    "children": [
+                      {
+                        "automation_id": "native-text.single-line.filled",
+                        "children": [],
+                        "enabled": true,
+                        "focus_visible": false,
+                        "focused": false,
+                        "hovered": false,
+                        "kind": "text-input",
+                        "label": "alice@example.com",
+                        "pressed": false,
+                        "rect_dp": {
+                          "height": 32.0,
+                          "width": 360.0,
+                          "x": 40.0,
+                          "y": -15.0
+                        },
+                        "rect_px": {
+                          "height": 32.0,
+                          "width": 360.0,
+                          "x": 40.0,
+                          "y": -15.0
+                        },
+                        "visible": false
+                      },
+                      {
+                        "automation_id": null,
+                        "children": [],
+                        "enabled": true,
+                        "focus_visible": false,
+                        "focused": false,
+                        "hovered": false,
+                        "kind": "container",
+                        "label": "",
+                        "pressed": false,
+                        "rect_dp": {
+                          "height": 32.0,
+                          "width": 360.0,
+                          "x": 40.0,
+                          "y": -15.0
+                        },
+                        "rect_px": {
+                          "height": 32.0,
+                          "width": 360.0,
+                          "x": 40.0,
+                          "y": -15.0
+                        },
+                        "visible": false
+                      }
+                    ],
+                    "enabled": true,
+                    "focus_visible": false,
+                    "focused": false,
+                    "hovered": false,
+                    "kind": "container",
+                    "label": "",
+                    "pressed": false,
+                    "rect_dp": {
+                      "height": 32.0,
+                      "width": 360.0,
+                      "x": 40.0,
+                      "y": -15.0
+                    },
+                    "rect_px": {
+                      "height": 32.0,
+                      "width": 360.0,
+                      "x": 40.0,
+                      "y": -15.0
+                    },
+                    "visible": false
+                  },
+                  {
+                    "automation_id": null,
+                    "children": [
+                      {
+                        "automation_id": "native-text.single-line.focused",
+                        "children": [],
+                        "enabled": true,
+                        "focus_visible": false,
+                        "focused": false,
+                        "hovered": false,
+                        "kind": "text-input",
+                        "label": "alice@example.com",
+                        "pressed": false,
+                        "rect_dp": {
+                          "height": 32.0,
+                          "width": 360.0,
+                          "x": 40.0,
+                          "y": 33.0
+                        },
+                        "rect_px": {
+                          "height": 32.0,
+                          "width": 360.0,
+                          "x": 40.0,
+                          "y": 33.0
+                        },
+                        "visible": false
+                      },
+                      {
+                        "automation_id": null,
+                        "children": [],
+                        "enabled": true,
+                        "focus_visible": false,
+                        "focused": false,
+                        "hovered": false,
+                        "kind": "container",
+                        "label": "",
+                        "pressed": false,
+                        "rect_dp": {
+                          "height": 32.0,
+                          "width": 360.0,
+                          "x": 40.0,
+                          "y": 33.0
+                        },
+                        "rect_px": {
+                          "height": 32.0,
+                          "width": 360.0,
+                          "x": 40.0,
+                          "y": 33.0
+                        },
+                        "visible": false
+                      }
+                    ],
+                    "enabled": true,
+                    "focus_visible": false,
+                    "focused": false,
+                    "hovered": false,
+                    "kind": "container",
+                    "label": "",
+                    "pressed": false,
+                    "rect_dp": {
+                      "height": 32.0,
+                      "width": 360.0,
+                      "x": 40.0,
+                      "y": 33.0
+                    },
+                    "rect_px": {
+                      "height": 32.0,
+                      "width": 360.0,
+                      "x": 40.0,
+                      "y": 33.0
+                    },
+                    "visible": false
+                  },
+                  {
+                    "automation_id": null,
+                    "children": [
+                      {
+                        "automation_id": "native-text.single-line.selection",
+                        "children": [],
+                        "enabled": true,
+                        "focus_visible": false,
+                        "focused": false,
+                        "hovered": false,
+                        "kind": "text-input",
+                        "label": "alice@example.com",
+                        "pressed": false,
+                        "rect_dp": {
+                          "height": 32.0,
+                          "width": 360.0,
+                          "x": 40.0,
+                          "y": 81.0
+                        },
+                        "rect_px": {
+                          "height": 32.0,
+                          "width": 360.0,
+                          "x": 40.0,
+                          "y": 81.0
+                        },
+                        "visible": true
+                      },
+                      {
+                        "automation_id": null,
+                        "children": [],
+                        "enabled": true,
+                        "focus_visible": false,
+                        "focused": false,
+                        "hovered": false,
+                        "kind": "container",
+                        "label": "",
+                        "pressed": false,
+                        "rect_dp": {
+                          "height": 32.0,
+                          "width": 360.0,
+                          "x": 40.0,
+                          "y": 81.0
+                        },
+                        "rect_px": {
+                          "height": 32.0,
+                          "width": 360.0,
+                          "x": 40.0,
+                          "y": 81.0
+                        },
+                        "visible": true
+                      }
+                    ],
+                    "enabled": true,
+                    "focus_visible": false,
+                    "focused": false,
+                    "hovered": false,
+                    "kind": "container",
+                    "label": "",
+                    "pressed": false,
+                    "rect_dp": {
+                      "height": 32.0,
+                      "width": 360.0,
+                      "x": 40.0,
+                      "y": 81.0
+                    },
+                    "rect_px": {
+                      "height": 32.0,
+                      "width": 360.0,
+                      "x": 40.0,
+                      "y": 81.0
+                    },
+                    "visible": true
+                  },
+                  {
+                    "automation_id": null,
+                    "children": [
+                      {
+                        "automation_id": "native-text.single-line.disabled",
+                        "children": [],
+                        "enabled": false,
+                        "focus_visible": false,
+                        "focused": false,
+                        "hovered": false,
+                        "kind": "text-input",
+                        "label": "alice@example.com",
+                        "pressed": false,
+                        "rect_dp": {
+                          "height": 32.0,
+                          "width": 360.0,
+                          "x": 40.0,
+                          "y": 129.0
+                        },
+                        "rect_px": {
+                          "height": 32.0,
+                          "width": 360.0,
+                          "x": 40.0,
+                          "y": 129.0
+                        },
+                        "visible": true
+                      },
+                      {
+                        "automation_id": null,
+                        "children": [],
+                        "enabled": true,
+                        "focus_visible": false,
+                        "focused": false,
+                        "hovered": false,
+                        "kind": "container",
+                        "label": "",
+                        "pressed": false,
+                        "rect_dp": {
+                          "height": 32.0,
+                          "width": 360.0,
+                          "x": 40.0,
+                          "y": 129.0
+                        },
+                        "rect_px": {
+                          "height": 32.0,
+                          "width": 360.0,
+                          "x": 40.0,
+                          "y": 129.0
+                        },
+                        "visible": true
+                      }
+                    ],
+                    "enabled": true,
+                    "focus_visible": false,
+                    "focused": false,
+                    "hovered": false,
+                    "kind": "container",
+                    "label": "",
+                    "pressed": false,
+                    "rect_dp": {
+                      "height": 32.0,
+                      "width": 360.0,
+                      "x": 40.0,
+                      "y": 129.0
+                    },
+                    "rect_px": {
+                      "height": 32.0,
+                      "width": 360.0,
+                      "x": 40.0,
+                      "y": 129.0
+                    },
+                    "visible": true
+                  },
+                  {
+                    "automation_id": null,
+                    "children": [
+                      {
+                        "automation_id": "native-text.single-line.readonly",
+                        "children": [],
+                        "enabled": true,
+                        "focus_visible": false,
+                        "focused": false,
+                        "hovered": false,
+                        "kind": "text-input",
+                        "label": "alice@example.com",
+                        "pressed": false,
+                        "rect_dp": {
+                          "height": 32.0,
+                          "width": 360.0,
+                          "x": 40.0,
+                          "y": 177.0
+                        },
+                        "rect_px": {
+                          "height": 32.0,
+                          "width": 360.0,
+                          "x": 40.0,
+                          "y": 177.0
+                        },
+                        "visible": true
+                      },
+                      {
+                        "automation_id": null,
+                        "children": [],
+                        "enabled": true,
+                        "focus_visible": false,
+                        "focused": false,
+                        "hovered": false,
+                        "kind": "container",
+                        "label": "",
+                        "pressed": false,
+                        "rect_dp": {
+                          "height": 32.0,
+                          "width": 360.0,
+                          "x": 40.0,
+                          "y": 177.0
+                        },
+                        "rect_px": {
+                          "height": 32.0,
+                          "width": 360.0,
+                          "x": 40.0,
+                          "y": 177.0
+                        },
+                        "visible": true
+                      }
+                    ],
+                    "enabled": true,
+                    "focus_visible": false,
+                    "focused": false,
+                    "hovered": false,
+                    "kind": "container",
+                    "label": "",
+                    "pressed": false,
+                    "rect_dp": {
+                      "height": 32.0,
+                      "width": 360.0,
+                      "x": 40.0,
+                      "y": 177.0
+                    },
+                    "rect_px": {
+                      "height": 32.0,
+                      "width": 360.0,
+                      "x": 40.0,
+                      "y": 177.0
+                    },
+                    "visible": true
+                  },
+                  {
+                    "automation_id": null,
+                    "children": [
+                      {
+                        "automation_id": "native-text.single-line.invalid",
+                        "children": [],
+                        "enabled": true,
+                        "focus_visible": false,
+                        "focused": false,
+                        "hovered": false,
+                        "kind": "text-input",
+                        "label": "bad value",
+                        "pressed": false,
+                        "rect_dp": {
+                          "height": 32.0,
+                          "width": 360.0,
+                          "x": 40.0,
+                          "y": 225.0
+                        },
+                        "rect_px": {
+                          "height": 32.0,
+                          "width": 360.0,
+                          "x": 40.0,
+                          "y": 225.0
+                        },
+                        "visible": true
+                      },
+                      {
+                        "automation_id": null,
+                        "children": [],
+                        "enabled": true,
+                        "focus_visible": false,
+                        "focused": false,
+                        "hovered": false,
+                        "kind": "container",
+                        "label": "",
+                        "pressed": false,
+                        "rect_dp": {
+                          "height": 32.0,
+                          "width": 360.0,
+                          "x": 40.0,
+                          "y": 225.0
+                        },
+                        "rect_px": {
+                          "height": 32.0,
+                          "width": 360.0,
+                          "x": 40.0,
+                          "y": 225.0
+                        },
+                        "visible": true
+                      }
+                    ],
+                    "enabled": true,
+                    "focus_visible": false,
+                    "focused": false,
+                    "hovered": false,
+                    "kind": "container",
+                    "label": "",
+                    "pressed": false,
+                    "rect_dp": {
+                      "height": 32.0,
+                      "width": 360.0,
+                      "x": 40.0,
+                      "y": 225.0
+                    },
+                    "rect_px": {
+                      "height": 32.0,
+                      "width": 360.0,
+                      "x": 40.0,
+                      "y": 225.0
+                    },
+                    "visible": true
+                  },
+                  {
+                    "automation_id": null,
+                    "children": [
+                      {
+                        "automation_id": "native-text.multiline.placeholder",
+                        "children": [],
+                        "enabled": true,
+                        "focus_visible": false,
+                        "focused": false,
+                        "hovered": false,
+                        "kind": "text-input",
+                        "label": "",
+                        "pressed": false,
+                        "rect_dp": {
+                          "height": 64.0,
+                          "width": 360.0,
+                          "x": 40.0,
+                          "y": 273.0
+                        },
+                        "rect_px": {
+                          "height": 64.0,
+                          "width": 360.0,
+                          "x": 40.0,
+                          "y": 273.0
+                        },
+                        "visible": true
+                      },
+                      {
+                        "automation_id": null,
+                        "children": [],
+                        "enabled": true,
+                        "focus_visible": false,
+                        "focused": false,
+                        "hovered": false,
+                        "kind": "container",
+                        "label": "",
+                        "pressed": false,
+                        "rect_dp": {
+                          "height": 64.0,
+                          "width": 360.0,
+                          "x": 40.0,
+                          "y": 273.0
+                        },
+                        "rect_px": {
+                          "height": 64.0,
+                          "width": 360.0,
+                          "x": 40.0,
+                          "y": 273.0
+                        },
+                        "visible": true
+                      }
+                    ],
+                    "enabled": true,
+                    "focus_visible": false,
+                    "focused": false,
+                    "hovered": false,
+                    "kind": "container",
+                    "label": "",
+                    "pressed": false,
+                    "rect_dp": {
+                      "height": 64.0,
+                      "width": 360.0,
+                      "x": 40.0,
+                      "y": 273.0
+                    },
+                    "rect_px": {
+                      "height": 64.0,
+                      "width": 360.0,
+                      "x": 40.0,
+                      "y": 273.0
+                    },
+                    "visible": true
+                  },
+                  {
+                    "automation_id": null,
+                    "children": [
+                      {
+                        "automation_id": "native-text.multiline.filled",
+                        "children": [],
+                        "enabled": true,
+                        "focus_visible": false,
+                        "focused": false,
+                        "hovered": false,
+                        "kind": "text-input",
+                        "label": "Line one.\nLine two.\nLine three.",
+                        "pressed": false,
+                        "rect_dp": {
+                          "height": 78.0,
+                          "width": 360.0,
+                          "x": 40.0,
+                          "y": 353.0
+                        },
+                        "rect_px": {
+                          "height": 78.0,
+                          "width": 360.0,
+                          "x": 40.0,
+                          "y": 353.0
+                        },
+                        "visible": true
+                      },
+                      {
+                        "automation_id": null,
+                        "children": [],
+                        "enabled": true,
+                        "focus_visible": false,
+                        "focused": false,
+                        "hovered": false,
+                        "kind": "container",
+                        "label": "",
+                        "pressed": false,
+                        "rect_dp": {
+                          "height": 78.0,
+                          "width": 360.0,
+                          "x": 40.0,
+                          "y": 353.0
+                        },
+                        "rect_px": {
+                          "height": 78.0,
+                          "width": 360.0,
+                          "x": 40.0,
+                          "y": 353.0
+                        },
+                        "visible": true
+                      }
+                    ],
+                    "enabled": true,
+                    "focus_visible": false,
+                    "focused": false,
+                    "hovered": false,
+                    "kind": "container",
+                    "label": "",
+                    "pressed": false,
+                    "rect_dp": {
+                      "height": 78.0,
+                      "width": 360.0,
+                      "x": 40.0,
+                      "y": 353.0
+                    },
+                    "rect_px": {
+                      "height": 78.0,
+                      "width": 360.0,
+                      "x": 40.0,
+                      "y": 353.0
+                    },
+                    "visible": true
+                  },
+                  {
+                    "automation_id": null,
+                    "children": [
+                      {
+                        "automation_id": "native-text.multiline.focused",
+                        "children": [],
+                        "enabled": true,
+                        "focus_visible": false,
+                        "focused": false,
+                        "hovered": false,
+                        "kind": "text-input",
+                        "label": "Line one.\nLine two.\nLine three.",
+                        "pressed": false,
+                        "rect_dp": {
+                          "height": 64.0,
+                          "width": 360.0,
+                          "x": 40.0,
+                          "y": 447.0
+                        },
+                        "rect_px": {
+                          "height": 64.0,
+                          "width": 360.0,
+                          "x": 40.0,
+                          "y": 447.0
+                        },
+                        "visible": true
+                      },
+                      {
+                        "automation_id": null,
+                        "children": [],
+                        "enabled": true,
+                        "focus_visible": false,
+                        "focused": false,
+                        "hovered": false,
+                        "kind": "container",
+                        "label": "",
+                        "pressed": false,
+                        "rect_dp": {
+                          "height": 64.0,
+                          "width": 360.0,
+                          "x": 40.0,
+                          "y": 447.0
+                        },
+                        "rect_px": {
+                          "height": 64.0,
+                          "width": 360.0,
+                          "x": 40.0,
+                          "y": 447.0
+                        },
+                        "visible": true
+                      }
+                    ],
+                    "enabled": true,
+                    "focus_visible": false,
+                    "focused": false,
+                    "hovered": false,
+                    "kind": "container",
+                    "label": "",
+                    "pressed": false,
+                    "rect_dp": {
+                      "height": 64.0,
+                      "width": 360.0,
+                      "x": 40.0,
+                      "y": 447.0
+                    },
+                    "rect_px": {
+                      "height": 64.0,
+                      "width": 360.0,
+                      "x": 40.0,
+                      "y": 447.0
+                    },
+                    "visible": true
+                  },
+                  {
+                    "automation_id": null,
+                    "children": [
+                      {
+                        "automation_id": "native-text.multiline.selection",
+                        "children": [],
+                        "enabled": true,
+                        "focus_visible": false,
+                        "focused": false,
+                        "hovered": false,
+                        "kind": "text-input",
+                        "label": "Line one.\nLine two.\nLine three.",
+                        "pressed": false,
+                        "rect_dp": {
+                          "height": 78.0,
+                          "width": 360.0,
+                          "x": 40.0,
+                          "y": 527.0
+                        },
+                        "rect_px": {
+                          "height": 78.0,
+                          "width": 360.0,
+                          "x": 40.0,
+                          "y": 527.0
+                        },
+                        "visible": true
+                      },
+                      {
+                        "automation_id": null,
+                        "children": [],
+                        "enabled": true,
+                        "focus_visible": false,
+                        "focused": false,
+                        "hovered": false,
+                        "kind": "container",
+                        "label": "",
+                        "pressed": false,
+                        "rect_dp": {
+                          "height": 78.0,
+                          "width": 360.0,
+                          "x": 40.0,
+                          "y": 527.0
+                        },
+                        "rect_px": {
+                          "height": 78.0,
+                          "width": 360.0,
+                          "x": 40.0,
+                          "y": 527.0
+                        },
+                        "visible": true
+                      }
+                    ],
+                    "enabled": true,
+                    "focus_visible": false,
+                    "focused": false,
+                    "hovered": false,
+                    "kind": "container",
+                    "label": "",
+                    "pressed": false,
+                    "rect_dp": {
+                      "height": 78.0,
+                      "width": 360.0,
+                      "x": 40.0,
+                      "y": 527.0
+                    },
+                    "rect_px": {
+                      "height": 78.0,
+                      "width": 360.0,
+                      "x": 40.0,
+                      "y": 527.0
+                    },
+                    "visible": true
+                  },
+                  {
+                    "automation_id": null,
+                    "children": [
+                      {
+                        "automation_id": "native-text.multiline.disabled",
+                        "children": [],
+                        "enabled": false,
+                        "focus_visible": false,
+                        "focused": false,
+                        "hovered": false,
+                        "kind": "text-input",
+                        "label": "Line one.\nLine two.\nLine three.",
+                        "pressed": false,
+                        "rect_dp": {
+                          "height": 64.0,
+                          "width": 360.0,
+                          "x": 40.0,
+                          "y": 621.0
+                        },
+                        "rect_px": {
+                          "height": 64.0,
+                          "width": 360.0,
+                          "x": 40.0,
+                          "y": 621.0
+                        },
+                        "visible": true
+                      },
+                      {
+                        "automation_id": null,
+                        "children": [],
+                        "enabled": true,
+                        "focus_visible": false,
+                        "focused": false,
+                        "hovered": false,
+                        "kind": "container",
+                        "label": "",
+                        "pressed": false,
+                        "rect_dp": {
+                          "height": 64.0,
+                          "width": 360.0,
+                          "x": 40.0,
+                          "y": 621.0
+                        },
+                        "rect_px": {
+                          "height": 64.0,
+                          "width": 360.0,
+                          "x": 40.0,
+                          "y": 621.0
+                        },
+                        "visible": true
+                      }
+                    ],
+                    "enabled": true,
+                    "focus_visible": false,
+                    "focused": false,
+                    "hovered": false,
+                    "kind": "container",
+                    "label": "",
+                    "pressed": false,
+                    "rect_dp": {
+                      "height": 64.0,
+                      "width": 360.0,
+                      "x": 40.0,
+                      "y": 621.0
+                    },
+                    "rect_px": {
+                      "height": 64.0,
+                      "width": 360.0,
+                      "x": 40.0,
+                      "y": 621.0
+                    },
+                    "visible": true
+                  },
+                  {
+                    "automation_id": null,
+                    "children": [
+                      {
+                        "automation_id": "native-text.multiline.readonly",
+                        "children": [],
+                        "enabled": true,
+                        "focus_visible": false,
+                        "focused": false,
+                        "hovered": false,
+                        "kind": "text-input",
+                        "label": "Line one.\nLine two.\nLine three.",
+                        "pressed": false,
+                        "rect_dp": {
+                          "height": 64.0,
+                          "width": 360.0,
+                          "x": 40.0,
+                          "y": 701.0
+                        },
+                        "rect_px": {
+                          "height": 64.0,
+                          "width": 360.0,
+                          "x": 40.0,
+                          "y": 701.0
+                        },
+                        "visible": true
+                      },
+                      {
+                        "automation_id": null,
+                        "children": [],
+                        "enabled": true,
+                        "focus_visible": false,
+                        "focused": false,
+                        "hovered": false,
+                        "kind": "container",
+                        "label": "",
+                        "pressed": false,
+                        "rect_dp": {
+                          "height": 64.0,
+                          "width": 360.0,
+                          "x": 40.0,
+                          "y": 701.0
+                        },
+                        "rect_px": {
+                          "height": 64.0,
+                          "width": 360.0,
+                          "x": 40.0,
+                          "y": 701.0
+                        },
+                        "visible": true
+                      }
+                    ],
+                    "enabled": true,
+                    "focus_visible": false,
+                    "focused": false,
+                    "hovered": false,
+                    "kind": "container",
+                    "label": "",
+                    "pressed": false,
+                    "rect_dp": {
+                      "height": 64.0,
+                      "width": 360.0,
+                      "x": 40.0,
+                      "y": 701.0
+                    },
+                    "rect_px": {
+                      "height": 64.0,
+                      "width": 360.0,
+                      "x": 40.0,
+                      "y": 701.0
+                    },
+                    "visible": true
+                  },
+                  {
+                    "automation_id": null,
+                    "children": [
+                      {
+                        "automation_id": "native-text.multiline.invalid",
+                        "children": [],
+                        "enabled": true,
+                        "focus_visible": false,
+                        "focused": false,
+                        "hovered": false,
+                        "kind": "text-input",
+                        "label": "bad body",
+                        "pressed": false,
+                        "rect_dp": {
+                          "height": 64.0,
+                          "width": 360.0,
+                          "x": 40.0,
+                          "y": 781.0
+                        },
+                        "rect_px": {
+                          "height": 64.0,
+                          "width": 360.0,
+                          "x": 40.0,
+                          "y": 781.0
+                        },
+                        "visible": true
+                      },
+                      {
+                        "automation_id": null,
+                        "children": [],
+                        "enabled": true,
+                        "focus_visible": false,
+                        "focused": false,
+                        "hovered": false,
+                        "kind": "container",
+                        "label": "",
+                        "pressed": false,
+                        "rect_dp": {
+                          "height": 64.0,
+                          "width": 360.0,
+                          "x": 40.0,
+                          "y": 781.0
+                        },
+                        "rect_px": {
+                          "height": 64.0,
+                          "width": 360.0,
+                          "x": 40.0,
+                          "y": 781.0
+                        },
+                        "visible": true
+                      }
+                    ],
+                    "enabled": true,
+                    "focus_visible": false,
+                    "focused": false,
+                    "hovered": false,
+                    "kind": "container",
+                    "label": "",
+                    "pressed": false,
+                    "rect_dp": {
+                      "height": 64.0,
+                      "width": 360.0,
+                      "x": 40.0,
+                      "y": 781.0
+                    },
+                    "rect_px": {
+                      "height": 64.0,
+                      "width": 360.0,
+                      "x": 40.0,
+                      "y": 781.0
+                    },
+                    "visible": true
+                  }
+                ],
+                "enabled": true,
+                "focus_visible": false,
+                "focused": false,
+                "hovered": false,
+                "kind": "container",
+                "label": "",
+                "pressed": false,
+                "rect_dp": {
+                  "height": 1040.0,
+                  "width": 900.0,
+                  "x": 32.0,
+                  "y": -71.0
+                },
+                "rect_px": {
+                  "height": 1040.0,
+                  "width": 900.0,
+                  "x": 32.0,
+                  "y": -71.0
+                },
+                "visible": true
+              }
+            ],
+            "enabled": true,
+            "focus_visible": false,
+            "focused": false,
+            "hovered": false,
+            "kind": "container",
+            "label": "",
+            "pressed": false,
+            "rect_dp": {
+              "height": 745.0,
+              "width": 900.0,
+              "x": 32.0,
+              "y": 100.0
+            },
+            "rect_px": {
+              "height": 745.0,
+              "width": 900.0,
+              "x": 32.0,
+              "y": 100.0
+            },
+            "visible": true
+          }
+        ],
+        "enabled": true,
+        "focus_visible": false,
+        "focused": false,
+        "hovered": false,
+        "kind": "container",
+        "label": "",
+        "pressed": false,
+        "rect_dp": {
+          "height": 845.0,
+          "width": 932.0,
+          "x": 16.0,
+          "y": 16.0
+        },
+        "rect_px": {
+          "height": 845.0,
+          "width": 932.0,
+          "x": 16.0,
+          "y": 16.0
+        },
+        "visible": true
+      }
+    ],
+    "enabled": true,
+    "focus_visible": false,
+    "focused": false,
+    "hovered": false,
+    "kind": "container",
+    "label": "",
+    "pressed": false,
+    "rect_dp": {
+      "height": 861.0,
+      "width": 964.0,
+      "x": 0.0,
+      "y": 0.0
+    },
+    "rect_px": {
+      "height": 861.0,
+      "width": 964.0,
+      "x": 0.0,
+      "y": 0.0
+    },
+    "visible": true
+  },
+  "scale_factor": 1.0,
+  "schema": "rust-ui.devctl.snapshot-layout/0.2"
+}

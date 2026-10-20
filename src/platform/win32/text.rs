@@ -27,7 +27,14 @@ use std::ffi::c_void;
 use std::sync::Arc;
 
 use windows::Win32::Foundation::*;
-use windows::Win32::Graphics::Direct2D::ID2D1RenderTarget;
+use windows::Win32::Graphics::Direct2D::Common::{
+    D2D_RECT_F, D2D_SIZE_U, D2D1_ALPHA_MODE_PREMULTIPLIED, D2D1_COLOR_F, D2D1_PIXEL_FORMAT,
+};
+use windows::Win32::Graphics::Direct2D::{
+    D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR, D2D1_COMPATIBLE_RENDER_TARGET_OPTIONS_NONE,
+    ID2D1BitmapRenderTarget, ID2D1RenderTarget,
+};
+use windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_B8G8R8A8_UNORM;
 use windows::Win32::Graphics::Gdi::*;
 use windows::Win32::System::LibraryLoader::*;
 use windows::Win32::UI::Controls::EM_LIMITTEXT;
@@ -769,6 +776,23 @@ impl ITextHost2_Impl for HostBox {
 // the peer itself
 // ---------------------------------------------------------------------------
 
+/// Per-peer composition surface — `TxDrawD2D` renders the peer's FULL
+/// document into this compatible bitmap target (a fresh target with its
+/// own draw state, not a band of the shared frame target), then the
+/// frame blits the bitmap at the content rect as an ordinary draw op.
+/// That blit DOES honor the frame's pushed axis-aligned clip — which
+/// `TxDrawD2D` cannot survive (deviation 1) — so a partially clipped
+/// editor shows the correct mid-document band (deviation 12).
+/// Recreated only on size or frame-target-generation change (a compat
+/// bitmap dies with its parent target and DPI).
+struct PeerSurface {
+    rt: ID2D1BitmapRenderTarget,
+    w_px: i32,
+    h_px: i32,
+    /// renderer `target_gen` this surface was created for
+    target_gen: u64,
+}
+
 /// One windowless RichEdit instance — the `TextPeer` implementation the
 /// backend's `peer_factory` produces. UI-thread only.
 pub(crate) struct WindowlessPeer {
@@ -804,6 +828,10 @@ pub(crate) struct WindowlessPeer {
     /// cy = line_count × line; dividing by EM_GETLINECOUNT gives the real
     /// metric regardless of content. 0 = unmeasured.
     line_h: Cell<f32>,
+    /// lazily-created composition surface (`TxDrawD2D` target + blit
+    /// source) — one per peer, reused across frames, resized with the
+    /// content rect and invalidated by frame-target generation
+    surface: RefCell<Option<PeerSurface>>,
 }
 
 impl WindowlessPeer {
@@ -996,6 +1024,7 @@ impl WindowlessPeer {
                 composing: Cell::new(false),
                 pending_relatch: std::cell::RefCell::new(None),
                 line_h: Cell::new(0.0),
+                surface: RefCell::new(None),
             };
             std::mem::forget(guard);
             Ok(peer)
@@ -1106,12 +1135,31 @@ impl WindowlessPeer {
         (s.host.bounds, s.host.scale)
     }
 
-    pub(crate) fn draw(&self, rt: &ID2D1RenderTarget, _bounds: LogicalRect) -> UiResult<()> {
+    /// Draw the peer's content into the window's D2D target.
+    /// `bounds` is the peer's CONTENT rect in window DIP; the peer draws
+    /// where its effective geometry lives (`host.bounds`, unchanged while
+    /// a composition relatch is parked) — the layout arg is advisory only.
+    ///
+    /// OFFSCREEN BLIT (the scratch compat-target path): `TxDrawD2D`
+    /// renders the FULL document into this peer's OWN bitmap render
+    /// target at surface-local `(0,0,w_px,h_px)` — a fresh per-peer
+    /// target carries its own draw state, so it does not share whatever
+    /// shared-target state made some peers emit zero pixels — then the
+    /// frame `DrawBitmap`s the surface at the content rect. The blit is
+    /// an ordinary draw op, so the frame's pushed axis-aligned clip cuts
+    /// the visible band (a clip pushed around `TxDrawD2D` suppresses it
+    /// entirely — deviation 1); a top-clipped editor therefore shows the
+    /// MID-document rows that intersect the viewport, not the document
+    /// head (deviation 12). The surface is reused across frames and
+    /// recreated only when the peer's px size or the frame target's
+    /// generation changes.
+    pub(crate) fn draw(
+        &self,
+        rt: &ID2D1RenderTarget,
+        _bounds: LogicalRect,
+        target_gen: u64,
+    ) -> UiResult<()> {
         self.ensure_in_place()?;
-        // ONE effective geometry: the layout-supplied bounds may already
-        // carry a pending relatch's NEW rect — draw where the native
-        // surface actually lives (host.bounds is unchanged until the
-        // deferred relatch completes)
         let (bounds, sc) = self.effective_geometry();
         if !(bounds.width > 0.0
             && bounds.height > 0.0
@@ -1120,12 +1168,105 @@ impl WindowlessPeer {
         {
             return Ok(());
         }
-        let mut rc = bounds.rectl(sc);
-        unsafe {
-            self.tx()
-                .TxDrawD2D(rt, &mut rc, std::ptr::null_mut(), 0)
-                .map_err(|e| UiError::Platform(format!("TxDrawD2D(peer): {e}")))
+        // surface extent = the client rect's snapped physical size — the
+        // same edge-snapped mapping `TxGetClientRect` reports, so the
+        // bitmap covers the format space 1:1
+        let surface_px = LogicalRect::local(bounds.width, bounds.height).physical(sc);
+        let w_px = surface_px.right - surface_px.left;
+        let h_px = surface_px.bottom - surface_px.top;
+        if w_px <= 0 || h_px <= 0 {
+            return Ok(());
         }
+        let surface = {
+            let mut slot = self.surface.borrow_mut();
+            let stale = slot.as_ref().map_or(true, |s| {
+                s.target_gen != target_gen || s.w_px != w_px || s.h_px != h_px
+            });
+            if stale {
+                let fmt = D2D1_PIXEL_FORMAT {
+                    format: DXGI_FORMAT_B8G8R8A8_UNORM,
+                    // premultiplied alpha — the doc's TRANSPARENT backstyle
+                    // must survive the blit; alpha-IGNORE would stamp an
+                    // opaque black box over the painted pill chrome
+                    alphaMode: D2D1_ALPHA_MODE_PREMULTIPLIED,
+                };
+                let created = unsafe {
+                    rt.CreateCompatibleRenderTarget(
+                        None,
+                        Some(&D2D_SIZE_U {
+                            width: w_px as u32,
+                            height: h_px as u32,
+                        }),
+                        Some(&fmt),
+                        D2D1_COMPATIBLE_RENDER_TARGET_OPTIONS_NONE,
+                    )
+                }
+                .map_err(|e| UiError::Platform(format!("peer surface rendertarget: {e}")))?;
+                *slot = Some(PeerSurface {
+                    rt: created,
+                    w_px,
+                    h_px,
+                    target_gen,
+                });
+            }
+            slot.as_ref().unwrap().rt.clone()
+        };
+        unsafe {
+            let up: ID2D1RenderTarget = surface
+                .cast()
+                .map_err(|e| UiError::Platform(format!("peer surface cast: {e}")))?;
+            up.BeginDraw();
+            up.Clear(Some(&D2D1_COLOR_F {
+                r: 0.0,
+                g: 0.0,
+                b: 0.0,
+                a: 0.0,
+            }));
+            // `lprcBounds` is host-physical-px in the DRAW target's own
+            // space — the document anchors at the surface origin and the
+            // client rect (already px via TxGetClientRect) is the extent
+            let mut rc = RECTL {
+                left: 0,
+                top: 0,
+                right: w_px,
+                bottom: h_px,
+            };
+            let drawn = self.tx().TxDrawD2D(&up, &mut rc, std::ptr::null_mut(), 0);
+            let ended = up.EndDraw(None, None);
+            drawn
+                .and(ended)
+                .map_err(|e| UiError::Platform(format!("TxDrawD2D(peer surface): {e}")))?;
+            let bmp = surface
+                .GetBitmap()
+                .map_err(|e| UiError::Platform(format!("peer surface bitmap: {e}")))?;
+            // The bitmap's true extent is the SNAPPED PHYSICAL-PIXEL
+            // bounds — land it through the FRAME target's own dpi so the
+            // ink sits exactly on the snapped px (identical to `bounds`
+            // when the peer scale equals the frame dpi; the px-space
+            // contract probe proves the mapping when they differ)
+            let (mut fx, mut fy) = (0.0f32, 0.0f32);
+            rt.GetDpi(&mut fx, &mut fy);
+            let fsc = if fx.is_finite() && fx > 0.0 {
+                fx / 96.0
+            } else {
+                sc.0
+            };
+            let px = bounds.physical(sc);
+            let dest = D2D_RECT_F {
+                left: px.left as f32 / fsc,
+                top: px.top as f32 / fsc,
+                right: px.right as f32 / fsc,
+                bottom: px.bottom as f32 / fsc,
+            };
+            rt.DrawBitmap(
+                &bmp,
+                Some(&dest),
+                1.0,
+                D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR,
+                None,
+            );
+        }
+        Ok(())
     }
 
     /// Natural content size in DIP at the given layout width (REQRESIZE).
@@ -1585,8 +1726,9 @@ impl crate::node::TextPeer for WindowlessPeer {
 
     fn release(&mut self) {
         // text services release first (may call back into the host)
-        // return the surface's bytes to the aggregate budget before the
-        // native objects go — accounting mirrors allocation
+        // the compat-target surface dies with the peer — its bitmap is
+        // frame-target-bound and must not outlive it
+        drop(self.surface.borrow_mut().take());
         drop(self.tx.take());
         self.kill_armed_timers();
         unsafe {

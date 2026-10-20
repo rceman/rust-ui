@@ -5,13 +5,14 @@ use std::rc::Rc;
 use crate::UiDiagnostic;
 use crate::arena::Arena;
 use crate::event::{EventFactorySet, FrameTime, KeyEvent, PointerEvent, ScrollOffset};
-use crate::geom::{Align, Justify, LayoutSpec, Point, Visibility};
+use crate::geom::{Align, Justify, LayoutSpec, Length, Point, Visibility};
 use crate::key::{ChildKey, ErasedKey, KeyId};
 use crate::node::{ContainerProps, MsgAdapters, NodeData, NodeId};
 use crate::style::{Action, BoxProps, ButtonStylePatch};
 use crate::text::{TextConflict, TextEdit, TextSelection, TextValue};
 use crate::theme::{
-    Appearance, ButtonVariant, ColorRole, ControlSize, MotionToken, Space, SubmitPolicy, Theme,
+    AlertVariant, Appearance, BadgeVariant, ButtonVariant, ColorRole, ControlSize, MotionToken,
+    SeparatorOrientation, Space, SubmitPolicy, Theme,
 };
 
 /// What a custom view contributes to the tree — an immutable `Rc` snapshot;
@@ -96,6 +97,11 @@ pub struct Row {
     pub align: Align,
     pub justify: Justify,
     pub padding: Space,
+    /// cross-axis (height) sizing hint — `Content` (default) measures;
+    /// `Fill` takes the parent's remaining cross-axis space
+    pub height: Length,
+    /// main-axis (width) sizing hint — same Length contract as leaves
+    pub width: Length,
 }
 
 impl Row {
@@ -118,6 +124,14 @@ impl Row {
         self.padding = p;
         self
     }
+    pub fn height(mut self, h: Length) -> Self {
+        self.height = h;
+        self
+    }
+    pub fn width(mut self, w: Length) -> Self {
+        self.width = w;
+        self
+    }
     pub(crate) fn props(&self) -> ContainerProps {
         ContainerProps {
             gap: Some(self.gap),
@@ -135,6 +149,14 @@ pub struct Column {
     pub align: Align,
     pub justify: Justify,
     pub padding: Space,
+    /// main-axis (height) sizing hint — `Content` (default) measures;
+    /// `Fill` takes the parent's remaining main-axis space. A ROOT
+    /// column fills the window client with `Fill(1)` — that is how an
+    /// interior `Fill` child (e.g. a scroll viewport) sees leftover
+    /// space instead of the column's natural content height.
+    pub height: Length,
+    /// cross-axis (width) sizing hint — same Length contract as leaves
+    pub width: Length,
 }
 
 impl Column {
@@ -155,6 +177,14 @@ impl Column {
     }
     pub fn padding(mut self, p: Space) -> Self {
         self.padding = p;
+        self
+    }
+    pub fn height(mut self, h: Length) -> Self {
+        self.height = h;
+        self
+    }
+    pub fn width(mut self, w: Length) -> Self {
+        self.width = w;
         self
     }
     pub(crate) fn props(&self) -> ContainerProps {
@@ -279,6 +309,206 @@ impl Card {
     }
 }
 
+/// Scroll viewport props — children lay out as a vertical column inside
+/// the viewport at unbounded height. `offset` is APP-OWNED state passed
+/// back in each view (like `Checkbox`'s checked) — the runtime clamps it
+/// to the measured content extent at layout, it never lives in the
+/// backend. Wheel/devctl input arrives through `on_scroll` deltas.
+#[derive(Copy, Clone, Debug, Default, PartialEq)]
+pub struct Scroll {
+    /// app-owned vertical offset in Dp — the `ui.scroll` `offset`
+    /// argument is authoritative when both are supplied
+    pub offset: crate::geom::Dp,
+    pub gap: Space,
+    pub padding: Space,
+}
+
+impl Scroll {
+    pub fn new() -> Self {
+        Self::default()
+    }
+    pub fn offset(mut self, o: crate::geom::Dp) -> Self {
+        self.offset = o;
+        self
+    }
+    pub fn gap(mut self, g: Space) -> Self {
+        self.gap = g;
+        self
+    }
+    pub fn padding(mut self, p: Space) -> Self {
+        self.padding = p;
+        self
+    }
+    pub(crate) fn props(&self) -> ContainerProps {
+        ContainerProps {
+            gap: Some(self.gap),
+            padding: Some(self.padding),
+            scroll: self.offset,
+            ..Default::default()
+        }
+    }
+}
+
+/// Separator props — the frozen `bg-border` rule. `orientation` picks the
+/// rule axis; `length` pins the major-axis extent (the frozen specimens
+/// fix it: `w-48` = 192dp, `h-16` = 64dp). Unset, the separator fills
+/// the offered main axis (`Fill(1)`); a `Start`-aligned parent that
+/// offers no main-axis extent needs `length` or a stretch context.
+#[derive(Copy, Clone, Debug, Default, PartialEq)]
+pub struct Separator {
+    pub orientation: SeparatorOrientation,
+    pub length: Option<crate::geom::Dp>,
+}
+
+impl Separator {
+    /// 1dp-tall horizontal rule — fills the offered width.
+    pub fn horizontal() -> Self {
+        Separator {
+            orientation: SeparatorOrientation::Horizontal,
+            length: None,
+        }
+    }
+    /// 1dp-wide vertical rule — fills the offered height.
+    pub fn vertical() -> Self {
+        Separator {
+            orientation: SeparatorOrientation::Vertical,
+            length: None,
+        }
+    }
+    /// Pin the major-axis extent (`w-48` / `h-16` in the frozen
+    /// specimens) instead of filling what the parent offers.
+    pub fn length(mut self, l: crate::geom::Dp) -> Self {
+        self.length = Some(l);
+        self
+    }
+    fn layout(&self) -> LayoutSpec {
+        let major = self.length.map(Length::Fixed).unwrap_or(Length::Fill(1));
+        match self.orientation {
+            SeparatorOrientation::Horizontal => LayoutSpec {
+                width: major,
+                height: Length::Fixed(crate::geom::Dp(1.0)),
+                ..Default::default()
+            },
+            SeparatorOrientation::Vertical => LayoutSpec {
+                width: Length::Fixed(crate::geom::Dp(1.0)),
+                height: major,
+                ..Default::default()
+            },
+        }
+    }
+}
+
+/// Alert container props — `variant` selects the frozen palette
+/// (`alert.default` / `alert.destructive`), `width` an optional fixed
+/// width (the frozen specimen is 320dp), `patch` the surgical override
+/// over `alert_recipe`.
+#[derive(Copy, Clone, Debug, Default, PartialEq)]
+pub struct Alert {
+    pub variant: AlertVariant,
+    pub width: Option<crate::geom::Dp>,
+    /// surgical patch — merges fieldwise within this build
+    pub patch: crate::style::BoxStylePatch,
+}
+
+impl Alert {
+    pub fn new() -> Self {
+        Self::default()
+    }
+    pub fn variant(mut self, v: AlertVariant) -> Self {
+        self.variant = v;
+        self
+    }
+    pub fn width(mut self, w: crate::geom::Dp) -> Self {
+        self.width = Some(w);
+        self
+    }
+    /// surgical patch — later `.style` calls deep-merge, `None` never erases
+    pub fn style(mut self, p: crate::style::BoxStylePatch) -> Self {
+        self.patch.merge(&p);
+        self
+    }
+}
+
+/// Skeleton props — a static `bg-muted` placeholder block. `width`/
+/// `height` are `Length` specs (the frozen specimen fixes both: avatar
+/// 40×40, lines 168×16 and 112×16); `circle` selects the `rounded-full`
+/// radius for avatar shapes. No animation — reduced-motion product scope.
+#[derive(Copy, Clone, Debug, Default, PartialEq)]
+pub struct Skeleton {
+    pub width: Length,
+    pub height: Length,
+    pub circle: bool,
+}
+
+impl Skeleton {
+    pub fn new() -> Self {
+        Self::default()
+    }
+    pub fn width(mut self, w: Length) -> Self {
+        self.width = w;
+        self
+    }
+    pub fn height(mut self, h: Length) -> Self {
+        self.height = h;
+        self
+    }
+    /// fixed-size convenience — `width(Fixed(w)) + height(Fixed(h))`
+    pub fn size(mut self, w: crate::geom::Dp, h: crate::geom::Dp) -> Self {
+        self.width = Length::Fixed(w);
+        self.height = Length::Fixed(h);
+        self
+    }
+    /// `rounded-full` — the avatar shape (radius normalizes to the
+    /// half-extent at paint)
+    pub fn circle(mut self) -> Self {
+        self.circle = true;
+        self
+    }
+}
+
+/// Checkbox props — the app model owns `checked`; `on_change` rides the
+/// shared Press path (click + Space/Enter on the focused control).
+#[derive(Copy, Clone, Debug, Default, PartialEq)]
+pub struct Checkbox {
+    pub checked: bool,
+    pub disabled: bool,
+    /// semantic `aria-invalid` — destructive border + ring
+    pub invalid: bool,
+    /// optional visible label painted at the frozen +24dp offset
+    pub label: Option<&'static str>,
+    /// accessible name when the visible label isn't the control name
+    pub accessible_name: Option<&'static str>,
+}
+
+/// Switch props — same app-owned `checked` model; `size` selects the
+/// frozen 32×18.4 track or the 24×14 `size-sm` track.
+#[derive(Copy, Clone, Debug, Default, PartialEq)]
+pub struct Switch {
+    pub checked: bool,
+    pub disabled: bool,
+    pub invalid: bool,
+    pub size: crate::theme::ToggleSize,
+    pub label: Option<&'static str>,
+    pub accessible_name: Option<&'static str>,
+}
+
+/// Radio-item options inside `ui.radio_group` — per-item `disabled` /
+/// `invalid` overlays; `checked` derives from the group's `selected`.
+#[derive(Copy, Clone, Debug, Default, PartialEq)]
+pub struct RadioItemOpts {
+    pub disabled: bool,
+    pub invalid: bool,
+}
+
+/// Field props — `orientation` picks the frozen vertical stack
+/// (label/control/description) or the horizontal `content + control`
+/// row; `width` pins the 288dp frozen box (unset = fill).
+#[derive(Copy, Clone, Debug, Default, PartialEq)]
+pub struct Field {
+    pub orientation: crate::theme::FieldOrientation,
+    pub width: Option<crate::geom::Dp>,
+}
+
 // ------------------------- staging internals -------------------------------
 
 /// Flat staged node — children are indices into `Tx.nodes`, so the whole
@@ -335,6 +565,7 @@ impl StagedNode {
             NodeData::Custom { .. } => crate::node::KIND_CUSTOM,
             NodeData::Action { .. } => crate::node::KIND_ACTION,
             NodeData::Icon { .. } => crate::node::KIND_ICON,
+            NodeData::Toggle { .. } => crate::node::KIND_TOGGLE,
         }
     }
 
@@ -486,6 +717,7 @@ impl Tx<'_> {
                     | crate::node::KIND_ACTION
                     | crate::node::KIND_TEXT_INPUT
                     | crate::node::KIND_TEXT_AREA
+                    | crate::node::KIND_TOGGLE
             )
         {
             self.diagnostics.push(UiDiagnostic::InvalidComposition);
@@ -684,7 +916,11 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
             crate::node::KIND_COLUMN,
             None,
             props.props(),
-            LayoutSpec::default(),
+            LayoutSpec {
+                width: props.width,
+                height: props.height,
+                ..Default::default()
+            },
             EventFactorySet::default(),
             Visibility::Visible,
             draw,
@@ -700,7 +936,11 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
             crate::node::KIND_ROW,
             None,
             props.props(),
-            LayoutSpec::default(),
+            LayoutSpec {
+                width: props.width,
+                height: props.height,
+                ..Default::default()
+            },
             EventFactorySet::default(),
             Visibility::Visible,
             draw,
@@ -744,6 +984,42 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
         );
     }
 
+    /// `ui.scroll` — vertical scroll viewport. `offset` is the app's
+    /// committed scroll position (Dp); wheel and devctl scroll intents
+    /// arrive as `ScrollOffset` deltas through `on_scroll`, producing `M`
+    /// so `update` can own the state. The viewport fills the remaining
+    /// main-axis space it is offered (`height: Fill(1)`); children stack
+    /// as a column at unbounded height and clip to the viewport inner.
+    pub fn scroll(
+        &mut self,
+        props: Scroll,
+        offset: crate::geom::Dp,
+        on_scroll: impl Fn(crate::event::ScrollOffset) -> M + 'static,
+        draw: impl FnOnce(&mut Ui<'_, '_, M>),
+    ) {
+        let mut factories = EventFactorySet::default();
+        factories.on_scroll = Some(Box::new(move |o| Box::new(on_scroll(o))));
+        // the explicit argument is authoritative over any staged field
+        let props = Scroll { offset, ..props };
+        self.tx.stage_container(
+            crate::node::KIND_SCROLL,
+            None,
+            props.props(),
+            LayoutSpec {
+                height: crate::geom::Length::Fill(1),
+                ..Default::default()
+            },
+            factories,
+            Visibility::Visible,
+            draw,
+            false,
+            |props| NodeData::Container {
+                kind: crate::node::KIND_SCROLL,
+                props,
+            },
+        );
+    }
+
     /// Card container — `bg-card`, `rounded-xl`, `ring-1
     /// ring-foreground/10`, top padding = `--card-spacing`. Column
     /// semantics: children are the card's parts (header/title/
@@ -770,6 +1046,104 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
                 kind: crate::node::KIND_CARD,
                 props,
             },
+        );
+    }
+
+    /// `ui.separator` — the frozen `bg-border` rule: a decorative 1dp
+    /// line in the `Border` role. `Horizontal` fills the offered width
+    /// (stretch/fill), `Vertical` the offered height — use
+    /// `Separator::length` or a stretch-aligned parent where no extent
+    /// is offered.
+    pub fn separator(&mut self, props: Separator) {
+        self.tx.stage_container(
+            crate::node::KIND_BOX,
+            None,
+            ContainerProps {
+                full: Some(crate::style::separator_recipe()),
+                ..Default::default()
+            },
+            props.layout(),
+            EventFactorySet::default(),
+            Visibility::Visible,
+            |_: &mut Ui<'_, '_, M>| {},
+            false,
+            |props| NodeData::Container {
+                kind: crate::node::KIND_BOX,
+                props,
+            },
+        );
+    }
+
+    /// `ui.alert` — the frozen `cn-alert` container: card chrome,
+    /// `rounded-lg` (10dp), 1dp border, padding-block 8 / inline 10.
+    /// Compose the `icon`/`title`/`description` parts inside with
+    /// `ui.part` + the `alert_*` style recipes.
+    pub fn alert(&mut self, props: Alert, draw: impl FnOnce(&mut Ui<'_, '_, M>)) {
+        let mut full = crate::style::alert_recipe(props.variant);
+        full.patch(&props.patch);
+        let layout = props
+            .width
+            .map_or_else(LayoutSpec::default, |w| LayoutSpec {
+                width: Length::Fixed(w),
+                ..Default::default()
+            });
+        self.tx.stage_container(
+            crate::node::KIND_BOX,
+            None,
+            ContainerProps {
+                full: Some(full),
+                ..Default::default()
+            },
+            layout,
+            EventFactorySet::default(),
+            Visibility::Visible,
+            draw,
+            false,
+            |props| NodeData::Container {
+                kind: crate::node::KIND_BOX,
+                props,
+            },
+        );
+    }
+
+    /// `ui.skeleton` — a static `bg-muted` placeholder block at an
+    /// authored size (radius-md; `circle()` selects `rounded-full`).
+    /// Deliberately no animation or timers — the frozen contract is
+    /// static (reduced-motion product scope).
+    pub fn skeleton(&mut self, props: Skeleton) {
+        self.tx.stage_container(
+            crate::node::KIND_BOX,
+            None,
+            ContainerProps {
+                full: Some(crate::style::skeleton_recipe(props.circle)),
+                ..Default::default()
+            },
+            LayoutSpec {
+                width: props.width,
+                height: props.height,
+                ..Default::default()
+            },
+            EventFactorySet::default(),
+            Visibility::Visible,
+            |_: &mut Ui<'_, '_, M>| {},
+            false,
+            |props| NodeData::Container {
+                kind: crate::node::KIND_BOX,
+                props,
+            },
+        );
+    }
+
+    /// `ui.kbd_group` — the frozen `cn-kbd-group` inline row (gap-1,
+    /// items-center). Children are `ui.kbd` caps marked as
+    /// `ui.part("key[..]", ..)` parts of the group's automation owner.
+    pub fn kbd_group(&mut self, draw: impl FnOnce(&mut Ui<'_, '_, M>)) {
+        self.row(
+            Row::new()
+                .gap(Space::Xs)
+                .align(Align::Center)
+                .padding(Space::None),
+            draw,
         );
     }
 
@@ -825,6 +1199,33 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
         }
     }
 
+    /// `ui.badge` — a content-hugging `cn-badge` pill: the variant
+    /// recipe's chrome + `text-xs` medium label. Returns the underlying
+    /// `LabelBuilder` so automation ids and surgical text patches
+    /// compose exactly as on `ui.label`. Not interactive — no press or
+    /// hover states beyond the frozen `normal` capture.
+    pub fn badge<'a, T: AsRef<str>>(
+        &'a mut self,
+        variant: BadgeVariant,
+        text: T,
+    ) -> LabelBuilder<'a, 'ui, T, M> {
+        let vs = crate::style::badge_recipe(variant);
+        self.label(text)
+            .chrome(vs.box_style)
+            .style(text_to_patch(&vs.text_style))
+    }
+
+    /// `ui.kbd` — a single `cn-kbd` key cap: `bg-muted` radius-sm box,
+    /// `text-xs` medium `muted-foreground`, 20dp minimum width. Content-
+    /// hugging — group caps with `ui.kbd_group` + `ui.part("key[..]",..)`.
+    pub fn kbd<'a, T: AsRef<str>>(&'a mut self, text: T) -> LabelBuilder<'a, 'ui, T, M> {
+        let vs = crate::style::kbd_recipe();
+        self.label(text)
+            .chrome(vs.box_style)
+            .style(text_to_patch(&vs.text_style))
+            .min_width(crate::geom::Dp(20.0))
+    }
+
     pub fn button<'a>(&'a mut self, text: &'a str) -> ButtonBuilder<'a, 'ui, M> {
         ButtonBuilder {
             automation_id: None,
@@ -863,6 +1264,7 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
             submit: SubmitPolicy::default(),
             max_lines: None,
             accessible_label: None,
+            invalid: false,
             patch: crate::style::TextInputStylePatch::default(),
             visibility: Visibility::Visible,
             layout: LayoutSpec::default(),
@@ -886,6 +1288,7 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
             submit: SubmitPolicy::None,
             max_lines: None,
             accessible_label: None,
+            invalid: false,
             patch: crate::style::TextInputStylePatch::default(),
             visibility: Visibility::Visible,
             layout: LayoutSpec::default(),
@@ -1174,6 +1577,24 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
     pub fn theme_ref(&self) -> &Theme {
         &self.tx.theme
     }
+}
+
+/// Project a full recipe `TextStyle` into a `TextStylePatch` — the same
+/// conversion `TextBuilder` applies when a primitive hands the label
+/// pipeline a complete style (`TextSize::Body` stays unset so the label
+/// recipe's base size survives).
+fn text_to_patch(ts: &crate::style::TextStyle) -> crate::style::TextStylePatch {
+    let mut p = crate::style::TextStylePatch::default();
+    p.foreground = Some(ts.foreground);
+    if let crate::style::TextSize::Exact(d) = ts.size {
+        p.size = Some(d);
+    }
+    p.weight = Some(ts.weight);
+    p.font = Some(ts.font);
+    p.line_height = ts.line_height;
+    p.underline = Some(ts.underline);
+    p.letter_spacing = Some(ts.letter_spacing);
+    p
 }
 
 // ============================ builders ======================================
@@ -1509,6 +1930,8 @@ pub struct TextInputBuilder<'a, 'ui, 'b, M: 'static> {
     submit: SubmitPolicy,
     max_lines: Option<u32>,
     accessible_label: Option<Rc<str>>,
+    /// semantic `aria-invalid` — unconditional destructive ring
+    invalid: bool,
     /// capability-limited patch — chrome paints the frame, `foreground`
     /// is the only peer-routed field (approved boundary: no size/weight)
     patch: crate::style::TextInputStylePatch,
@@ -1530,6 +1953,12 @@ impl<'a, 'ui, 'b, M: 'static> TextInputBuilder<'a, 'ui, 'b, M> {
     /// fieldwise — `None` preserves, `Some` wins.
     pub fn style(mut self, p: crate::style::TextInputStylePatch) -> Self {
         self.patch.merge(&p);
+        self
+    }
+    /// semantic `aria-invalid` — the frozen invalid ring is unconditional
+    /// (`ring-destructive` always-on); orthogonal to disabled/focus
+    pub fn invalid(mut self, on: bool) -> Self {
+        self.invalid = on;
         self
     }
     pub fn placeholder(mut self, p: &str) -> Self {
@@ -1611,6 +2040,7 @@ impl<'a, 'ui, 'b, M: 'static> Drop for TextInputBuilder<'a, 'ui, 'b, M> {
             submit,
             max_lines,
             disabled,
+            invalid,
             multiline,
             patch,
         ) = (
@@ -1620,6 +2050,7 @@ impl<'a, 'ui, 'b, M: 'static> Drop for TextInputBuilder<'a, 'ui, 'b, M> {
             self.submit,
             self.max_lines,
             self.disabled,
+            self.invalid,
             self.multiline,
             self.patch,
         );
@@ -1639,6 +2070,7 @@ impl<'a, 'ui, 'b, M: 'static> Drop for TextInputBuilder<'a, 'ui, 'b, M> {
                 placeholder,
                 accessible_label,
                 patch,
+                invalid,
                 sync: Default::default(),
             },
         );
@@ -1943,4 +2375,442 @@ impl<'a, 'ui, M: 'static> Drop for IconBuilder<'a, 'ui, M> {
             self.tx.nodes[index as usize].automation_id = Some(id);
         }
     }
+}
+
+// ------------------------- forms APIs ---------------------------------------
+
+impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
+    /// Stage a Toggle leaf. Automation ids come from the enclosing
+    /// `ui.named`/`ui.part` wrapper — the leaf stages plain.
+    fn stage_toggle(
+        &mut self,
+        kind: crate::theme::ToggleKind,
+        size: crate::theme::ToggleSize,
+        checked: bool,
+        disabled: bool,
+        invalid: bool,
+        label: Option<&'static str>,
+        accessible_name: Option<&'static str>,
+        layout: LayoutSpec,
+        factories: EventFactorySet,
+    ) {
+        self.tx.stage_leaf(
+            crate::node::KIND_TOGGLE,
+            None,
+            Visibility::Visible,
+            layout,
+            factories,
+            move |_| NodeData::Toggle {
+                kind,
+                checked,
+                disabled,
+                invalid,
+                size,
+                label: label.map(Rc::from),
+                accessible_name: accessible_name.map(Rc::from),
+            },
+        );
+    }
+
+    /// `ui.checkbox` — 16×16 selection box; app model owns `checked`,
+    /// `on_change` fires on the shared Press path. Stage inside
+    /// `ui.named`/`ui.part` for automation ids (like `ui.icon`).
+    pub fn checkbox(&mut self, props: Checkbox, on_change: impl Fn() -> M + 'static) {
+        let mut fac = EventFactorySet::default();
+        fac.on_press = Some(Box::new(move || Box::new(on_change()) as Box<dyn Any>));
+        self.stage_toggle(
+            crate::theme::ToggleKind::Checkbox,
+            crate::theme::ToggleSize::Default,
+            props.checked,
+            props.disabled,
+            props.invalid,
+            props.label,
+            props.accessible_name,
+            LayoutSpec::default(),
+            fac,
+        );
+    }
+
+    /// `ui.switch` — pill track + thumb; `props.size` picks the frozen
+    /// default or `size-sm` track.
+    pub fn switch(&mut self, props: Switch, on_change: impl Fn() -> M + 'static) {
+        let mut fac = EventFactorySet::default();
+        fac.on_press = Some(Box::new(move || Box::new(on_change()) as Box<dyn Any>));
+        self.stage_toggle(
+            crate::theme::ToggleKind::Switch,
+            props.size,
+            props.checked,
+            props.disabled,
+            props.invalid,
+            props.label,
+            props.accessible_name,
+            LayoutSpec::default(),
+            fac,
+        );
+    }
+
+    /// `ui.radio_group` — the group's `selected` string owns the checked
+    /// item; each `item` is a `part("item[key]")` 16×16 RadioItem toggle
+    /// whose Press fires `on_select(key)`. Stage as a column (frozen 8dp
+    /// item gap) inside the caller's `ui.named`/`part` scope.
+    pub fn radio_group<F>(
+        &mut self,
+        selected: &str,
+        on_select: F,
+        draw: impl FnOnce(&mut RadioGroup<'_, 'ui, 'tx, M>),
+    ) where
+        F: Fn(&'static str) -> M + 'static,
+    {
+        let mut rg = RadioGroup {
+            ui: self,
+            selected: selected.to_string(),
+            on_select: Rc::new(on_select),
+        };
+        draw(&mut rg);
+    }
+
+    /// `ui.field` — the frozen 288dp field container: `Vertical` stacks
+    /// label/control/description at 8dp gaps (Stretch); `Horizontal` is a
+    /// `Center`-aligned row at 8dp gap. Compose `ui.part` + the
+    /// `field_*_style` recipes inside.
+    pub fn field(&mut self, props: Field, draw: impl FnOnce(&mut Ui<'_, '_, M>)) {
+        let layout = LayoutSpec {
+            width: props.width.map(Length::Fixed).unwrap_or(Length::Fill(1)),
+            ..Default::default()
+        };
+        match props.orientation {
+            crate::theme::FieldOrientation::Vertical => self.tx.stage_container(
+                crate::node::KIND_COLUMN,
+                None,
+                Column::new()
+                    .gap(Space::Sm)
+                    .align(Align::Stretch)
+                    .padding(Space::None)
+                    .props(),
+                layout,
+                EventFactorySet::default(),
+                Visibility::Visible,
+                draw,
+                false,
+                |props| NodeData::Container {
+                    kind: crate::node::KIND_COLUMN,
+                    props,
+                },
+            ),
+            crate::theme::FieldOrientation::Horizontal => self.tx.stage_container(
+                crate::node::KIND_ROW,
+                None,
+                Row::new()
+                    .gap(Space::Sm)
+                    .align(Align::Center)
+                    .padding(Space::None)
+                    .props(),
+                layout,
+                EventFactorySet::default(),
+                Visibility::Visible,
+                draw,
+                false,
+                |props| NodeData::Container {
+                    kind: crate::node::KIND_ROW,
+                    props,
+                },
+            ),
+        }
+    }
+
+    /// `ui.input` — the frozen `input` element: a KIND_STACK pairing the
+    /// editor leaf (automation id, opaque borderless content chrome) with
+    /// a transparent overlay box carrying the 10dp radius + 1dp border +
+    /// disabled `bg-input/50` fill. The overlay owns the frame so the
+    /// radius never clips the windowless peer.
+    pub fn input<'a, 'b>(&'a mut self, value: &'b TextValue) -> InputBuilder<'a, 'ui, 'b, M> {
+        InputBuilder::new(self.tx, value, false)
+    }
+
+    /// `ui.textarea` — same stack composition at the multiline chrome
+    /// (`py-2` = 9dp top/bottom incl. the 1dp border).
+    pub fn textarea<'a, 'b>(&'a mut self, value: &'b TextValue) -> InputBuilder<'a, 'ui, 'b, M> {
+        InputBuilder::new(self.tx, value, true)
+    }
+}
+
+/// `ui.radio_group` item stager — passed to the group draw closure.
+pub struct RadioGroup<'a, 'ui, 'tx, M: 'static> {
+    ui: &'a mut Ui<'ui, 'tx, M>,
+    selected: String,
+    on_select: Rc<dyn Fn(&'static str) -> M>,
+}
+impl<'a, 'ui, 'tx, M: 'static> RadioGroup<'a, 'ui, 'tx, M> {
+    /// One `item[key]` part: 16×16 radio toggle, checked when the group's
+    /// `selected == key`; Press delivers `on_select(key)`.
+    pub fn item(&mut self, key: &'static str, label: &'static str, opts: RadioItemOpts) {
+        let cb = self.on_select.clone();
+        let checked = self.selected == key;
+        self.ui.part(&format!("item[{key}]"), |ui| {
+            let mut fac = EventFactorySet::default();
+            fac.on_press = Some(Box::new(move || Box::new(cb(key)) as Box<dyn Any>));
+            ui.stage_toggle(
+                crate::theme::ToggleKind::RadioItem,
+                crate::theme::ToggleSize::Default,
+                checked,
+                opts.disabled,
+                opts.invalid,
+                Some(label),
+                None,
+                LayoutSpec::default(),
+                fac,
+            );
+        });
+    }
+}
+
+/// `ui.input`/`ui.textarea` builder — same surface as `TextInputBuilder`;
+/// Drop stages the editor+overlay stack instead of a bare editor leaf.
+pub struct InputBuilder<'a, 'ui, 'b, M: 'static> {
+    automation_id: Option<Rc<str>>,
+    tx: &'a mut Tx<'ui>,
+    value: &'b TextValue,
+    multiline: bool,
+    placeholder: Option<Rc<str>>,
+    read_only: bool,
+    disabled: bool,
+    submit: SubmitPolicy,
+    max_lines: Option<u32>,
+    accessible_label: Option<Rc<str>>,
+    invalid: bool,
+    patch: crate::style::TextInputStylePatch,
+    visibility: Visibility,
+    layout: LayoutSpec,
+    factories: EventFactorySet,
+    _m: std::marker::PhantomData<fn(&'ui (), &'b ()) -> M>,
+}
+
+impl<'a, 'ui, 'b, M: 'static> InputBuilder<'a, 'ui, 'b, M> {
+    fn new(tx: &'a mut Tx<'ui>, value: &'b TextValue, multiline: bool) -> Self {
+        InputBuilder {
+            automation_id: None,
+            tx,
+            value,
+            multiline,
+            placeholder: None,
+            read_only: false,
+            disabled: false,
+            submit: if multiline {
+                SubmitPolicy::None
+            } else {
+                SubmitPolicy::default()
+            },
+            max_lines: None,
+            accessible_label: None,
+            invalid: false,
+            patch: crate::style::TextInputStylePatch::default(),
+            visibility: Visibility::Visible,
+            layout: LayoutSpec::default(),
+            factories: EventFactorySet::default(),
+            _m: std::marker::PhantomData,
+        }
+    }
+    pub fn automation_id(mut self, id: &str) -> Self {
+        self.automation_id = Some(Rc::from(id));
+        self
+    }
+    pub fn style(mut self, p: crate::style::TextInputStylePatch) -> Self {
+        self.patch.merge(&p);
+        self
+    }
+    pub fn invalid(mut self, on: bool) -> Self {
+        self.invalid = on;
+        self
+    }
+    pub fn placeholder(mut self, p: &str) -> Self {
+        self.placeholder = Some(Rc::from(p));
+        self
+    }
+    pub fn read_only(mut self, r: bool) -> Self {
+        self.read_only = r;
+        self
+    }
+    pub fn label(mut self, l: &str) -> Self {
+        self.accessible_label = Some(Rc::from(l));
+        self
+    }
+    pub fn disabled(mut self, d: bool) -> Self {
+        self.disabled = d;
+        self
+    }
+    pub fn submit_policy(mut self, p: SubmitPolicy) -> Self {
+        self.submit = p;
+        self
+    }
+    pub fn max_lines(mut self, n: u32) -> Self {
+        self.max_lines = Some(n);
+        self
+    }
+    pub fn visibility(mut self, v: Visibility) -> Self {
+        self.visibility = v;
+        self
+    }
+    pub fn layout(mut self, l: LayoutSpec) -> Self {
+        self.layout = l;
+        self
+    }
+    pub fn width(mut self, w: crate::geom::Length) -> Self {
+        self.layout.width = w;
+        self
+    }
+    pub fn height(mut self, h: crate::geom::Length) -> Self {
+        self.layout.height = h;
+        self
+    }
+    pub fn on_edit(mut self, f: impl Fn(TextEdit) -> M + 'static) -> Self {
+        self.factories.on_edit = Some(Box::new(move |e| Box::new(f(e))));
+        self
+    }
+    pub fn on_submit(mut self, f: impl Fn() -> M + 'static) -> Self {
+        self.factories.on_submit = Some(Box::new(move || Box::new(f())));
+        self
+    }
+    pub fn on_conflict(mut self, f: impl Fn(TextConflict) -> M + 'static) -> Self {
+        self.factories.on_conflict = Some(Box::new(move |e| Box::new(f(e))));
+        self
+    }
+    pub fn on_selection_changed(mut self, f: impl Fn(TextSelection) -> M + 'static) -> Self {
+        self.factories.on_selection_changed = Some(Box::new(move |e| Box::new(f(e))));
+        self
+    }
+}
+
+impl<'a, 'ui, 'b, M: 'static> Drop for InputBuilder<'a, 'ui, 'b, M> {
+    /// Stage the two-node stack: (1) editor leaf carrying the automation
+    /// id + factories at the full element rect with the borderless
+    /// `input_editor_chrome`; (2) overlay `box_` painted after, carrying
+    /// border/radii-10/invalid/disabled-translucent. The stack container
+    /// takes this builder's layout so element geometry is unchanged.
+    fn drop(&mut self) {
+        let kind = if self.multiline {
+            crate::node::KIND_TEXT_AREA
+        } else {
+            crate::node::KIND_TEXT_INPUT
+        };
+        let snapshot = self.value.snapshot();
+        let (
+            placeholder,
+            accessible_label,
+            read_only,
+            submit,
+            max_lines,
+            disabled,
+            invalid,
+            multiline,
+            patch,
+            layout,
+            visibility,
+        ) = (
+            self.placeholder.clone(),
+            self.accessible_label.clone(),
+            self.read_only,
+            self.submit,
+            self.max_lines,
+            self.disabled,
+            self.invalid,
+            self.multiline,
+            self.patch,
+            self.layout,
+            self.visibility,
+        );
+        // authored foreground still reaches the peer; chrome is the stack
+        // chrome (author's `chrome` fields merge over the frozen inset),
+        // flattened to a full patch so the recipe's border/radii are gone
+        let mut chrome = crate::style::input_editor_chrome(multiline);
+        chrome.patch(&patch.chrome);
+        let mut epatch = patch;
+        epatch.chrome = full_box_patch(&chrome);
+        let auto = self.automation_id.clone();
+        let mut factories = std::mem::take(&mut self.factories);
+        self.tx.stage_container(
+            crate::node::KIND_STACK,
+            None,
+            ContainerProps::default(),
+            layout,
+            EventFactorySet::default(),
+            visibility,
+            move |ui: &mut Ui<'_, '_, M>| {
+                let before = ui.tx.frames.last().unwrap().children.len();
+                ui.tx.stage_leaf(
+                    kind,
+                    None,
+                    Visibility::Visible,
+                    LayoutSpec::default(),
+                    std::mem::take(&mut factories),
+                    move |_| NodeData::Editor {
+                        snapshot,
+                        multiline,
+                        read_only,
+                        disabled,
+                        submit,
+                        max_lines,
+                        placeholder,
+                        accessible_label,
+                        patch: epatch,
+                        invalid,
+                        sync: Default::default(),
+                    },
+                );
+                if let Some(id) = auto
+                    && ui.tx.frames.last().unwrap().children.len() > before
+                    && let Some(i) = ui.tx.frames.last().unwrap().children.last().copied()
+                {
+                    ui.tx.nodes[i as usize].automation_id = Some(id);
+                }
+                ui.box_(
+                    crate::style::BoxProps::new()
+                        .style(crate::style::input_overlay_style(disabled, invalid)),
+                    |_| {},
+                );
+            },
+            false,
+            |props| NodeData::Container {
+                kind: crate::node::KIND_STACK,
+                props,
+            },
+        );
+    }
+}
+
+/// Flatten a resolved `BoxStyle` into a full `BoxStylePatch` — every
+/// field Some/Set so a base recipe's values can never leak through the
+/// merge (used by the input/textarea stack chrome).
+fn full_box_patch(b: &crate::style::BoxStyle) -> crate::style::BoxStylePatch {
+    let mut p = crate::style::BoxStylePatch::default();
+    p.background = Some(b.background);
+    for (dst, src) in [
+        (&mut p.border.top, &b.border.top),
+        (&mut p.border.right, &b.border.right),
+        (&mut p.border.bottom, &b.border.bottom),
+        (&mut p.border.left, &b.border.left),
+    ] {
+        dst.width = Some(src.width);
+        dst.color = Some(src.color);
+    }
+    for (dst, src) in [
+        (&mut p.radii.top_left, &b.radii.top_left),
+        (&mut p.radii.top_right, &b.radii.top_right),
+        (&mut p.radii.bottom_right, &b.radii.bottom_right),
+        (&mut p.radii.bottom_left, &b.radii.bottom_left),
+    ] {
+        *dst = Some(*src);
+    }
+    for (dst, src) in [
+        (&mut p.padding.top, &b.padding.top),
+        (&mut p.padding.right, &b.padding.right),
+        (&mut p.padding.bottom, &b.padding.bottom),
+        (&mut p.padding.left, &b.padding.left),
+    ] {
+        *dst = Some(*src);
+    }
+    p.shadow = match &b.shadow {
+        Some(s) => crate::style::ShadowPatch::Set(*s),
+        None => crate::style::ShadowPatch::Remove,
+    };
+    p
 }
