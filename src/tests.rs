@@ -3972,7 +3972,7 @@ fn native_probe_richedit_paints_text() {
                 a: 1.0,
             }));
         }
-        peer.draw(&rt, island_dip).expect("TxDrawD2D");
+        peer.draw(&rt, island_dip, 0).expect("TxDrawD2D");
         unsafe {
             rt.EndDraw(None, None).expect("EndDraw");
         }
@@ -4053,7 +4053,7 @@ fn native_probe_richedit_paints_text() {
                 a: 1.0,
             }));
         }
-        peer.draw(&rt, island_dip).expect("draw@A");
+        peer.draw(&rt, island_dip, 0).expect("draw@A");
         unsafe {
             rt.EndDraw(None, None).expect("EndDraw");
         }
@@ -4081,7 +4081,7 @@ fn native_probe_richedit_paints_text() {
                 a: 1.0,
             }));
         }
-        peer.draw(&rt, island_dip).expect("draw@B");
+        peer.draw(&rt, island_dip, 0).expect("draw@B");
         unsafe {
             rt.EndDraw(None, None).expect("EndDraw");
         }

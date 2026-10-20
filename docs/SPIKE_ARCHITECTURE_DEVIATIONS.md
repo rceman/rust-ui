@@ -19,13 +19,15 @@ wrapping that clip around a windowless-RichEdit `TxDrawD2D` call produces
 ignores the caller's pushed axis-aligned clip; the clip rect intersects the
 peer's formatted region and discards everything.
 
-**Implementation consequence:** `NodeData::Editor` draws without a pushed
-clip; confinement comes from the peer's own view bounds. This is
-observably correct — text paints inside its pill, not outside.
+**Implementation consequence (superseded):** `TxDrawD2D` itself is never
+wrapped in a clip — the peer renders into its own scratch compat target
+and the frame blits that bitmap under the pushed clip (deviation 12),
+so scroll clips DO confine peer output — at the blit, not the native
+draw call.
 
-**Contract implication:** the public contract must say "native peers draw
-in their own bounds; compositor clips don't reach them" — i.e. peers are
-final leaf surfaces, not clip children.
+**Contract implication:** "native peers are final leaf surfaces" stays,
+but the compositor reaches them through the blit: clips, opacity and
+transforms apply to the peer's bitmap the same as to any retained draw.
 
 ## 2. `TxDrawD2D` anchors unreliably into a shared hwnd target — peers render to their own bitmap
 
@@ -37,13 +39,19 @@ by measurement before real layout bounds existed. Neither scroll messages
 (`EM_SETSCROLLPOS`, `EM_LINESCROLL`), `EM_SETRECTNP`, re-activation, nor
 `TxGetViewInset` reliably reset that anchor.
 
-**Resolution (current — supersedes the earlier peer-bitmap path):** the
-peer's format space is latched in HOST PHYSICAL PX (deviation 10) and
-`TxDrawD2D` draws directly into the shared frame target at the peer's
-physical-px bounds; the logical->px boundary crossing happens once via
-`PeerOrigin`. The earlier peer-local-bitmap compositor worked around the
-wrong unit, not the anchor; it is removed. `TxGetViewInset` stays zero;
-padding between pill chrome and text lives in the bounds inset.
+**Resolution:** the peer's format space is latched in HOST PHYSICAL PX
+(deviation 10). `TxDrawD2D` renders the full document into a per-peer
+`ID2D1BitmapRenderTarget` scratch surface at surface-local origin and the
+frame `DrawBitmap`s it at the peer's physical-px bounds — the
+logical->px boundary crossing still happens once via `PeerOrigin`
+(pointer/caret) plus the snapped-px blit rect. The scratch surface is
+NOT the removed peer-bitmap workaround for the unit confusion — it
+exists because a fresh per-peer target carries its own draw state (a
+shared frame target empirically emitted zero pixels for some peers —
+Slice-2 gallery evidence) and because a bitmap blit honors the pushed
+scroll clip that suppresses `TxDrawD2D` (deviation 1, fixing 12).
+`TxGetViewInset` stays zero; padding between pill chrome and text lives
+in the bounds inset.
 
 **Contract implication:** a native text peer is a *leaf surface*, not an
 inline draw — the compositor positions its rectangle; the peer's internal
@@ -212,36 +220,43 @@ Verified: the composer applied a 750x750-px suggested rect at synthetic
 regression evidence only; a real monitor transition remains a distinct
 acceptance class (recorded in PLATFORM_CONTRACTS.md).
 
-## 12. A top-clipped windowless editor renders its document head in the visible band
+## 12. Peer clip + content anchoring — RESOLVED by the scratch compat-target blit
 
-The Slice-2 scroll viewport clips `Editor` peers **geometrically**:
-`LayoutCache::walk` intersects `editor_content_rect` with the scroll
-clip and passes the band to `peer.apply_bounds` (`win32/layout.rs`).
-msftedit formats and draws its document from `host.bounds` top-left —
-so when an editor's top scrolls ABOVE the viewport, the visible band
-shows the document's first lines shifted into the band, not the
-mid-document rows that should be visible (bottom-clipped and
-fully-clipped cases are correct).
+Originally recorded as a defect: the Slice-2 scroll viewport clipped
+`Editor` peers geometrically (`apply_bounds` got `clip ∩ content`), so a
+top-clipped editor's band rendered the document HEAD — msftedit anchors
+content at `host.bounds` top-left and a pushed clip suppresses
+`TxDrawD2D` (deviation 1), so the intended "full bounds + clip guard"
+path produced an empty band.
 
-The intended fix — keep `apply_bounds` at the FULL content rect and let
-the D2D clip guard cut the visible band — was implemented and is
-**empirically blocked**: a pushed axis-aligned clip suppresses
-`TxDrawD2D` output entirely (deviation 1 — peers are final leaf
-surfaces, not clip children), `lprcUpdate`/`EM_SETSCROLLPOS` do not
-relocate the draw anchor in windowless mode, and `ITextServices2`
-exposes no `TxSetScrollRange`. Four mechanisms were tried; all produce
-an empty band. The clip guard is therefore dropped before the peer draw
-(`win32/render.rs`) and `apply_bounds` keeps `clip ∩ content`, which is
-at least a consistent mapping (bounds/caret/pointer all agree on the
-same band).
+**Fix implemented (supersedes the deviation):** the peer composites
+through a per-peer `ID2D1BitmapRenderTarget` scratch surface —
+`WindowlessPeer::draw` runs `TxDrawD2D` into the fresh surface at
+surface-local `(0,0,w_px,h_px)`, then `DrawBitmap`s it into the frame at
+the snapped physical-px bounds. `apply_bounds` receives the FULL
+translated content rect again (`win32/layout.rs`), so peer-local
+coordinates ARE document coordinates: pointer mapping, caret placement
+and the blit all agree on true document offsets. The frame's clip guard
+stays pushed across the draw — the blit is an ordinary draw op and is
+cut correctly, so a top-clipped editor shows the mid-document band.
+Verified on the Native Text page: a 31dp-top-clipped multiline editor's
+band is pixel-identical to the same document rows captured unclipped,
+and a click in the band lands the caret at the true offset (Delete
+removed the newline after "Line two.").
 
-**Residual:** a top-clipped editor's band renders the document head
-rather than scrolled-away content — a real user-facing defect on the
-Native Text page (14 editors under `page.scroll`), reachable only at
-partial-clip scroll positions. The viable paths (scratch compat-target
-blit or a deeper msftedit scroll-view mechanism) need their own
-design+verification cycle and are deferred.
+**Also resolves the Slice-2 zero-pixel defect:** peers that returned
+`Ok` from `TxDrawD2D` into the shared frame target yet emitted no
+pixels (a positional msftedit quirk with all host inputs verified
+identical) render correctly through a fresh per-peer target — all 14
+Native Text editors and all 12 Forms input/textarea specimens paint
+their seeded text.
 
-**Contract implication:** honest deviation per Gate 19 — do NOT
-overstate "peer geometric clip" as band-correct; it is
-geometry-consistent but content-anchored to the document head.
+**Residual:** none known for banding/clipping. A focused editor's
+system caret whose document position lies OUTSIDE the node's scroll
+clip is hidden (`apply_caret` gates on `clips`), because a Win32 caret
+ignores D2D clips and would otherwise paint over the viewport's
+neighbors — a partially visible caret is hidden rather than leaked.
+
+**Contract implication:** a native text peer is an offscreen leaf
+surface the compositor samples — `TxDrawD2D` into the peer's own target
+is the only supported draw route; compositor clips apply at the blit.

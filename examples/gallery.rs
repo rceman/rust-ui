@@ -631,49 +631,60 @@ impl Gallery {
                     .on_edit(move |e| Msg::Edit(idx, e))
                     .on_conflict(move |c| Msg::Conflict(idx, c));
             }
-            // checkboxes — 7 frozen specimens; app model owns `checked`
-            ui.row(Row::new().gap(Space::Lg).align(Align::Center), |ui| {
-                for (i, (id, dis, inv, lbl)) in [
-                    ("checkbox.default.unchecked", false, false, "Unchecked"),
-                    ("checkbox.default.checked", false, false, "Checked"),
-                    (
-                        "checkbox.default.focus-visible",
-                        false,
-                        false,
-                        "Focus visible",
-                    ),
-                    ("checkbox.default.disabled", true, false, "Disabled"),
-                    (
-                        "checkbox.default.disabled-checked",
-                        true,
-                        false,
-                        "Disabled checked",
-                    ),
-                    ("checkbox.default.invalid", false, true, "Invalid"),
-                    (
-                        "checkbox.default.invalid-checked",
-                        false,
-                        true,
-                        "Invalid checked",
-                    ),
-                ]
-                .iter()
-                .enumerate()
-                {
-                    ui.named(id, |ui| {
-                        ui.checkbox(
-                            Checkbox {
-                                checked: self.cb[i],
-                                disabled: *dis,
-                                invalid: *inv,
-                                label: Some(lbl),
-                                ..Default::default()
-                            },
-                            move || Msg::ToggleCb(i),
-                        );
-                    });
-                }
-            });
+            // checkboxes — 7 frozen specimens; app model owns `checked`.
+            // The control element stays its frozen 16×16 and the label is
+            // owner-attributed, drawn ~24dp right of the box; a bare Lg
+            // pitch row packs controls 32dp apart so every label collided
+            // with its neighbour (N1). Spacer cells reserve the label run
+            // (longest ≈102dp) inside a two-row layout like the frozen
+            // 4+3 wrapping.
+            const CHECKBOXES: [(&str, bool, bool, &str); 7] = [
+                ("checkbox.default.unchecked", false, false, "Unchecked"),
+                ("checkbox.default.checked", false, false, "Checked"),
+                (
+                    "checkbox.default.focus-visible",
+                    false,
+                    false,
+                    "Focus visible",
+                ),
+                ("checkbox.default.disabled", true, false, "Disabled"),
+                (
+                    "checkbox.default.disabled-checked",
+                    true,
+                    false,
+                    "Disabled checked",
+                ),
+                ("checkbox.default.invalid", false, true, "Invalid"),
+                (
+                    "checkbox.default.invalid-checked",
+                    false,
+                    true,
+                    "Invalid checked",
+                ),
+            ];
+            for chunk in CHECKBOXES.chunks(4) {
+                ui.row(Row::new().gap(Space::Lg).align(Align::Center), |ui| {
+                    for &(id, dis, inv, lbl) in chunk {
+                        let i = CHECKBOXES.iter().position(|c| c.0 == id).unwrap();
+                        ui.named(id, |ui| {
+                            ui.checkbox(
+                                Checkbox {
+                                    checked: self.cb[i],
+                                    disabled: dis,
+                                    invalid: inv,
+                                    label: Some(lbl),
+                                    ..Default::default()
+                                },
+                                move || Msg::ToggleCb(i),
+                            );
+                        });
+                        // label room: the painted label runs ~126dp past
+                        // the 16dp control; the spacer keeps the next
+                        // specimen out of it
+                        ui.box_(BoxProps::new().width(Length::Fixed(dp(96.0))), |_| {});
+                    }
+                });
+            }
             // radio groups — 5 frozen specimens, app-owned `selected`.
             // Wrapped at 2 per row like the frozen page: five 360dp
             // groups never fit one row inside the client
@@ -966,8 +977,12 @@ impl Gallery {
                             "A modal dialog that interrupts the user with important content and expects a response.",
                         );
                     });
-                    ui.named("typography.small", |ui| {
-                        ui.typography(Typography::Small, "Email address");
+                    // small is a content-hugging label like inline-code —
+                    // a row wrapper keeps it at content width inside the
+                    // Stretch column (N2)
+                    ui.row(Row::new(), |ui| {
+                        ui.typography(Typography::Small, "Email address")
+                            .automation_id("typography.small");
                     });
                     ui.named("typography.muted", |ui| {
                         ui.typography(Typography::Muted, "Enter your email address.");

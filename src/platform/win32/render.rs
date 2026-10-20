@@ -963,12 +963,12 @@ impl Renderer {
                             )?;
                         }
                     }
-                    // the peer's host.bounds is already the visible band
-                    // and its own view rect confines output — the clip
-                    // guard is dropped anyway: a pushed axis-aligned clip
-                    // suppresses TxDrawD2D output when it cuts the bounds
-                    // (b5a59b5)
-                    drop(_clip_guard);
+                    // The peer composites through its own scratch
+                    // surface and `DrawBitmap`s into the frame — a
+                    // normal draw op, so the pushed scroll clip DOES
+                    // confine it (unlike `TxDrawD2D` into the shared
+                    // target, which a pushed clip suppresses — the clip
+                    // guard stays pushed).
                     if clip.right > clip.left
                         && clip.bottom > clip.top
                         && let Some(peer) = be.peer_for(id)
@@ -976,7 +976,13 @@ impl Renderer {
                         // `editor_content_rect` is THE pill→content
                         // transform — shared with layout/pointer/caret.
                         let c = super::layout::editor_content_rect(r, &chrome);
-                        peer.borrow().draw(&target, c)?;
+                        // fully clipped by the scroll viewport → nothing
+                        // to blit; the peer's bounds still track the full
+                        // rect so hit/caret math stays document-true
+                        let clipped_out = be.clips.get(&id).map_or(false, |cl| !c.intersects(*cl));
+                        if !clipped_out {
+                            peer.borrow().draw(&target, c, self.target_gen.get())?;
+                        }
                     }
                 }
                 NodeData::Custom { render, .. } => {

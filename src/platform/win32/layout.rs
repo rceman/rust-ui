@@ -463,15 +463,16 @@ impl LayoutCache {
         {
             // relatch errors surface through the layout result — a failed
             // deactivation must not leave a stale-scale view silently.
-            // The peer's own view rect confines its output: apply_bounds
-            // receives the VISIBLE band (clip ∩ full content) because a
-            // pushed axis-aligned clip suppresses TxDrawD2D output
-            // entirely (b5a59b5) — an empty band can't show the doc.
-            // `rects[id]`/UIA still track the FULL translated rect.
+            // apply_bounds receives the FULL translated content rect —
+            // the peer surface IS the whole document: the frame's pushed
+            // clip cuts the visible band out of the peer's blit (peers
+            // composite through a per-peer scratch target, so clips reach
+            // them at blit time), and pointer/caret math maps window
+            // coordinates onto TRUE document offsets — a top clip shows
+            // mid-document content and clicks land on the glyphs seen.
             let full = editor_content_rect(rect, &editor_chrome(patch));
-            let content = clip.map_or(full, |c| full.intersection(c));
             peer.borrow()
-                .apply_bounds(content, self.scale)
+                .apply_bounds(full, self.scale)
                 .map_err(|e| crate::UiError::Platform(format!("apply_bounds: {e}")))?;
         }
         rects.insert(id, rect);

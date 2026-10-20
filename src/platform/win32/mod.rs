@@ -1527,6 +1527,21 @@ where
             let Some(at) = org.to_client(space::PeerLocalPoint(pos.into())) else {
                 return; // unrepresentable — drop the placement
             };
+            // peer bounds are the FULL document rect now — a caret can
+            // legitimately sit outside the node's scroll-viewport clip.
+            // The system caret ignores D2D clips, so an out-of-band caret
+            // would paint over the viewport's neighbors; hide it instead.
+            if let Some(clip) = self.clips.get(&node) {
+                let cpx = clip.physical(self.peer_ctx.scale.get());
+                let inside = at.0.x >= cpx.left
+                    && at.0.x + size.cx <= cpx.right
+                    && at.0.y >= cpx.top
+                    && at.0.y + size.cy <= cpx.bottom;
+                if !inside {
+                    let _ = HideCaret(Some(self.hwnd));
+                    return;
+                }
+            }
             let _ = CreateCaret(self.hwnd, None, size.cx, size.cy);
             let _ = SetCaretPos(at.0.x, at.0.y);
             if shown {
