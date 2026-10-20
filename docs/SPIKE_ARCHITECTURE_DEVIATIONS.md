@@ -211,3 +211,37 @@ Verified: the composer applied a 750x750-px suggested rect at synthetic
 **Contract implication:** synthetic WM_DPICHANGED = deterministic
 regression evidence only; a real monitor transition remains a distinct
 acceptance class (recorded in PLATFORM_CONTRACTS.md).
+
+## 12. A top-clipped windowless editor renders its document head in the visible band
+
+The Slice-2 scroll viewport clips `Editor` peers **geometrically**:
+`LayoutCache::walk` intersects `editor_content_rect` with the scroll
+clip and passes the band to `peer.apply_bounds` (`win32/layout.rs`).
+msftedit formats and draws its document from `host.bounds` top-left —
+so when an editor's top scrolls ABOVE the viewport, the visible band
+shows the document's first lines shifted into the band, not the
+mid-document rows that should be visible (bottom-clipped and
+fully-clipped cases are correct).
+
+The intended fix — keep `apply_bounds` at the FULL content rect and let
+the D2D clip guard cut the visible band — was implemented and is
+**empirically blocked**: a pushed axis-aligned clip suppresses
+`TxDrawD2D` output entirely (deviation 1 — peers are final leaf
+surfaces, not clip children), `lprcUpdate`/`EM_SETSCROLLPOS` do not
+relocate the draw anchor in windowless mode, and `ITextServices2`
+exposes no `TxSetScrollRange`. Four mechanisms were tried; all produce
+an empty band. The clip guard is therefore dropped before the peer draw
+(`win32/render.rs`) and `apply_bounds` keeps `clip ∩ content`, which is
+at least a consistent mapping (bounds/caret/pointer all agree on the
+same band).
+
+**Residual:** a top-clipped editor's band renders the document head
+rather than scrolled-away content — a real user-facing defect on the
+Native Text page (14 editors under `page.scroll`), reachable only at
+partial-clip scroll positions. The viable paths (scratch compat-target
+blit or a deeper msftedit scroll-view mechanism) need their own
+design+verification cycle and are deferred.
+
+**Contract implication:** honest deviation per Gate 19 — do NOT
+overstate "peer geometric clip" as band-correct; it is
+geometry-consistent but content-anchored to the document head.
