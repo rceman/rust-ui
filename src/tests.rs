@@ -4426,6 +4426,7 @@ fn native_probe_richedit_paints_text() {
             },
             actionable: false,
             enabled: true,
+            offscreen: false,
             peer_node: true,
             native: Some(frag.clone()),
         }])
@@ -4621,6 +4622,7 @@ fn native_probe_richedit_paints_text() {
             },
             actionable: false,
             enabled: true,
+            offscreen: false,
             peer_node: true,
             native: None,
         }])
@@ -4891,6 +4893,7 @@ fn uia_children_survive_rebuild() {
         },
         actionable: act,
         enabled: true,
+        offscreen: false,
         peer_node: false,
         native: None,
     };
@@ -4978,6 +4981,7 @@ fn uia_element_from_point_uses_snapshot_rect() {
             rect,
             actionable: native.is_none(),
             enabled: true,
+            offscreen: false,
             peer_node: native.is_some(),
             native,
         }
@@ -5067,6 +5071,7 @@ fn uia_disabled_node_reports_not_enabled() {
         },
         actionable: true,
         enabled,
+        offscreen: false,
         peer_node: false,
         native: None,
     };
@@ -5515,6 +5520,7 @@ fn uia_retained_provider_lifecycle() {
         },
         actionable: true,
         enabled,
+        offscreen: false,
         peer_node: false,
         native: None,
     };
@@ -7984,6 +7990,7 @@ fn devctl_automation_id_reaches_uia_and_refreshes_without_replacement() {
         },
         actionable: true,
         enabled: true,
+        offscreen: false,
         peer_node: false,
         native: None,
     };

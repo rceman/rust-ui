@@ -91,6 +91,17 @@ impl Rect {
         }
     }
 
+    /// Do the rects share any positive area? Edge-touching does NOT
+    /// intersect — a zero-area overlap is no overlap. The single
+    /// authority for "a clip fully excludes this rect" (paint, hit-test,
+    /// focus, devtools, UIA all share this reading).
+    pub fn intersects(&self, o: Rect) -> bool {
+        self.x < o.x + o.width
+            && o.x < self.x + self.width
+            && self.y < o.y + o.height
+            && o.y < self.y + self.height
+    }
+
     /// A local-space rect `(0,0,w,h)` — peer/client surfaces hand these
     /// to native APIs as their own origin.
     pub fn local(w: f32, h: f32) -> Rect {

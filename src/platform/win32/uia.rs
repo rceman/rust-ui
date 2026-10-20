@@ -191,6 +191,9 @@ struct ChildState {
     rect: Mutex<UiaRect>,
     enabled: std::sync::atomic::AtomicBool,
     actionable: std::sync::atomic::AtomicBool,
+    /// the node's published rect ∩ viewport clip was empty — a
+    /// scroll-clipped element exists but shows nothing on screen
+    offscreen: std::sync::atomic::AtomicBool,
 }
 
 #[implement(
@@ -256,6 +259,14 @@ impl IRawElementProviderSimple_Impl for PaintFragment_Impl {
             x if x == UIA_IsKeyboardFocusablePropertyId => {
                 Ok(VARIANT::from(self.actionable() && self.enabled()))
             }
+            // scroll-clip truth — a fully-clipped element must not
+            // masquerade as on-screen content (VT_EMPTY reads as
+            // "not offscreen")
+            x if x == UIA_IsOffscreenPropertyId => Ok(VARIANT::from(
+                self.state
+                    .offscreen
+                    .load(std::sync::atomic::Ordering::SeqCst),
+            )),
             // every child is a real control/content element — VT_EMPTY
             // reads as FALSE and drops the element from control/content
             // views and conditional FindAll evaluation
@@ -462,6 +473,14 @@ impl IRawElementProviderSimple_Impl for EditorFragment_Impl {
                 self.this
                     .state
                     .enabled
+                    .load(std::sync::atomic::Ordering::SeqCst),
+            )),
+            // OUR answer, not msftedit's — the delegate has no
+            // viewport-clip knowledge on a windowless site
+            x if x == UIA_IsOffscreenPropertyId => Ok(VARIANT::from(
+                self.this
+                    .state
+                    .offscreen
                     .load(std::sync::atomic::Ordering::SeqCst),
             )),
             x if x == UIA_HasKeyboardFocusPropertyId => {
@@ -1314,6 +1333,8 @@ pub(crate) struct ChildBuild {
     pub actionable: bool,
     /// !disabled && visible
     pub enabled: bool,
+    /// rect ∩ viewport clip is empty — nothing of the node is on screen
+    pub offscreen: bool,
     /// the node's real windowless provider when this is an editor
     pub native: Option<IRawElementProviderFragment>,
     /// the node is an editor — needs the native provider if available
@@ -1406,6 +1427,7 @@ impl UiaRoot {
         let mut order = Vec::new();
         let mut structure_changed = false;
         let mut enabled_flips: Vec<(IRawElementProviderFragment, bool)> = Vec::new();
+        let mut offscreen_flips: Vec<(IRawElementProviderFragment, bool)> = Vec::new();
         let mut name_changes: Vec<(IRawElementProviderFragment, String, String)> = Vec::new();
         let mut bounds_changes: Vec<(IRawElementProviderFragment, UiaRect, UiaRect)> = Vec::new();
         // reorder detection: same set, different sequence is a structure
@@ -1450,6 +1472,13 @@ impl UiaRoot {
                     if prev != k.enabled {
                         enabled_flips.push((h.frag.clone(), k.enabled));
                     }
+                    let prev = h
+                        .state
+                        .offscreen
+                        .swap(k.offscreen, std::sync::atomic::Ordering::SeqCst);
+                    if prev != k.offscreen {
+                        offscreen_flips.push((h.frag.clone(), k.offscreen));
+                    }
                     h.state
                         .actionable
                         .store(k.actionable, std::sync::atomic::Ordering::SeqCst);
@@ -1463,6 +1492,7 @@ impl UiaRoot {
                     rect: Mutex::new(k.rect),
                     enabled: std::sync::atomic::AtomicBool::new(k.enabled),
                     actionable: std::sync::atomic::AtomicBool::new(k.actionable),
+                    offscreen: std::sync::atomic::AtomicBool::new(k.offscreen),
                 });
                 // editor → wrap the peer's native provider (delegating
                 // fragment owns Name/Bounds/Enabled/Focus); painted → our
@@ -1570,6 +1600,16 @@ impl UiaRoot {
                         UIA_IsEnabledPropertyId,
                         &VARIANT::from(!enabled),
                         &VARIANT::from(enabled),
+                    );
+                }
+            }
+            for (frag, offscreen) in offscreen_flips {
+                if let Ok(simple) = frag.cast::<IRawElementProviderSimple>() {
+                    let _ = UiaRaiseAutomationPropertyChangedEvent(
+                        &simple,
+                        UIA_IsOffscreenPropertyId,
+                        &VARIANT::from(!offscreen),
+                        &VARIANT::from(offscreen),
                     );
                 }
             }

@@ -1106,6 +1106,11 @@ impl WindowlessPeer {
         (s.host.bounds, s.host.scale)
     }
 
+    /// Draw the peer's content directly into the window's D2D target.
+    /// `bounds` is the peer's CONTENT rect in window DIP — the visible
+    /// band (`apply_bounds` receives `clip ∩ full content`: the peer's own
+    /// view rect confines output because a pushed axis-aligned clip
+    /// suppresses TxDrawD2D entirely — b5a59b5).
     pub(crate) fn draw(&self, rt: &ID2D1RenderTarget, _bounds: LogicalRect) -> UiResult<()> {
         self.ensure_in_place()?;
         // ONE effective geometry: the layout-supplied bounds may already

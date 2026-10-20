@@ -2343,6 +2343,8 @@ impl<'a, 'ui, M: 'static> Drop for IconBuilder<'a, 'ui, M> {
 // ------------------------- forms APIs ---------------------------------------
 
 impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
+    /// Stage a Toggle leaf. Automation ids come from the enclosing
+    /// `ui.named`/`ui.part` wrapper — the leaf stages plain.
     fn stage_toggle(
         &mut self,
         kind: crate::theme::ToggleKind,
@@ -2354,9 +2356,7 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
         accessible_name: Option<&'static str>,
         layout: LayoutSpec,
         factories: EventFactorySet,
-        automation_id: Option<Rc<str>>,
-    ) -> Option<u32> {
-        let before = self.tx.frames.last().unwrap().children.len();
+    ) {
         self.tx.stage_leaf(
             crate::node::KIND_TOGGLE,
             None,
@@ -2373,14 +2373,6 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
                 accessible_name: accessible_name.map(Rc::from),
             },
         );
-        if let Some(id) = automation_id
-            && self.tx.frames.last().unwrap().children.len() > before
-            && let Some(i) = self.tx.frames.last().unwrap().children.last().copied()
-        {
-            self.tx.nodes[i as usize].automation_id = Some(id);
-            return Some(i);
-        }
-        self.tx.frames.last().unwrap().children.last().copied()
     }
 
     /// `ui.checkbox` — 16×16 selection box; app model owns `checked`,
@@ -2399,7 +2391,6 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
             props.accessible_name,
             LayoutSpec::default(),
             fac,
-            None,
         );
     }
 
@@ -2418,7 +2409,6 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
             props.accessible_name,
             LayoutSpec::default(),
             fac,
-            None,
         );
     }
 
@@ -2524,7 +2514,6 @@ impl<'a, 'ui, 'tx, M: 'static> RadioGroup<'a, 'ui, 'tx, M> {
                 None,
                 LayoutSpec::default(),
                 fac,
-                None,
             );
         });
     }

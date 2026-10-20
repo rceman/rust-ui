@@ -510,8 +510,9 @@ where
     /// depth-first paint/hit order (cached each layout pass)
     pub order: Vec<NodeId>,
     /// per-node scroll-viewport clip (DIP), populated for descendants of
-    /// KIND_SCROLL containers — paint pushes it, hit-test rejects outside
-    /// it, peer bounds intersect it, devtools reports exclusion
+    /// KIND_SCROLL containers — paint pushes it (peers included), hit-test
+    /// rejects outside it, focus skips the fully excluded, devtools and
+    /// UIA report the same visibility/bounds truth
     pub clips: HashMap<NodeId, LogicalRect>,
     pub focus: Option<NodeId>,
     pub hot: Option<NodeId>,
@@ -2209,7 +2210,16 @@ where
                 let Some(n) = self.rt.arena.get(id) else {
                     return false;
                 };
+                // a scroll clip that fully excludes the node's rect means
+                // the control renders nothing — Tab must not land on an
+                // invisible target (same clip truth devtools/UIA report)
+                let clipped_out = self
+                    .rects
+                    .get(&id)
+                    .zip(self.clips.get(&id))
+                    .is_some_and(|(r, c)| !r.intersects(*c));
                 n.visibility == Visibility::Visible
+                    && !clipped_out
                     && n.interactive()
                     && matches!(
                         n.data,
@@ -2534,8 +2544,15 @@ where
             let Some(r) = self.rects.get(&id).copied() else {
                 continue;
             };
+            // the published bounds are the VISIBLE band — the translated
+            // node rect intersected with its scroll-viewport clip, never
+            // a phantom off-window extent. An empty intersection means the
+            // node is fully clipped → IsOffscreen (dev_tools' `visible`
+            // reports the same truth — clip-out OR zero-size).
+            let vr = self.clips.get(&id).map_or(r, |c| r.intersection(*c));
+            let offscreen = vr.width <= 0.0 || vr.height <= 0.0;
             let scale = self.peer_ctx.scale.get();
-            let pr = r.physical(scale); // DIP -> client px (UIA wants px)
+            let pr = vr.physical(scale); // DIP -> client px (UIA wants px)
             // checked conversion — a failed ClientToScreen skips the node
             // rather than publishing unsound coordinates
             let Some(sp) = space::client_to_screen(
@@ -2634,6 +2651,7 @@ where
                 rect,
                 actionable: n.factories.on_press.is_some(),
                 enabled: n.interactive(),
+                offscreen,
                 peer_node: matches!(n.data, NodeData::Editor { .. }),
                 native: None,
             });

@@ -683,8 +683,10 @@ impl Renderer {
                     };
                     unsafe {
                         // disabled:opacity-50 — the whole control alpha-
-                        // fades; the layer wraps chrome + content
-                        if *disabled {
+                        // fades; the layer wraps chrome + content. RAII:
+                        // a `?` below must not strand the pushed layer on
+                        // the shared target for the rest of the frame
+                        let _layer_guard = (*disabled).then(|| {
                             target.PushLayer(
                                 &D2D1_LAYER_PARAMETERS {
                                     contentBounds: D2D_RECT_F {
@@ -698,7 +700,8 @@ impl Renderer {
                                 },
                                 None,
                             );
-                        }
+                            LayerGuard(&target)
+                        });
                         paint_box(
                             &target,
                             &br,
@@ -777,9 +780,6 @@ impl Renderer {
                                 D2D1_DRAW_TEXT_OPTIONS_NONE,
                             );
                         }
-                        if *disabled {
-                            target.PopLayer();
-                        }
                     }
                 }
                 NodeData::Toggle {
@@ -812,7 +812,9 @@ impl Renderer {
                         height: r.height,
                     };
                     unsafe {
-                        if *disabled {
+                        // same disabled alpha-fade as Button — RAII so a
+                        // `?` below can never strand the 0.5 layer
+                        let _layer_guard = (*disabled).then(|| {
                             target.PushLayer(
                                 &D2D1_LAYER_PARAMETERS {
                                     opacity: 0.5,
@@ -820,7 +822,8 @@ impl Renderer {
                                 },
                                 None,
                             );
-                        }
+                            LayerGuard(&target)
+                        });
                         paint_box(
                             &target,
                             &clip,
@@ -909,9 +912,6 @@ impl Renderer {
                                 );
                             }
                         }
-                        if *disabled {
-                            target.PopLayer();
-                        }
                     }
                 }
                 NodeData::Editor {
@@ -954,10 +954,12 @@ impl Renderer {
                             )?;
                         }
                     }
-                    // NOTE: no axis-aligned clip around the peer draw —
-                    // msftedit's D2D path does not honor a pushed clip
-                    // (text silently fails to land). The peer's own view
-                    // rect confines its output.
+                    // the peer's host.bounds is already the visible band
+                    // and its own view rect confines output — the clip
+                    // guard is dropped anyway: a pushed axis-aligned clip
+                    // suppresses TxDrawD2D output when it cuts the bounds
+                    // (b5a59b5)
+                    drop(_clip_guard);
                     if clip.right > clip.left
                         && clip.bottom > clip.top
                         && let Some(peer) = be.peer_for(id)
@@ -1182,6 +1184,17 @@ struct ClipGuard<'a>(&'a ID2D1RenderTarget);
 impl Drop for ClipGuard<'_> {
     fn drop(&mut self) {
         unsafe { self.0.PopAxisAlignedClip() };
+    }
+}
+
+/// Pops one pushed layer on drop — same stranded-state contract as
+/// ClipGuard: a `?` inside the arm must never leave a 0.5-opacity (or
+/// masked) layer on the shared target for the rest of the frame.
+struct LayerGuard<'a>(&'a ID2D1RenderTarget);
+
+impl Drop for LayerGuard<'_> {
+    fn drop(&mut self) {
+        unsafe { self.0.PopLayer() };
     }
 }
 

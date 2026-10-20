@@ -351,8 +351,15 @@ pub(crate) mod wndproc {
                     DefWindowProcW(hwnd, msg, wparam, lparam)
                 }
                 WM_PAINT => {
-                    // coalescible — the in-flight frame covers it
-                    let _ = ValidateRect(Some(hwnd), None);
+                    // coalescible — the in-flight frame covers it. BUT a
+                    // deferred WM_SIZE may have armed size_pending + the
+                    // invalid region: validating here would discard the
+                    // pending resize work (no real WM_PAINT would ever
+                    // arrive to run the coalesced layout+paint). Leave
+                    // the region invalid so the delivery still comes.
+                    if !(*ptr).size_pending.get() {
+                        let _ = ValidateRect(Some(hwnd), None);
+                    }
                     LRESULT(0)
                 }
                 WM_DPICHANGED => {
@@ -599,10 +606,25 @@ pub(crate) mod wndproc {
                         SWP_NOZORDER | SWP_NOACTIVATE,
                     );
                 }
+                // SetWindowPos's nested WM_SIZE was QUEUED (the reentrant
+                // route defers it to the post-dispatch drain) — drain it
+                // NOW so its renderer.resize() lands before this frame's
+                // paint and its size_pending arm is consumed below.
+                // drain_reentrant clears in_dispatch around each item, so
+                // the outer dispatch's ownership guard is restored after.
+                let outer = be.in_dispatch.replace(true);
+                let drained = be.drain_reentrant();
+                be.in_dispatch.set(outer);
+                drained?;
                 // the resize above may be a no-op — guarantee the repaint
                 be.relayout()?;
                 be.uia_refresh()?;
                 be.paint()?;
+                // this synchronous pass IS the coalesced frame for the
+                // new scale + size — nothing may keep size_pending armed
+                // or the next delivered WM_PAINT re-runs the whole
+                // layout+uia+paint it already produced
+                be.size_pending.set(false);
                 LRESULT(0)
             }
             WM_SETTINGCHANGE => {

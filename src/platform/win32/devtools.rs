@@ -11,6 +11,14 @@ where
     U: Fn(&mut S, M, &mut UpdateCtx<'_, M>),
     V: Fn(&S, &mut crate::Ui<'_, '_, M>),
 {
+    /// Does `id`'s scroll-viewport clip fully exclude `r`? The one
+    /// clip-visibility truth nodes AND parts share (hit-test/paint/UIA
+    /// read the same map) — a part's rect is checked against the clip of
+    /// the node that owns it.
+    fn clip_fully_excludes(&self, id: NodeId, r: LogicalRect) -> bool {
+        self.clips.get(&id).is_some_and(|c| !r.intersects(*c))
+    }
+
     fn dev_snapshot(&self) -> Result<Snapshot> {
         let scale = self.peer_ctx.scale.get();
         let mut client = RECT::default();
@@ -138,7 +146,8 @@ where
                         width: (p.right - p.left) as f64,
                         height: (p.bottom - p.top) as f64,
                     },
-                    visible: n.visibility == crate::Visibility::Visible,
+                    visible: n.visibility == crate::Visibility::Visible
+                        && !self.clip_fully_excludes(id, r),
                     reason: None,
                 });
                 prefix.push(pk.to_string());
@@ -188,7 +197,8 @@ where
                                     width: (ip.right - ip.left) as f64,
                                     height: (ip.bottom - ip.top) as f64,
                                 },
-                                visible: n.visibility == crate::Visibility::Visible,
+                                visible: n.visibility == crate::Visibility::Visible
+                                    && !self.clip_fully_excludes(id, ir),
                                 reason: None,
                             });
                         }
@@ -230,7 +240,8 @@ where
                             width: (pp.right - pp.left) as f64,
                             height: (pp.bottom - pp.top) as f64,
                         },
-                        visible: n.visibility == crate::Visibility::Visible,
+                        visible: n.visibility == crate::Visibility::Visible
+                            && !self.clip_fully_excludes(id, pr),
                         reason: None,
                     });
                 }
@@ -239,12 +250,7 @@ where
         // a scroll clip that fully excludes the node's rect reports the
         // truth — the node is laid out (rect is real) but painted out of
         // the viewport and unhittable
-        let clipped_out = self.clips.get(&id).is_some_and(|c| {
-            r.x + r.width <= c.x
-                || r.x >= c.x + c.width
-                || r.y + r.height <= c.y
-                || r.y >= c.y + c.height
-        });
+        let clipped_out = self.clip_fully_excludes(id, r);
         Ok(Node {
             automation_id: n.automation_id.as_deref().map(str::to_owned),
             kind: kind.into(),
@@ -314,7 +320,10 @@ where
                         width: (p.right - p.left) as f64,
                         height: (p.bottom - p.top) as f64,
                     },
-                    visible: c.visibility == crate::Visibility::Visible,
+                    // parts inherit their owner node's viewport clip —
+                    // a clipped-out node can't carry on-screen parts
+                    visible: c.visibility == crate::Visibility::Visible
+                        && !self.clip_fully_excludes(cid, r),
                     reason: None,
                 });
                 descend = true;
@@ -353,7 +362,8 @@ where
                             width: (pp.right - pp.left) as f64,
                             height: (pp.bottom - pp.top) as f64,
                         },
-                        visible: c.visibility == crate::Visibility::Visible,
+                        visible: c.visibility == crate::Visibility::Visible
+                            && !self.clip_fully_excludes(cid, pr),
                         reason: None,
                     });
                     prefix.pop();

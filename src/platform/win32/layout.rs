@@ -441,13 +441,13 @@ impl LayoutCache {
         {
             // relatch errors surface through the layout result — a failed
             // deactivation must not leave a stale-scale view silently.
-            // msftedit ignores D2D clips: the viewport clip is applied
-            // GEOMETRICALLY — the peer's surface is the content rect
-            // intersected with the scroll clip (fully clipped = zero-size)
-            let mut content = editor_content_rect(rect, &editor_chrome(patch));
-            if let Some(c) = clip {
-                content = content.intersection(c);
-            }
+            // The peer's own view rect confines its output: apply_bounds
+            // receives the VISIBLE band (clip ∩ full content) because a
+            // pushed axis-aligned clip suppresses TxDrawD2D output
+            // entirely (b5a59b5) — an empty band can't show the doc.
+            // `rects[id]`/UIA still track the FULL translated rect.
+            let full = editor_content_rect(rect, &editor_chrome(patch));
+            let content = clip.map_or(full, |c| full.intersection(c));
             peer.borrow()
                 .apply_bounds(content, self.scale)
                 .map_err(|e| crate::UiError::Platform(format!("apply_bounds: {e}")))?;
