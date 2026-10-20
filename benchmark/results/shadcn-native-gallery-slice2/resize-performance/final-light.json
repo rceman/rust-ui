@@ -1,0 +1,2501 @@
+{
+  "layout_max_us": 1608,
+  "layout_runs": 124,
+  "layout_us": 119418,
+  "paint_max_us": 26299,
+  "paint_runs": 124,
+  "paint_us": 1966465,
+  "render_resize_max_us": 407,
+  "render_resize_us": 33891,
+  "render_resizes": 124,
+  "samples": [
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 227,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 236
+    },
+    {
+      "kind": 1,
+      "layout_us": 1014,
+      "paint_us": 13294,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 14308
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 149,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 157
+    },
+    {
+      "kind": 1,
+      "layout_us": 1035,
+      "paint_us": 15163,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 16199
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 280,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 291
+    },
+    {
+      "kind": 1,
+      "layout_us": 966,
+      "paint_us": 13983,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 14949
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 231,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 239
+    },
+    {
+      "kind": 1,
+      "layout_us": 1059,
+      "paint_us": 12735,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 13794
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 224,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 241
+    },
+    {
+      "kind": 1,
+      "layout_us": 923,
+      "paint_us": 11336,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 12259
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 236,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 246
+    },
+    {
+      "kind": 1,
+      "layout_us": 936,
+      "paint_us": 11476,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 12412
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 230,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 238
+    },
+    {
+      "kind": 1,
+      "layout_us": 911,
+      "paint_us": 12682,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 13593
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 250,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 259
+    },
+    {
+      "kind": 1,
+      "layout_us": 1022,
+      "paint_us": 12174,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 13197
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 298,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 311
+    },
+    {
+      "kind": 1,
+      "layout_us": 1201,
+      "paint_us": 12026,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 13227
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 249,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 258
+    },
+    {
+      "kind": 1,
+      "layout_us": 941,
+      "paint_us": 13216,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 14158
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 271,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 280
+    },
+    {
+      "kind": 1,
+      "layout_us": 959,
+      "paint_us": 14375,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 15334
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 274,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 283
+    },
+    {
+      "kind": 1,
+      "layout_us": 922,
+      "paint_us": 14292,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 15214
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 294,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 303
+    },
+    {
+      "kind": 1,
+      "layout_us": 929,
+      "paint_us": 15788,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 16717
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 277,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 288
+    },
+    {
+      "kind": 1,
+      "layout_us": 942,
+      "paint_us": 15179,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 16122
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 248,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 262
+    },
+    {
+      "kind": 1,
+      "layout_us": 973,
+      "paint_us": 15149,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 16122
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 252,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 260
+    },
+    {
+      "kind": 1,
+      "layout_us": 927,
+      "paint_us": 13411,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 14338
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 238,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 251
+    },
+    {
+      "kind": 1,
+      "layout_us": 925,
+      "paint_us": 13978,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 14903
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 257,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 265
+    },
+    {
+      "kind": 1,
+      "layout_us": 933,
+      "paint_us": 15357,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 16291
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 300,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 334
+    },
+    {
+      "kind": 1,
+      "layout_us": 975,
+      "paint_us": 13274,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 14250
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 252,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 260
+    },
+    {
+      "kind": 1,
+      "layout_us": 912,
+      "paint_us": 13020,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 13932
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 264,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 273
+    },
+    {
+      "kind": 1,
+      "layout_us": 925,
+      "paint_us": 13258,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 14183
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 256,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 265
+    },
+    {
+      "kind": 1,
+      "layout_us": 950,
+      "paint_us": 14004,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 14955
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 277,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 285
+    },
+    {
+      "kind": 1,
+      "layout_us": 952,
+      "paint_us": 19529,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 20481
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 312,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 321
+    },
+    {
+      "kind": 1,
+      "layout_us": 958,
+      "paint_us": 15045,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 16003
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 264,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 272
+    },
+    {
+      "kind": 1,
+      "layout_us": 929,
+      "paint_us": 15677,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 16606
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 263,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 279
+    },
+    {
+      "kind": 1,
+      "layout_us": 957,
+      "paint_us": 13978,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 14935
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 307,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 316
+    },
+    {
+      "kind": 1,
+      "layout_us": 949,
+      "paint_us": 13832,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 14782
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 263,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 272
+    },
+    {
+      "kind": 1,
+      "layout_us": 929,
+      "paint_us": 13532,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 14461
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 268,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 276
+    },
+    {
+      "kind": 1,
+      "layout_us": 932,
+      "paint_us": 13592,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 14525
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 259,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 272
+    },
+    {
+      "kind": 1,
+      "layout_us": 922,
+      "paint_us": 14149,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 15072
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 255,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 263
+    },
+    {
+      "kind": 1,
+      "layout_us": 946,
+      "paint_us": 13443,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 14390
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 254,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 262
+    },
+    {
+      "kind": 1,
+      "layout_us": 918,
+      "paint_us": 13664,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 14582
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 262,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 276
+    },
+    {
+      "kind": 1,
+      "layout_us": 915,
+      "paint_us": 15614,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 16530
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 258,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 271
+    },
+    {
+      "kind": 1,
+      "layout_us": 951,
+      "paint_us": 16589,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 17540
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 278,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 291
+    },
+    {
+      "kind": 1,
+      "layout_us": 963,
+      "paint_us": 13982,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 14946
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 260,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 272
+    },
+    {
+      "kind": 1,
+      "layout_us": 924,
+      "paint_us": 14951,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 15875
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 275,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 283
+    },
+    {
+      "kind": 1,
+      "layout_us": 957,
+      "paint_us": 14052,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 15009
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 280,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 294
+    },
+    {
+      "kind": 1,
+      "layout_us": 917,
+      "paint_us": 14627,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 15544
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 277,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 290
+    },
+    {
+      "kind": 1,
+      "layout_us": 920,
+      "paint_us": 15595,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 16515
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 282,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 290
+    },
+    {
+      "kind": 1,
+      "layout_us": 922,
+      "paint_us": 15817,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 16740
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 275,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 284
+    },
+    {
+      "kind": 1,
+      "layout_us": 936,
+      "paint_us": 14616,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 15552
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 265,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 273
+    },
+    {
+      "kind": 1,
+      "layout_us": 923,
+      "paint_us": 14297,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 15220
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 270,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 282
+    },
+    {
+      "kind": 1,
+      "layout_us": 931,
+      "paint_us": 15674,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 16606
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 291,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 304
+    },
+    {
+      "kind": 1,
+      "layout_us": 939,
+      "paint_us": 17066,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 18006
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 171,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 181
+    },
+    {
+      "kind": 1,
+      "layout_us": 1285,
+      "paint_us": 15771,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 17056
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 286,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 295
+    },
+    {
+      "kind": 1,
+      "layout_us": 974,
+      "paint_us": 20503,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 21477
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 360,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 369
+    },
+    {
+      "kind": 1,
+      "layout_us": 952,
+      "paint_us": 18590,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 19542
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 281,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 289
+    },
+    {
+      "kind": 1,
+      "layout_us": 925,
+      "paint_us": 16782,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 17708
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 279,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 287
+    },
+    {
+      "kind": 1,
+      "layout_us": 954,
+      "paint_us": 16216,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 17171
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 274,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 282
+    },
+    {
+      "kind": 1,
+      "layout_us": 922,
+      "paint_us": 16325,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 17248
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 279,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 287
+    },
+    {
+      "kind": 1,
+      "layout_us": 927,
+      "paint_us": 15938,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 16866
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 308,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 316
+    },
+    {
+      "kind": 1,
+      "layout_us": 945,
+      "paint_us": 16588,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 17534
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 282,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 290
+    },
+    {
+      "kind": 1,
+      "layout_us": 1027,
+      "paint_us": 17765,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 18792
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 329,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 338
+    },
+    {
+      "kind": 1,
+      "layout_us": 930,
+      "paint_us": 17595,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 18525
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 282,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 290
+    },
+    {
+      "kind": 1,
+      "layout_us": 943,
+      "paint_us": 17790,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 18733
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 299,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 307
+    },
+    {
+      "kind": 1,
+      "layout_us": 947,
+      "paint_us": 16843,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 17791
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 284,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 292
+    },
+    {
+      "kind": 1,
+      "layout_us": 950,
+      "paint_us": 19315,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 20266
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 298,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 307
+    },
+    {
+      "kind": 1,
+      "layout_us": 953,
+      "paint_us": 21938,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 22891
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 362,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 371
+    },
+    {
+      "kind": 1,
+      "layout_us": 946,
+      "paint_us": 21725,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 22672
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 302,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 311
+    },
+    {
+      "kind": 1,
+      "layout_us": 943,
+      "paint_us": 22710,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 23654
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 322,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 330
+    },
+    {
+      "kind": 1,
+      "layout_us": 956,
+      "paint_us": 24502,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 25459
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 408,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 528
+    },
+    {
+      "kind": 1,
+      "layout_us": 1024,
+      "paint_us": 23166,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 24190
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 305,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 315
+    },
+    {
+      "kind": 1,
+      "layout_us": 942,
+      "paint_us": 26301,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 27243
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 338,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 347
+    },
+    {
+      "kind": 1,
+      "layout_us": 963,
+      "paint_us": 20037,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 21000
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 290,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 309
+    },
+    {
+      "kind": 1,
+      "layout_us": 910,
+      "paint_us": 18914,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 19825
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 302,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 308
+    },
+    {
+      "kind": 1,
+      "layout_us": 944,
+      "paint_us": 19835,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 20779
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 294,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 302
+    },
+    {
+      "kind": 1,
+      "layout_us": 936,
+      "paint_us": 19586,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 20523
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 386,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 393
+    },
+    {
+      "kind": 1,
+      "layout_us": 956,
+      "paint_us": 16720,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 17676
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 295,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 304
+    },
+    {
+      "kind": 1,
+      "layout_us": 934,
+      "paint_us": 18458,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 19392
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 282,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 288
+    },
+    {
+      "kind": 1,
+      "layout_us": 1006,
+      "paint_us": 20488,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 21494
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 326,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 494
+    },
+    {
+      "kind": 1,
+      "layout_us": 960,
+      "paint_us": 21002,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 21963
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 279,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 285
+    },
+    {
+      "kind": 1,
+      "layout_us": 948,
+      "paint_us": 18471,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 19419
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 320,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 329
+    },
+    {
+      "kind": 1,
+      "layout_us": 1097,
+      "paint_us": 20544,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 21641
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 292,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 384
+    },
+    {
+      "kind": 1,
+      "layout_us": 982,
+      "paint_us": 18741,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 19723
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 283,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 293
+    },
+    {
+      "kind": 1,
+      "layout_us": 1010,
+      "paint_us": 19061,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 20071
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 267,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 273
+    },
+    {
+      "kind": 1,
+      "layout_us": 936,
+      "paint_us": 16747,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 17683
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 277,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 285
+    },
+    {
+      "kind": 1,
+      "layout_us": 1028,
+      "paint_us": 17744,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 18772
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 306,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 314
+    },
+    {
+      "kind": 1,
+      "layout_us": 924,
+      "paint_us": 15833,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 16758
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 278,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 286
+    },
+    {
+      "kind": 1,
+      "layout_us": 936,
+      "paint_us": 16129,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 17066
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 286,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 292
+    },
+    {
+      "kind": 1,
+      "layout_us": 933,
+      "paint_us": 16279,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 17213
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 287,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 295
+    },
+    {
+      "kind": 1,
+      "layout_us": 940,
+      "paint_us": 17012,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 17952
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 353,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 365
+    },
+    {
+      "kind": 1,
+      "layout_us": 945,
+      "paint_us": 14982,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 15927
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 297,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 306
+    },
+    {
+      "kind": 1,
+      "layout_us": 925,
+      "paint_us": 16190,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 17115
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 267,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 273
+    },
+    {
+      "kind": 1,
+      "layout_us": 939,
+      "paint_us": 14442,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 15381
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 268,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 277
+    },
+    {
+      "kind": 1,
+      "layout_us": 943,
+      "paint_us": 21823,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 22766
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 282,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 289
+    },
+    {
+      "kind": 1,
+      "layout_us": 949,
+      "paint_us": 15463,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 16413
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 270,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 279
+    },
+    {
+      "kind": 1,
+      "layout_us": 932,
+      "paint_us": 17874,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 18807
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 269,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 281
+    },
+    {
+      "kind": 1,
+      "layout_us": 930,
+      "paint_us": 16567,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 17497
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 265,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 300
+    },
+    {
+      "kind": 1,
+      "layout_us": 964,
+      "paint_us": 14775,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 15740
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 252,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 258
+    },
+    {
+      "kind": 1,
+      "layout_us": 933,
+      "paint_us": 14252,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 15186
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 305,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 316
+    },
+    {
+      "kind": 1,
+      "layout_us": 975,
+      "paint_us": 15312,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 16287
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 257,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 268
+    },
+    {
+      "kind": 1,
+      "layout_us": 946,
+      "paint_us": 15358,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 16305
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 266,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 279
+    },
+    {
+      "kind": 1,
+      "layout_us": 939,
+      "paint_us": 14308,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 15247
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 285,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 291
+    },
+    {
+      "kind": 1,
+      "layout_us": 957,
+      "paint_us": 13078,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 14036
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 278,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 293
+    },
+    {
+      "kind": 1,
+      "layout_us": 932,
+      "paint_us": 14432,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 15365
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 241,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 252
+    },
+    {
+      "kind": 1,
+      "layout_us": 921,
+      "paint_us": 13627,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 14549
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 243,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 251
+    },
+    {
+      "kind": 1,
+      "layout_us": 978,
+      "paint_us": 13547,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 14525
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 242,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 248
+    },
+    {
+      "kind": 1,
+      "layout_us": 956,
+      "paint_us": 14021,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 14978
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 264,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 286
+    },
+    {
+      "kind": 1,
+      "layout_us": 982,
+      "paint_us": 14118,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 15100
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 240,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 247
+    },
+    {
+      "kind": 1,
+      "layout_us": 925,
+      "paint_us": 14647,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 15572
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 256,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 265
+    },
+    {
+      "kind": 1,
+      "layout_us": 923,
+      "paint_us": 15554,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 16477
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 245,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 252
+    },
+    {
+      "kind": 1,
+      "layout_us": 933,
+      "paint_us": 15591,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 16525
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 252,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 262
+    },
+    {
+      "kind": 1,
+      "layout_us": 929,
+      "paint_us": 15223,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 16152
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 258,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 265
+    },
+    {
+      "kind": 1,
+      "layout_us": 918,
+      "paint_us": 16669,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 17588
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 238,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 250
+    },
+    {
+      "kind": 1,
+      "layout_us": 913,
+      "paint_us": 13529,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 14443
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 259,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 266
+    },
+    {
+      "kind": 1,
+      "layout_us": 945,
+      "paint_us": 13558,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 14504
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 242,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 255
+    },
+    {
+      "kind": 1,
+      "layout_us": 942,
+      "paint_us": 14846,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 15788
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 252,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 260
+    },
+    {
+      "kind": 1,
+      "layout_us": 947,
+      "paint_us": 15837,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 16785
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 265,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 275
+    },
+    {
+      "kind": 1,
+      "layout_us": 990,
+      "paint_us": 21085,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 22076
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 383,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 402
+    },
+    {
+      "kind": 1,
+      "layout_us": 1212,
+      "paint_us": 15417,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 16629
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 254,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 263
+    },
+    {
+      "kind": 1,
+      "layout_us": 938,
+      "paint_us": 14877,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 15815
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 240,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 247
+    },
+    {
+      "kind": 1,
+      "layout_us": 953,
+      "paint_us": 14256,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 15209
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 314,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 327
+    },
+    {
+      "kind": 1,
+      "layout_us": 973,
+      "paint_us": 14825,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 15798
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 244,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 252
+    },
+    {
+      "kind": 1,
+      "layout_us": 1061,
+      "paint_us": 15299,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 16360
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 286,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 296
+    },
+    {
+      "kind": 1,
+      "layout_us": 972,
+      "paint_us": 15290,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 16263
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 247,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 254
+    },
+    {
+      "kind": 1,
+      "layout_us": 932,
+      "paint_us": 13240,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 14173
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 243,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 251
+    },
+    {
+      "kind": 1,
+      "layout_us": 961,
+      "paint_us": 15178,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 16140
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 273,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 280
+    },
+    {
+      "kind": 1,
+      "layout_us": 1608,
+      "paint_us": 13077,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 14686
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 227,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 236
+    },
+    {
+      "kind": 1,
+      "layout_us": 1040,
+      "paint_us": 11686,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 12726
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 177,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 183
+    },
+    {
+      "kind": 1,
+      "layout_us": 959,
+      "paint_us": 8448,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 9408
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 320,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 329
+    },
+    {
+      "kind": 1,
+      "layout_us": 949,
+      "paint_us": 18687,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 19636
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 181,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 214
+    },
+    {
+      "kind": 1,
+      "layout_us": 1002,
+      "paint_us": 7361,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 8364
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 298,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 306
+    },
+    {
+      "kind": 1,
+      "layout_us": 936,
+      "paint_us": 18626,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 19562
+    },
+    {
+      "kind": 0,
+      "layout_us": 0,
+      "paint_us": 0,
+      "resize_us": 256,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 264
+    },
+    {
+      "kind": 1,
+      "layout_us": 967,
+      "paint_us": 13211,
+      "resize_us": 0,
+      "shadow_rasters": 0,
+      "text_layouts": 0,
+      "uia_us": 0,
+      "wm_size_us": 14178
+    }
+  ],
+  "shadow_rasters": 0,
+  "text_layout_creates": 0,
+  "uia_max_us": 0,
+  "uia_runs": 124,
+  "uia_us": 0,
+  "wm_size_events": 248,
+  "wm_size_max_us": 27243,
+  "wm_size_us": 2121833
+}

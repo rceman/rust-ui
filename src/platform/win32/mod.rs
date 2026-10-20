@@ -93,6 +93,143 @@ impl PerfCounters {
     }
 }
 
+/// One instrumented WM_SIZE dispatch — phase split plus per-event
+/// resource-creation deltas. Bounded by `RESIZE_SAMPLE_CAP`.
+#[derive(Debug, Clone, Copy, serde::Serialize)]
+pub(crate) struct ResizeSample {
+    /// 0 = WM_SIZE delivery, 1 = WM_PAINT delivery
+    pub kind: u8,
+    pub wm_size_us: u64,
+    pub resize_us: u64,
+    pub layout_us: u64,
+    pub uia_us: u64,
+    pub paint_us: u64,
+    pub text_layouts: u64,
+    pub shadow_rasters: u64,
+}
+
+/// The resize-path report — atomic counters (every caller) plus a capped
+/// ring of per-WM_SIZE samples for percentile analysis. Counters are plain
+/// atomics: near-free in production, never logs; retrieved only through the
+/// devctl `perf` pull.
+pub(crate) struct ResizeCounters {
+    pub events: AtomicU64,
+    pub layout_runs: AtomicU64,
+    pub layout_us: AtomicU64,
+    pub layout_max_us: AtomicU64,
+    pub paint_runs: AtomicU64,
+    pub paint_us: AtomicU64,
+    pub paint_max_us: AtomicU64,
+    pub uia_runs: AtomicU64,
+    pub uia_us: AtomicU64,
+    pub uia_max_us: AtomicU64,
+    pub resize_runs: AtomicU64,
+    pub resize_us: AtomicU64,
+    pub resize_max_us: AtomicU64,
+    pub text_layout_creates: AtomicU64,
+    pub shadow_rasters: AtomicU64,
+    pub wm_size_us: AtomicU64,
+    pub wm_size_max_us: AtomicU64,
+    pub samples: std::sync::Mutex<std::collections::VecDeque<ResizeSample>>,
+}
+
+/// Bounded sample ring — worst case ~8192 × ~64B.
+pub(crate) const RESIZE_SAMPLE_CAP: usize = 8192;
+
+impl ResizeCounters {
+    const fn new() -> Self {
+        use std::sync::atomic::AtomicU64 as A;
+        ResizeCounters {
+            events: A::new(0),
+            layout_runs: A::new(0),
+            layout_us: A::new(0),
+            layout_max_us: A::new(0),
+            paint_runs: A::new(0),
+            paint_us: A::new(0),
+            paint_max_us: A::new(0),
+            uia_runs: A::new(0),
+            uia_us: A::new(0),
+            uia_max_us: A::new(0),
+            resize_runs: A::new(0),
+            resize_us: A::new(0),
+            resize_max_us: A::new(0),
+            text_layout_creates: A::new(0),
+            shadow_rasters: A::new(0),
+            wm_size_us: A::new(0),
+            wm_size_max_us: A::new(0),
+            samples: std::sync::Mutex::new(std::collections::VecDeque::new()),
+        }
+    }
+    pub(crate) fn bump(c: &AtomicU64, sum: &AtomicU64, max: &AtomicU64, us: u64) {
+        c.fetch_add(1, Ordering::Relaxed);
+        sum.fetch_add(us, Ordering::Relaxed);
+        max.fetch_max(us, Ordering::Relaxed);
+    }
+    pub(crate) fn record(&self, s: ResizeSample) {
+        Self::bump(
+            &self.events,
+            &self.wm_size_us,
+            &self.wm_size_max_us,
+            s.wm_size_us,
+        );
+        let mut ring = self.samples.lock().unwrap();
+        if ring.len() == RESIZE_SAMPLE_CAP {
+            ring.pop_front();
+        }
+        ring.push_back(s);
+    }
+    pub(crate) fn snapshot(&self) -> serde_json::Value {
+        let r = |a: &AtomicU64| a.load(Ordering::Relaxed);
+        let samples: Vec<ResizeSample> = self.samples.lock().unwrap().iter().copied().collect();
+        serde_json::json!({
+            "wm_size_events": r(&self.events),
+            "wm_size_us": r(&self.wm_size_us),
+            "wm_size_max_us": r(&self.wm_size_max_us),
+            "layout_runs": r(&self.layout_runs),
+            "layout_us": r(&self.layout_us),
+            "layout_max_us": r(&self.layout_max_us),
+            "paint_runs": r(&self.paint_runs),
+            "paint_us": r(&self.paint_us),
+            "paint_max_us": r(&self.paint_max_us),
+            "uia_runs": r(&self.uia_runs),
+            "uia_us": r(&self.uia_us),
+            "uia_max_us": r(&self.uia_max_us),
+            "render_resizes": r(&self.resize_runs),
+            "render_resize_us": r(&self.resize_us),
+            "render_resize_max_us": r(&self.resize_max_us),
+            "text_layout_creates": r(&self.text_layout_creates),
+            "shadow_rasters": r(&self.shadow_rasters),
+            "samples": samples,
+        })
+    }
+    pub(crate) fn reset(&self) {
+        let r = |a: &AtomicU64| a.store(0, Ordering::Relaxed);
+        r(&self.events);
+        r(&self.layout_runs);
+        r(&self.layout_us);
+        r(&self.layout_max_us);
+        r(&self.paint_runs);
+        r(&self.paint_us);
+        r(&self.paint_max_us);
+        r(&self.uia_runs);
+        r(&self.uia_us);
+        r(&self.uia_max_us);
+        r(&self.resize_runs);
+        r(&self.resize_us);
+        r(&self.resize_max_us);
+        r(&self.text_layout_creates);
+        r(&self.shadow_rasters);
+        r(&self.wm_size_us);
+        r(&self.wm_size_max_us);
+        self.samples.lock().unwrap().clear();
+    }
+}
+
+/// Process-wide resize instrumentation — atomics in a `static`, so the
+/// free-function hot paths (`layout_for`, `draw_shadow`) can count without
+/// plumbing a handle through the renderer.
+pub(crate) static RESIZE: ResizeCounters = ResizeCounters::new();
+
 /// Shared context the `peer_factory` hands to each `PeerHandle` — the
 /// registry is a ROUTING INDEX (weak handles), not a second owner: the
 /// authoritative peer lives inside the retained node's `peer` field.
@@ -411,6 +548,11 @@ where
     /// handler — classified: bit0 relayout (a metric-bearing branch
     /// transitioned), bit1 repaint; consumed by turn_body
     state_dirty: std::cell::Cell<u8>,
+    /// a WM_SIZE resized the target but layout/paint have not yet run —
+    /// coalesced into the next delivered WM_PAINT (OS-batched during the
+    /// modal sizing loop) so one frame's work runs per paint delivery,
+    /// never per mouse-move step
+    size_pending: std::cell::Cell<bool>,
     /// replay-owner discriminator: `None` = live dispatch (resolve current
     /// focus); `Some(c)` = replaying — `c` is the captured arrival owner,
     /// `None` inside means EXPLICITLY no owner (never fall through)
@@ -494,6 +636,7 @@ where
             pump_queued: std::cell::Cell::new(false),
             deferred_native: std::collections::VecDeque::new(),
             state_dirty: std::cell::Cell::new(0),
+            size_pending: std::cell::Cell::new(false),
             damage: std::cell::Cell::new(None),
             committed_ink: std::cell::RefCell::new(HashMap::new()),
             applied_palette: std::cell::RefCell::new(None),
@@ -1404,6 +1547,18 @@ where
     /// before the peer ctx has a window — layout defers to the first real
     /// turn rather than failing on a null HWND.
     pub(crate) fn relayout(&mut self) -> UiResult {
+        let t = std::time::Instant::now();
+        let r = self.relayout_inner();
+        ResizeCounters::bump(
+            &RESIZE.layout_runs,
+            &RESIZE.layout_us,
+            &RESIZE.layout_max_us,
+            t.elapsed().as_micros() as u64,
+        );
+        r
+    }
+
+    fn relayout_inner(&mut self) -> UiResult {
         if self.peer_ctx.hwnd.get().is_invalid() {
             return Ok(());
         }
@@ -1495,6 +1650,18 @@ where
     }
 
     fn paint_inner(&mut self, draw: impl FnOnce(&Self) -> UiResult) -> UiResult {
+        let t = std::time::Instant::now();
+        let r = self.paint_inner_impl(draw);
+        ResizeCounters::bump(
+            &RESIZE.paint_runs,
+            &RESIZE.paint_us,
+            &RESIZE.paint_max_us,
+            t.elapsed().as_micros() as u64,
+        );
+        r
+    }
+
+    fn paint_inner_impl(&mut self, draw: impl FnOnce(&Self) -> UiResult) -> UiResult {
         if self.hwnd.0.is_null() {
             return Ok(());
         }
@@ -2379,6 +2546,18 @@ where
     /// see live name/enabled/bounds/order WITHOUT needing a fresh
     /// WM_GETOBJECT. No-op until the root exists.
     pub(crate) fn uia_refresh(&mut self) -> UiResult {
+        let t = std::time::Instant::now();
+        let r = self.uia_refresh_impl();
+        ResizeCounters::bump(
+            &RESIZE.uia_runs,
+            &RESIZE.uia_us,
+            &RESIZE.uia_max_us,
+            t.elapsed().as_micros() as u64,
+        );
+        r
+    }
+
+    fn uia_refresh_impl(&mut self) -> UiResult {
         if self.uia.is_none() {
             return Ok(());
         }
@@ -2978,6 +3157,7 @@ where
         pump_queued: std::cell::Cell::new(false),
         deferred_native: std::collections::VecDeque::new(),
         state_dirty: std::cell::Cell::new(0),
+        size_pending: std::cell::Cell::new(false),
         damage: std::cell::Cell::new(None),
         committed_ink: std::cell::RefCell::new(HashMap::new()),
         applied_palette: std::cell::RefCell::new(None),

@@ -132,6 +132,75 @@ fn family_name(f: crate::theme::FontFamily) -> windows::core::PCWSTR {
     }
 }
 
+/// Layout-affecting signature of a resolved `TextStyle` — everything that
+/// can change `IDWriteTextLayout` shaping/metrics. `foreground` is excluded
+/// (paint-only). Shared by the format cache key and the layout cache key.
+fn style_sig(ts: &crate::style::TextStyle) -> (u32, u32, u8, u32, u8, u32) {
+    let size = match ts.size {
+        crate::style::TextSize::Body => 14.0f32.to_bits(),
+        crate::style::TextSize::Exact(dp) => dp.0.max(1.0).to_bits(),
+    };
+    let wkey = match ts.weight {
+        crate::style::TextWeight::Normal => 0u32,
+        crate::style::TextWeight::Medium => 1,
+        crate::style::TextWeight::Semibold => 2,
+        crate::style::TextWeight::Bold => 3,
+        crate::style::TextWeight::Extrabold => 4,
+    };
+    let fam = match ts.font {
+        crate::theme::FontFamily::Sans => 0u8,
+        crate::theme::FontFamily::Mono => 1,
+    };
+    (
+        size,
+        wkey,
+        fam,
+        ts.line_height.map(|d| d.0.to_bits()).unwrap_or(0),
+        ts.underline as u8,
+        ts.letter_spacing.to_bits(),
+    )
+}
+
+/// `(text, style_sig, max_w, max_h)` — full inputs of `layout_for`.
+type LayoutKey = (String, u32, u32, u8, u32, u8, u32, u32, u32);
+
+/// Bounded `IDWriteTextLayout` reuse: measure + paint create a fresh COM
+/// layout per call otherwise — ~350 creations per resize step on the
+/// Gallery. Layout inputs are DIP/scale-free so no scale belongs in the
+/// key. FIFO-bounded at 512; COM clones share the same underlying object.
+struct TextLayoutCache {
+    map: std::collections::HashMap<LayoutKey, IDWriteTextLayout>,
+    order: std::collections::VecDeque<LayoutKey>,
+}
+
+impl TextLayoutCache {
+    const CAP: usize = 512;
+    fn new() -> Self {
+        TextLayoutCache {
+            map: std::collections::HashMap::new(),
+            order: std::collections::VecDeque::new(),
+        }
+    }
+    fn get(&self, k: &LayoutKey) -> Option<IDWriteTextLayout> {
+        self.map.get(k).cloned()
+    }
+    fn insert(&mut self, k: LayoutKey, v: IDWriteTextLayout) {
+        if self.map.contains_key(&k) {
+            return;
+        }
+        if self.order.len() == Self::CAP {
+            if let Some(old) = self.order.pop_front() {
+                self.map.remove(&old);
+            }
+        }
+        self.order.push_back(k.clone());
+        self.map.insert(k, v);
+    }
+}
+
+static TEXT_LAYOUTS: std::sync::LazyLock<std::sync::Mutex<TextLayoutCache>> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(TextLayoutCache::new()));
+
 /// Resolved `TextStyle` -> DWrite format. `Body` = the theme base (14pt),
 /// `Exact` = explicit logical dp (still OS/DPI scaled by the target).
 /// Family + numeric weight ride the cache key — Geist's variable wght
@@ -191,6 +260,24 @@ fn layout_for(
     max_h: f32,
     ts: &crate::style::TextStyle,
 ) -> UiResult<IDWriteTextLayout> {
+    let (size, wkey, fam, lh, ul, ls) = style_sig(ts);
+    let key = (
+        text.to_string(),
+        size,
+        wkey,
+        fam,
+        lh,
+        ul,
+        ls,
+        max_w.to_bits(),
+        max_h.to_bits(),
+    );
+    if let Some(l) = TEXT_LAYOUTS.lock().unwrap().get(&key) {
+        return Ok(l);
+    }
+    super::RESIZE
+        .text_layout_creates
+        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let d = dwrite()?;
     let fmt = fmt_for(ts, 0)?;
     let wide: Vec<u16> = text.encode_utf16().collect();
@@ -242,6 +329,7 @@ fn layout_for(
             )
             .map_err(|e| UiError::Platform(format!("SetCharacterSpacing: {e}")))?;
         }
+        TEXT_LAYOUTS.lock().unwrap().insert(key, lay.clone());
         Ok(lay)
     }
 }
@@ -332,6 +420,7 @@ impl Renderer {
     }
 
     pub(crate) fn resize(&mut self) {
+        let t0 = std::time::Instant::now();
         if self.hwnd.is_invalid() {
             return;
         }
@@ -349,6 +438,12 @@ impl Renderer {
         } else {
             let _ = self.ensure_target();
         }
+        super::ResizeCounters::bump(
+            &super::RESIZE.resize_runs,
+            &super::RESIZE.resize_us,
+            &super::RESIZE.resize_max_us,
+            t0.elapsed().as_micros() as u64,
+        );
     }
 
     fn ensure_target(&mut self) -> UiResult<&ID2D1HwndRenderTarget> {
@@ -1381,6 +1476,11 @@ pub(crate) fn draw_shadow(
         }
         return Ok(());
     }
+
+    // cache miss — the SDF+blur re-raster below is the expensive resize step
+    super::RESIZE
+        .shadow_rasters
+        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
     // signed distance to the per-corner rounded rect — evaluated in DIP,
     // sampled at device-pixel density (1 DIP = `scale` px)

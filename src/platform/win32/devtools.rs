@@ -445,6 +445,53 @@ where
                 self.key_msg(WM_KEYUP, vk, 0).map_err(platform)?;
                 Ok(json!({"key":name,"delivered":true}))
             }
+            "resize" => {
+                // programmatic client-size change — SetWindowPos fires the
+                // SAME synchronous WM_SIZE chain a drag step does, so perf
+                // counters observe the real path (window size is sized on
+                // the outer frame; reported client rect may differ by the
+                // non-client border)
+                let num = |k: &str| -> Result<i32> {
+                    let v = args[k]
+                        .as_i64()
+                        .or_else(|| args[k].as_str().and_then(|s| s.parse().ok()))
+                        .ok_or_else(|| {
+                            Error::new("INVALID_ARGUMENT", format!("{k} required"))
+                        })?;
+                    i32::try_from(v).map_err(|_| {
+                        Error::new("INVALID_ARGUMENT", format!("{k} out of range"))
+                    })
+                };
+                let (w, h) = (num("width")?, num("height")?);
+                if !(64..=16384).contains(&w) || !(64..=16384).contains(&h) {
+                    return Err(Error::new(
+                        "INVALID_ARGUMENT",
+                        "width/height must be 64..=16384 px",
+                    ));
+                }
+                unsafe {
+                    SetWindowPos(
+                        self.hwnd,
+                        None,
+                        0,
+                        0,
+                        w,
+                        h,
+                        SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE,
+                    )
+                    .map_err(platform)?;
+                }
+                let mut c = RECT::default();
+                unsafe {
+                    let _ = GetClientRect(self.hwnd, &mut c);
+                }
+                Ok(json!({"resized":[w,h],"client_px":[c.left,c.top,c.right,c.bottom]}))
+            }
+            "perf" => Ok(super::RESIZE.snapshot()),
+            "perf-reset" => {
+                super::RESIZE.reset();
+                Ok(json!({"reset":true}))
+            }
             "shutdown" => Ok(json!({"shutdown":true})),
             _ => Err(Error::new("NOT_SUPPORTED", command)),
         }
