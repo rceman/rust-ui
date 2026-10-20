@@ -60,6 +60,7 @@ pub enum Icon {
     Sun,
     Moon,
     Monitor,
+    CircleAlert,
 }
 
 impl Icon {
@@ -72,6 +73,7 @@ impl Icon {
             Icon::Sun => "sun",
             Icon::Moon => "moon",
             Icon::Monitor => "monitor",
+            Icon::CircleAlert => "circle-alert",
         }
     }
 
@@ -82,6 +84,7 @@ impl Icon {
             "sun" => Icon::Sun,
             "moon" => Icon::Moon,
             "monitor" => Icon::Monitor,
+            "circle-alert" => Icon::CircleAlert,
             _ => return None,
         })
     }
@@ -179,6 +182,20 @@ impl Icon {
                 LineTo(16.0, 21.0),
                 MoveTo(12.0, 17.0),
                 LineTo(12.0, 21.0),
+            ],
+            // circle-alert: <circle cx="12" cy="12" r="10"/>
+            //   <line x1="12" x2="12" y1="8" y2="12"/>
+            //   <line x1="12" x2="12.01" y1="16" y2="16"/>
+            Icon::CircleAlert => &[
+                Circle {
+                    cx: 12.0,
+                    cy: 12.0,
+                    r: 10.0,
+                },
+                MoveTo(12.0, 8.0),
+                LineTo(12.0, 12.0),
+                MoveTo(12.0, 16.0),
+                LineTo(12.01, 16.0),
             ],
         }
     }

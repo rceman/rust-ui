@@ -47,14 +47,16 @@ pub use text::{
     TextValue,
 };
 pub use theme::{
-    Appearance, ButtonVariant, CardSize, ColorRole, ControlSize, FontFamily, MotionToken, Radius,
-    ReducedMotion, Space, SubmitPolicy, Theme, ThemeMode,
+    AlertVariant, Appearance, BadgeVariant, ButtonVariant, CardSize, ColorRole, ControlSize,
+    FontFamily, MotionToken, Radius, ReducedMotion, SeparatorOrientation, Space, SubmitPolicy,
+    Theme, ThemeMode,
 };
 pub use typography::Typography;
 pub use ui::{
-    ActionBuilder, ButtonBuilder, Canvas, Card, Column, CustomBuilder, CustomRender, IconBuilder,
-    LabelBuilder, Paint, Path2d, PathOp, Role, Row, Scroll, Semantics, SemanticsAction, Stack,
-    Surface, TextBuilder, TextInputBuilder, TextRun, Ui,
+    ActionBuilder, Alert, ButtonBuilder, Canvas, Card, Column, CustomBuilder, CustomRender,
+    IconBuilder, LabelBuilder, Paint, Path2d, PathOp, Role, Row, Scroll, Semantics,
+    SemanticsAction, Separator, Skeleton, Stack, Surface, TextBuilder, TextInputBuilder, TextRun,
+    Ui,
 };
 
 /// `use rust_ui::prelude::*` — the documented consumer surface in one place.
@@ -69,21 +71,24 @@ pub mod prelude {
         Action, ActionStyle, Border, BorderPatch, BorderSide, BorderSidePatch, BoxProps, BoxStyle,
         BoxStylePatch, ButtonStylePatch, Color, CornerRadii, CornerRadiiPatch, Insets, InsetsPatch,
         Shadow, ShadowPatch, StateStyles, TextSize, TextStyle, TextStylePatch, TextWeight,
-        VisualStyle, VisualStylePatch, card_content_style, card_footer_style, card_part_box,
-        card_part_insets, card_spacing, card_title_style,
+        VisualStyle, VisualStylePatch, alert_description_style, alert_icon_role, alert_recipe,
+        alert_title_style, badge_recipe, card_content_style, card_footer_style, card_part_box,
+        card_part_insets, card_spacing, card_title_style, kbd_recipe, separator_recipe,
+        skeleton_recipe,
     };
     pub use crate::text::{
         AcceptOutcome, BindingToken, EditOrigin, TextConflict, TextEdit, TextRevision,
         TextSelection, TextValue,
     };
     pub use crate::theme::{
-        Appearance, ButtonVariant, CardSize, ColorRole, ControlSize, FontFamily, MotionToken,
-        Radius, ReducedMotion, Space, SubmitPolicy, Theme, ThemeMode,
+        AlertVariant, Appearance, BadgeVariant, ButtonVariant, CardSize, ColorRole, ControlSize,
+        FontFamily, MotionToken, Radius, ReducedMotion, SeparatorOrientation, Space, SubmitPolicy,
+        Theme, ThemeMode,
     };
     pub use crate::typography::Typography;
     pub use crate::ui::{
-        Canvas, Card, Column, CustomRender, Paint, Path2d, PathOp, Role, Row, Scroll, Semantics,
-        SemanticsAction, Stack, Surface, TextRun, Ui,
+        Alert, Canvas, Card, Column, CustomRender, Paint, Path2d, PathOp, Role, Row, Scroll,
+        Semantics, SemanticsAction, Separator, Skeleton, Stack, Surface, TextRun, Ui,
     };
     pub use crate::{AssetError, SendError, TaskSender, UiDiagnostic, UiError, UiProxy, UiResult};
 }

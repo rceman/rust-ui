@@ -101,6 +101,9 @@ pub enum ColorRole {
     Destructive40,
     /// `destructive-50-dark` — dark invalid border (`border-destructive/50`)
     Destructive50,
+    /// `destructive-90` — destructive alert description
+    /// (`text-destructive/90`, both themes 90% alpha)
+    Destructive90,
 }
 
 #[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
@@ -157,6 +160,39 @@ pub enum ButtonVariant {
     Ghost,
     Destructive,
     Link,
+}
+
+/// Built-in Shadcn badge variant vocabulary — `Default` is the frozen
+/// `badge.default` (bg-primary text-primary-foreground pill).
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
+pub enum BadgeVariant {
+    #[default]
+    Default,
+    Secondary,
+    Outline,
+    Destructive,
+    Ghost,
+    Link,
+}
+
+/// Built-in Shadcn alert variant vocabulary — `Default` is the frozen
+/// `alert.default` (card chrome + foreground parts), `Destructive` keeps
+/// the same card chrome but shifts icon/title/description to the
+/// destructive roles.
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
+pub enum AlertVariant {
+    #[default]
+    Default,
+    Destructive,
+}
+
+/// Separator orientation — `Horizontal` is a 1dp row-axis rule that fills
+/// the offered cross-axis, `Vertical` the 1dp column-axis analog.
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
+pub enum SeparatorOrientation {
+    #[default]
+    Horizontal,
+    Vertical,
 }
 
 /// Control size class — button and icon-button share the frozen control

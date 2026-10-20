@@ -5,13 +5,14 @@ use std::rc::Rc;
 use crate::UiDiagnostic;
 use crate::arena::Arena;
 use crate::event::{EventFactorySet, FrameTime, KeyEvent, PointerEvent, ScrollOffset};
-use crate::geom::{Align, Justify, LayoutSpec, Point, Visibility};
+use crate::geom::{Align, Justify, LayoutSpec, Length, Point, Visibility};
 use crate::key::{ChildKey, ErasedKey, KeyId};
 use crate::node::{ContainerProps, MsgAdapters, NodeData, NodeId};
 use crate::style::{Action, BoxProps, ButtonStylePatch};
 use crate::text::{TextConflict, TextEdit, TextSelection, TextValue};
 use crate::theme::{
-    Appearance, ButtonVariant, ColorRole, ControlSize, MotionToken, Space, SubmitPolicy, Theme,
+    AlertVariant, Appearance, BadgeVariant, ButtonVariant, ColorRole, ControlSize, MotionToken,
+    SeparatorOrientation, Space, SubmitPolicy, Theme,
 };
 
 /// What a custom view contributes to the tree — an immutable `Rc` snapshot;
@@ -316,6 +317,123 @@ impl Scroll {
             scroll: self.offset,
             ..Default::default()
         }
+    }
+}
+
+/// Separator props — the frozen `bg-border` rule. `orientation` picks the
+/// rule axis; `length` pins the major-axis extent (the frozen specimens
+/// fix it: `w-48` = 192dp, `h-16` = 64dp). Unset, the separator fills
+/// the offered main axis (`Fill(1)`); a `Start`-aligned parent that
+/// offers no main-axis extent needs `length` or a stretch context.
+#[derive(Copy, Clone, Debug, Default, PartialEq)]
+pub struct Separator {
+    pub orientation: SeparatorOrientation,
+    pub length: Option<crate::geom::Dp>,
+}
+
+impl Separator {
+    /// 1dp-tall horizontal rule — fills the offered width.
+    pub fn horizontal() -> Self {
+        Separator {
+            orientation: SeparatorOrientation::Horizontal,
+            length: None,
+        }
+    }
+    /// 1dp-wide vertical rule — fills the offered height.
+    pub fn vertical() -> Self {
+        Separator {
+            orientation: SeparatorOrientation::Vertical,
+            length: None,
+        }
+    }
+    /// Pin the major-axis extent (`w-48` / `h-16` in the frozen
+    /// specimens) instead of filling what the parent offers.
+    pub fn length(mut self, l: crate::geom::Dp) -> Self {
+        self.length = Some(l);
+        self
+    }
+    fn layout(&self) -> LayoutSpec {
+        let major = self.length.map(Length::Fixed).unwrap_or(Length::Fill(1));
+        match self.orientation {
+            SeparatorOrientation::Horizontal => LayoutSpec {
+                width: major,
+                height: Length::Fixed(crate::geom::Dp(1.0)),
+                ..Default::default()
+            },
+            SeparatorOrientation::Vertical => LayoutSpec {
+                width: Length::Fixed(crate::geom::Dp(1.0)),
+                height: major,
+                ..Default::default()
+            },
+        }
+    }
+}
+
+/// Alert container props — `variant` selects the frozen palette
+/// (`alert.default` / `alert.destructive`), `width` an optional fixed
+/// width (the frozen specimen is 320dp), `patch` the surgical override
+/// over `alert_recipe`.
+#[derive(Copy, Clone, Debug, Default, PartialEq)]
+pub struct Alert {
+    pub variant: AlertVariant,
+    pub width: Option<crate::geom::Dp>,
+    /// surgical patch — merges fieldwise within this build
+    pub patch: crate::style::BoxStylePatch,
+}
+
+impl Alert {
+    pub fn new() -> Self {
+        Self::default()
+    }
+    pub fn variant(mut self, v: AlertVariant) -> Self {
+        self.variant = v;
+        self
+    }
+    pub fn width(mut self, w: crate::geom::Dp) -> Self {
+        self.width = Some(w);
+        self
+    }
+    /// surgical patch — later `.style` calls deep-merge, `None` never erases
+    pub fn style(mut self, p: crate::style::BoxStylePatch) -> Self {
+        self.patch.merge(&p);
+        self
+    }
+}
+
+/// Skeleton props — a static `bg-muted` placeholder block. `width`/
+/// `height` are `Length` specs (the frozen specimen fixes both: avatar
+/// 40×40, lines 168×16 and 112×16); `circle` selects the `rounded-full`
+/// radius for avatar shapes. No animation — reduced-motion product scope.
+#[derive(Copy, Clone, Debug, Default, PartialEq)]
+pub struct Skeleton {
+    pub width: Length,
+    pub height: Length,
+    pub circle: bool,
+}
+
+impl Skeleton {
+    pub fn new() -> Self {
+        Self::default()
+    }
+    pub fn width(mut self, w: Length) -> Self {
+        self.width = w;
+        self
+    }
+    pub fn height(mut self, h: Length) -> Self {
+        self.height = h;
+        self
+    }
+    /// fixed-size convenience — `width(Fixed(w)) + height(Fixed(h))`
+    pub fn size(mut self, w: crate::geom::Dp, h: crate::geom::Dp) -> Self {
+        self.width = Length::Fixed(w);
+        self.height = Length::Fixed(h);
+        self
+    }
+    /// `rounded-full` — the avatar shape (radius normalizes to the
+    /// half-extent at paint)
+    pub fn circle(mut self) -> Self {
+        self.circle = true;
+        self
     }
 }
 
@@ -849,6 +967,104 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
         );
     }
 
+    /// `ui.separator` — the frozen `bg-border` rule: a decorative 1dp
+    /// line in the `Border` role. `Horizontal` fills the offered width
+    /// (stretch/fill), `Vertical` the offered height — use
+    /// `Separator::length` or a stretch-aligned parent where no extent
+    /// is offered.
+    pub fn separator(&mut self, props: Separator) {
+        self.tx.stage_container(
+            crate::node::KIND_BOX,
+            None,
+            ContainerProps {
+                full: Some(crate::style::separator_recipe()),
+                ..Default::default()
+            },
+            props.layout(),
+            EventFactorySet::default(),
+            Visibility::Visible,
+            |_: &mut Ui<'_, '_, M>| {},
+            false,
+            |props| NodeData::Container {
+                kind: crate::node::KIND_BOX,
+                props,
+            },
+        );
+    }
+
+    /// `ui.alert` — the frozen `cn-alert` container: card chrome,
+    /// `rounded-lg` (10dp), 1dp border, padding-block 8 / inline 10.
+    /// Compose the `icon`/`title`/`description` parts inside with
+    /// `ui.part` + the `alert_*` style recipes.
+    pub fn alert(&mut self, props: Alert, draw: impl FnOnce(&mut Ui<'_, '_, M>)) {
+        let mut full = crate::style::alert_recipe(props.variant);
+        full.patch(&props.patch);
+        let layout = props
+            .width
+            .map_or_else(LayoutSpec::default, |w| LayoutSpec {
+                width: Length::Fixed(w),
+                ..Default::default()
+            });
+        self.tx.stage_container(
+            crate::node::KIND_BOX,
+            None,
+            ContainerProps {
+                full: Some(full),
+                ..Default::default()
+            },
+            layout,
+            EventFactorySet::default(),
+            Visibility::Visible,
+            draw,
+            false,
+            |props| NodeData::Container {
+                kind: crate::node::KIND_BOX,
+                props,
+            },
+        );
+    }
+
+    /// `ui.skeleton` — a static `bg-muted` placeholder block at an
+    /// authored size (radius-md; `circle()` selects `rounded-full`).
+    /// Deliberately no animation or timers — the frozen contract is
+    /// static (reduced-motion product scope).
+    pub fn skeleton(&mut self, props: Skeleton) {
+        self.tx.stage_container(
+            crate::node::KIND_BOX,
+            None,
+            ContainerProps {
+                full: Some(crate::style::skeleton_recipe(props.circle)),
+                ..Default::default()
+            },
+            LayoutSpec {
+                width: props.width,
+                height: props.height,
+                ..Default::default()
+            },
+            EventFactorySet::default(),
+            Visibility::Visible,
+            |_: &mut Ui<'_, '_, M>| {},
+            false,
+            |props| NodeData::Container {
+                kind: crate::node::KIND_BOX,
+                props,
+            },
+        );
+    }
+
+    /// `ui.kbd_group` — the frozen `cn-kbd-group` inline row (gap-1,
+    /// items-center). Children are `ui.kbd` caps marked as
+    /// `ui.part("key[..]", ..)` parts of the group's automation owner.
+    pub fn kbd_group(&mut self, draw: impl FnOnce(&mut Ui<'_, '_, M>)) {
+        self.row(
+            Row::new()
+                .gap(Space::Xs)
+                .align(Align::Center)
+                .padding(Space::None),
+            draw,
+        );
+    }
+
     // ----- leaves -----------------------------------------------------------
 
     /// Decorative vector icon leaf — Lucide stroke geometry at `size`.
@@ -899,6 +1115,33 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
             factories: EventFactorySet::default(),
             _m: std::marker::PhantomData,
         }
+    }
+
+    /// `ui.badge` — a content-hugging `cn-badge` pill: the variant
+    /// recipe's chrome + `text-xs` medium label. Returns the underlying
+    /// `LabelBuilder` so automation ids and surgical text patches
+    /// compose exactly as on `ui.label`. Not interactive — no press or
+    /// hover states beyond the frozen `normal` capture.
+    pub fn badge<'a, T: AsRef<str>>(
+        &'a mut self,
+        variant: BadgeVariant,
+        text: T,
+    ) -> LabelBuilder<'a, 'ui, T, M> {
+        let vs = crate::style::badge_recipe(variant);
+        self.label(text)
+            .chrome(vs.box_style)
+            .style(text_to_patch(&vs.text_style))
+    }
+
+    /// `ui.kbd` — a single `cn-kbd` key cap: `bg-muted` radius-sm box,
+    /// `text-xs` medium `muted-foreground`, 20dp minimum width. Content-
+    /// hugging — group caps with `ui.kbd_group` + `ui.part("key[..]",..)`.
+    pub fn kbd<'a, T: AsRef<str>>(&'a mut self, text: T) -> LabelBuilder<'a, 'ui, T, M> {
+        let vs = crate::style::kbd_recipe();
+        self.label(text)
+            .chrome(vs.box_style)
+            .style(text_to_patch(&vs.text_style))
+            .min_width(crate::geom::Dp(20.0))
     }
 
     pub fn button<'a>(&'a mut self, text: &'a str) -> ButtonBuilder<'a, 'ui, M> {
@@ -1250,6 +1493,24 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
     pub fn theme_ref(&self) -> &Theme {
         &self.tx.theme
     }
+}
+
+/// Project a full recipe `TextStyle` into a `TextStylePatch` — the same
+/// conversion `TextBuilder` applies when a primitive hands the label
+/// pipeline a complete style (`TextSize::Body` stays unset so the label
+/// recipe's base size survives).
+fn text_to_patch(ts: &crate::style::TextStyle) -> crate::style::TextStylePatch {
+    let mut p = crate::style::TextStylePatch::default();
+    p.foreground = Some(ts.foreground);
+    if let crate::style::TextSize::Exact(d) = ts.size {
+        p.size = Some(d);
+    }
+    p.weight = Some(ts.weight);
+    p.font = Some(ts.font);
+    p.line_height = ts.line_height;
+    p.underline = Some(ts.underline);
+    p.letter_spacing = Some(ts.letter_spacing);
+    p
 }
 
 // ============================ builders ======================================
