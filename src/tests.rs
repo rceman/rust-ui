@@ -9059,6 +9059,13 @@ fn multiline_exact_line_spacing() {
 /// the BGRA framebuffer.
 #[cfg(windows)]
 fn draw_peer_dib(peer: &crate::platform::win32::WindowlessPeer) -> Vec<u8> {
+    draw_peer_dib_on(peer, [0., 0., 0., 1.])
+}
+
+/// draw_peer_dib with an explicit clear color — a dark band must be
+/// distinguished from the canvas, not just the glyph ink
+#[cfg(windows)]
+fn draw_peer_dib_on(peer: &crate::platform::win32::WindowlessPeer, clear: [f32; 4]) -> Vec<u8> {
     use crate::platform::win32::space::LogicalRect;
     use windows::Win32::Foundation::RECT;
     use windows::Win32::Graphics::Direct2D::Common::*;
@@ -9108,10 +9115,10 @@ fn draw_peer_dib(peer: &crate::platform::win32::WindowlessPeer) -> Vec<u8> {
         let rt: ID2D1RenderTarget = dcrt.cast().expect("cast");
         rt.BeginDraw();
         rt.Clear(Some(&D2D1_COLOR_F {
-            r: 0.,
-            g: 0.,
-            b: 0.,
-            a: 1.,
+            r: clear[0],
+            g: clear[1],
+            b: clear[2],
+            a: clear[3],
         }));
         peer.draw(
             &rt,
@@ -9376,23 +9383,26 @@ fn selection_band_renders_contract_dark() {
         ScaleFactor(1.0),
     )
     .expect("bounds");
-    let fb = draw_peer_dib(&peer); // 800x600, cleared BLACK
-    // the band rows of the second line: count near-black (band) and
-    // near-white (selected glyphs, swapped to sel_fg by AUTOCOLOR)
-    let (mut band, mut seltext) = (0usize, 0usize);
-    for y in 20..50usize {
-        for x in 0..200usize {
-            let o = (y * 800 + x) * 4;
-            let (r, g, b) = (fb[o + 2], fb[o + 1], fb[o]);
-            if r < 8 && g < 8 && b < 8 {
-                band += 1;
-            } else if r > 200 && g > 200 && b > 200 {
-                seltext += 1;
+    // WHITE canvas — the near-black band must be a real discriminant,
+    // not the background: count dark pixels in the selected run's rows
+    // vs the un-selected control row directly above
+    let fb = draw_peer_dib_on(&peer, [1., 1., 1., 1.]);
+    let dark = |y0: usize, y1: usize| -> usize {
+        let mut n = 0;
+        for y in y0..y1 {
+            for x in 0..200usize {
+                let o = (y * 800 + x) * 4;
+                if fb[o + 2] < 60 && fb[o + 1] < 60 && fb[o] < 60 {
+                    n += 1;
+                }
             }
         }
-    }
+        n
+    };
+    let band_px = dark(25, 45); // "Second line" band rows
+    let ctrl_px = dark(4, 20); // un-selected first line: glyphs only
     assert!(
-        band > 500 && seltext > 10,
-        "contract selection must draw a near-black band with light text,          got band={band}px seltext={seltext}px"
+        band_px > ctrl_px + 300,
+        "selection band must add dark ink over the glyph baseline,          got band={band_px}px vs control={ctrl_px}px — if the band is          skipped both counts collapse to glyph-only pixels"
     );
 }
