@@ -1911,11 +1911,7 @@ pub fn resolve_toggle_visual(
             underline: false,
             letter_spacing: 0.0,
         },
-        focus_ring: if invalid {
-            Color::Role(ColorRole::DestructiveRing)
-        } else {
-            Color::Role(ColorRole::Focus)
-        },
+        focus_ring: Color::Role(crate::layout::ring_color_role(invalid)),
     }
 }
 
@@ -1947,20 +1943,19 @@ pub fn input_overlay_style(disabled: bool, invalid: bool) -> BoxStyle {
 
 /// Editor-leaf chrome inside the input/textarea stack — border/radii
 /// stripped (the overlay owns the frame); padding carries the frozen
-/// content offset INCLUDING the overlay's 1dp border (`px-2.5` 10dp +
-/// 1dp border = 11 horizontal; input `py-1`+1 = 5 top/bottom, textarea
-/// `py-2`+1 = 9). Peer surface = element rect minus this inset.
+/// content offset (input `py-1 px-2.5` = 4v/10h; textarea `py-2` = 8v/
+/// 10h). Peer surface = element rect minus this inset.
 pub fn input_editor_chrome(multiline: bool) -> BoxStyle {
-    let pad_v = if multiline { 9.0 } else { 5.0 };
+    let pad_v = if multiline { 8.0 } else { 4.0 };
     BoxStyle {
         background: Color::Role(ColorRole::Background),
         border: Border::default(),
         radii: CornerRadii::default(),
         padding: Insets {
             top: Dp(pad_v),
-            right: Dp(11.0),
+            right: Dp(10.0),
             bottom: Dp(pad_v),
-            left: Dp(11.0),
+            left: Dp(10.0),
         },
         shadow: None,
     }

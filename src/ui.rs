@@ -7,7 +7,7 @@ use crate::arena::Arena;
 use crate::event::{EventFactorySet, FrameTime, KeyEvent, PointerEvent, ScrollOffset};
 use crate::geom::{Align, Justify, LayoutSpec, Length, Point, Visibility};
 use crate::key::{ChildKey, ErasedKey, KeyId};
-use crate::node::{ContainerProps, MsgAdapters, NodeData, NodeId};
+use crate::node::{ContainerProps, MsgAdapters, NodeData, NodeId, Presented};
 use crate::style::{Action, BoxProps, ButtonStylePatch};
 use crate::text::{TextConflict, TextEdit, TextSelection, TextValue};
 use crate::theme::{
@@ -478,6 +478,8 @@ pub struct Checkbox {
     pub label: Option<&'static str>,
     /// accessible name when the visible label isn't the control name
     pub accessible_name: Option<&'static str>,
+    /// presentation-only staged visual state (`Presented` docs)
+    pub presented: Presented,
 }
 
 /// Switch props — same app-owned `checked` model; `size` selects the
@@ -490,6 +492,8 @@ pub struct Switch {
     pub size: crate::theme::ToggleSize,
     pub label: Option<&'static str>,
     pub accessible_name: Option<&'static str>,
+    /// presentation-only staged visual state (`Presented` docs)
+    pub presented: Presented,
 }
 
 /// Radio-item options inside `ui.radio_group` — per-item `disabled` /
@@ -498,6 +502,8 @@ pub struct Switch {
 pub struct RadioItemOpts {
     pub disabled: bool,
     pub invalid: bool,
+    /// presentation-only staged visual state (`Presented` docs)
+    pub presented: Presented,
 }
 
 /// Field props — `orientation` picks the frozen vertical stack
@@ -521,6 +527,9 @@ pub(crate) struct StagedNode {
     pub part_key: Option<Rc<str>>,
     pub key: ChildKey,
     pub data: NodeData,
+    /// staged presentation-only visual state — builders set it
+    /// post-stage like `automation_id` (never grants interactivity)
+    pub presented: Presented,
     pub visibility: Visibility,
     pub layout: LayoutSpec,
     pub factories: EventFactorySet,
@@ -541,6 +550,7 @@ impl StagedNode {
                 ordinal: u32::MAX,
             },
             data: NodeData::Empty,
+            presented: Presented::default(),
             visibility: Visibility::Hidden,
             layout: LayoutSpec::default(),
             factories: EventFactorySet::default(),
@@ -741,6 +751,7 @@ impl Tx<'_> {
             part_key: None,
             key,
             data,
+            presented: Presented::default(),
             visibility,
             layout,
             factories,
@@ -824,6 +835,7 @@ impl Tx<'_> {
             part_key: None,
             key,
             data,
+            presented: Presented::default(),
             visibility,
             layout,
             factories,
@@ -1242,6 +1254,7 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
             icon_only: false,
             accessible_name: None,
             invalid: false,
+            presented: Presented::default(),
             visibility: Visibility::Visible,
             layout: LayoutSpec::default(),
             factories: EventFactorySet::default(),
@@ -1265,6 +1278,9 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
             max_lines: None,
             accessible_label: None,
             invalid: false,
+            selection: None,
+            line_height: None,
+            presented: Presented::default(),
             patch: crate::style::TextInputStylePatch::default(),
             visibility: Visibility::Visible,
             layout: LayoutSpec::default(),
@@ -1289,6 +1305,9 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
             max_lines: None,
             accessible_label: None,
             invalid: false,
+            selection: None,
+            line_height: None,
+            presented: Presented::default(),
             patch: crate::style::TextInputStylePatch::default(),
             visibility: Visibility::Visible,
             layout: LayoutSpec::default(),
@@ -1373,6 +1392,7 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
                 kind: crate::node::KIND_SCOPE,
                 props: ContainerProps::default(),
             },
+            presented: Presented::default(),
             visibility: Visibility::Visible,
             layout: LayoutSpec::default(),
             factories: EventFactorySet::default(),
@@ -1731,6 +1751,7 @@ pub struct ButtonBuilder<'a, 'ui, M: 'static> {
     icon_only: bool,
     accessible_name: Option<Rc<str>>,
     invalid: bool,
+    presented: Presented,
     visibility: Visibility,
     layout: LayoutSpec,
     factories: EventFactorySet,
@@ -1798,6 +1819,13 @@ impl<'a, 'ui, M: 'static> ButtonBuilder<'a, 'ui, M> {
     /// disabled/hover/pressed/focus
     pub fn invalid(mut self, on: bool) -> Self {
         self.invalid = on;
+        self
+    }
+    /// presentation-only staged visual state — paints/lays out exactly
+    /// like the runtime state it mirrors; never grants real focus,
+    /// hover, or interactivity
+    pub fn presented(mut self, p: Presented) -> Self {
+        self.presented = p;
         self
     }
     pub fn visibility(mut self, v: Visibility) -> Self {
@@ -1879,6 +1907,7 @@ impl<'a, 'ui, M: 'static> Drop for ButtonBuilder<'a, 'ui, M> {
             self.accessible_name.clone(),
             self.invalid,
         );
+        let presented = self.presented;
         self.tx.stage_leaf(
             crate::node::KIND_BUTTON,
             None,
@@ -1909,11 +1938,20 @@ impl<'a, 'ui, M: 'static> Drop for ButtonBuilder<'a, 'ui, M> {
                 }
             },
         );
-        if let Some(id) = self.automation_id.take()
-            && self.tx.frames.last().unwrap().children.len() > before
-            && let Some(index) = self.tx.frames.last().unwrap().children.last().copied()
+        if let Some(index) = self
+            .tx
+            .frames
+            .last()
+            .unwrap()
+            .children
+            .last()
+            .copied()
+            .filter(|_| self.tx.frames.last().unwrap().children.len() > before)
         {
-            self.tx.nodes[index as usize].automation_id = Some(id);
+            if let Some(id) = self.automation_id.take() {
+                self.tx.nodes[index as usize].automation_id = Some(id);
+            }
+            self.tx.nodes[index as usize].presented = presented;
         }
     }
 }
@@ -1932,6 +1970,11 @@ pub struct TextInputBuilder<'a, 'ui, 'b, M: 'static> {
     accessible_label: Option<Rc<str>>,
     /// semantic `aria-invalid` — unconditional destructive ring
     invalid: bool,
+    /// staged selection — UTF-16 `[start, end)`
+    selection: Option<(usize, usize)>,
+    /// authored exact line box — `None` keeps the font's natural height
+    line_height: Option<crate::geom::Dp>,
+    presented: Presented,
     /// capability-limited patch — chrome paints the frame, `foreground`
     /// is the only peer-routed field (approved boundary: no size/weight)
     patch: crate::style::TextInputStylePatch,
@@ -1959,6 +2002,23 @@ impl<'a, 'ui, 'b, M: 'static> TextInputBuilder<'a, 'ui, 'b, M> {
     /// (`ring-destructive` always-on); orthogonal to disabled/focus
     pub fn invalid(mut self, on: bool) -> Self {
         self.invalid = on;
+        self
+    }
+    /// staged selection — UTF-16 `[start, end)` applied to the peer while
+    /// staged; omit to leave selection to native/user control
+    pub fn selection(mut self, start: usize, end: usize) -> Self {
+        self.selection = Some((start, end));
+        self
+    }
+    /// exact line box (native paragraph line-spacing rule 4) — the
+    /// authored Dp count lands at any scale; omit for natural height
+    pub fn line_height(mut self, h: crate::geom::Dp) -> Self {
+        self.line_height = Some(h);
+        self
+    }
+    /// presentation-only staged visual state (`Presented` docs)
+    pub fn presented(mut self, p: Presented) -> Self {
+        self.presented = p;
         self
     }
     pub fn placeholder(mut self, p: &str) -> Self {
@@ -2043,6 +2103,8 @@ impl<'a, 'ui, 'b, M: 'static> Drop for TextInputBuilder<'a, 'ui, 'b, M> {
             invalid,
             multiline,
             patch,
+            selection,
+            line_height,
         ) = (
             self.placeholder.clone(),
             self.accessible_label.clone(),
@@ -2053,7 +2115,10 @@ impl<'a, 'ui, 'b, M: 'static> Drop for TextInputBuilder<'a, 'ui, 'b, M> {
             self.invalid,
             self.multiline,
             self.patch,
+            self.selection,
+            self.line_height,
         );
+        let presented = self.presented;
         self.tx.stage_leaf(
             kind,
             None,
@@ -2071,14 +2136,25 @@ impl<'a, 'ui, 'b, M: 'static> Drop for TextInputBuilder<'a, 'ui, 'b, M> {
                 accessible_label,
                 patch,
                 invalid,
+                selection,
+                line_height,
                 sync: Default::default(),
             },
         );
-        if let Some(id) = self.automation_id.take()
-            && self.tx.frames.last().unwrap().children.len() > before
-            && let Some(index) = self.tx.frames.last().unwrap().children.last().copied()
+        if let Some(index) = self
+            .tx
+            .frames
+            .last()
+            .unwrap()
+            .children
+            .last()
+            .copied()
+            .filter(|_| self.tx.frames.last().unwrap().children.len() > before)
         {
-            self.tx.nodes[index as usize].automation_id = Some(id);
+            if let Some(id) = self.automation_id.take() {
+                self.tx.nodes[index as usize].automation_id = Some(id);
+            }
+            self.tx.nodes[index as usize].presented = presented;
         }
     }
 }
@@ -2176,6 +2252,13 @@ impl<'a, 'ui, M: 'static> ActionBuilder<'a, 'ui, M> {
     pub fn automation_id(self, id: &str) -> Self {
         if let Some(i) = self.staged {
             self.tx.nodes[i as usize].automation_id = Some(Rc::from(id));
+        }
+        self
+    }
+    /// presentation-only staged visual state (`Presented` docs)
+    pub fn presented(self, p: Presented) -> Self {
+        if let Some(i) = self.staged {
+            self.tx.nodes[i as usize].presented = p;
         }
         self
     }
@@ -2391,6 +2474,7 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
         invalid: bool,
         label: Option<&'static str>,
         accessible_name: Option<&'static str>,
+        presented: Presented,
         layout: LayoutSpec,
         factories: EventFactorySet,
     ) {
@@ -2410,6 +2494,11 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
                 accessible_name: accessible_name.map(Rc::from),
             },
         );
+        if presented.any()
+            && let Some(index) = self.tx.frames.last().unwrap().children.last().copied()
+        {
+            self.tx.nodes[index as usize].presented = presented;
+        }
     }
 
     /// `ui.checkbox` — 16×16 selection box; app model owns `checked`,
@@ -2426,6 +2515,7 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
             props.invalid,
             props.label,
             props.accessible_name,
+            props.presented,
             LayoutSpec::default(),
             fac,
         );
@@ -2444,6 +2534,7 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
             props.invalid,
             props.label,
             props.accessible_name,
+            props.presented,
             LayoutSpec::default(),
             fac,
         );
@@ -2557,6 +2648,7 @@ impl<'a, 'ui, 'tx, M: 'static> RadioGroup<'a, 'ui, 'tx, M> {
                 opts.invalid,
                 Some(label),
                 None,
+                opts.presented,
                 LayoutSpec::default(),
                 fac,
             );
@@ -2578,6 +2670,10 @@ pub struct InputBuilder<'a, 'ui, 'b, M: 'static> {
     max_lines: Option<u32>,
     accessible_label: Option<Rc<str>>,
     invalid: bool,
+    selection: Option<(usize, usize)>,
+    /// authored exact line box — `None` keeps the font's natural height
+    line_height: Option<crate::geom::Dp>,
+    presented: Presented,
     patch: crate::style::TextInputStylePatch,
     visibility: Visibility,
     layout: LayoutSpec,
@@ -2603,6 +2699,9 @@ impl<'a, 'ui, 'b, M: 'static> InputBuilder<'a, 'ui, 'b, M> {
             max_lines: None,
             accessible_label: None,
             invalid: false,
+            selection: None,
+            line_height: None,
+            presented: Presented::default(),
             patch: crate::style::TextInputStylePatch::default(),
             visibility: Visibility::Visible,
             layout: LayoutSpec::default(),
@@ -2620,6 +2719,23 @@ impl<'a, 'ui, 'b, M: 'static> InputBuilder<'a, 'ui, 'b, M> {
     }
     pub fn invalid(mut self, on: bool) -> Self {
         self.invalid = on;
+        self
+    }
+    /// staged selection — UTF-16 `[start, end)` applied to the peer while
+    /// staged; omit to leave selection to native/user control
+    pub fn selection(mut self, start: usize, end: usize) -> Self {
+        self.selection = Some((start, end));
+        self
+    }
+    /// exact line box (native paragraph line-spacing rule 4) — the
+    /// authored Dp count lands at any scale; omit for natural height
+    pub fn line_height(mut self, h: crate::geom::Dp) -> Self {
+        self.line_height = Some(h);
+        self
+    }
+    /// presentation-only staged visual state (`Presented` docs)
+    pub fn presented(mut self, p: Presented) -> Self {
+        self.presented = p;
         self
     }
     pub fn placeholder(mut self, p: &str) -> Self {
@@ -2705,6 +2821,9 @@ impl<'a, 'ui, 'b, M: 'static> Drop for InputBuilder<'a, 'ui, 'b, M> {
             patch,
             layout,
             visibility,
+            selection,
+            line_height,
+            presented,
         ) = (
             self.placeholder.clone(),
             self.accessible_label.clone(),
@@ -2717,6 +2836,9 @@ impl<'a, 'ui, 'b, M: 'static> Drop for InputBuilder<'a, 'ui, 'b, M> {
             self.patch,
             self.layout,
             self.visibility,
+            self.selection,
+            self.line_height,
+            self.presented,
         );
         // authored foreground still reaches the peer; chrome is the stack
         // chrome (author's `chrome` fields merge over the frozen inset),
@@ -2753,14 +2875,18 @@ impl<'a, 'ui, 'b, M: 'static> Drop for InputBuilder<'a, 'ui, 'b, M> {
                         accessible_label,
                         patch: epatch,
                         invalid,
+                        selection,
+                        line_height,
                         sync: Default::default(),
                     },
                 );
-                if let Some(id) = auto
-                    && ui.tx.frames.last().unwrap().children.len() > before
+                if ui.tx.frames.last().unwrap().children.len() > before
                     && let Some(i) = ui.tx.frames.last().unwrap().children.last().copied()
                 {
-                    ui.tx.nodes[i as usize].automation_id = Some(id);
+                    if let Some(id) = auto {
+                        ui.tx.nodes[i as usize].automation_id = Some(id);
+                    }
+                    ui.tx.nodes[i as usize].presented = presented;
                 }
                 ui.box_(
                     crate::style::BoxProps::new()

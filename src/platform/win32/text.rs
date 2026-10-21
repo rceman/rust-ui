@@ -155,7 +155,9 @@ pub(crate) struct HostShared {
     /// (the host space; see space.rs); divide by scale for DIP
     pub natural: SIZE,
     pub cf: Box<CHARFORMATW>,
-    pub pf: Box<PARAFORMAT>,
+    /// v2 because the host default carries line spacing (v1 has no
+    /// dyLineSpacing/bLineSpacingRule fields); msftedit reads by cbSize
+    pub pf: Box<PARAFORMAT2>,
     pub fg: COLORREF,
     /// the AUTHORED foreground (Color, not a resolved COLORREF) — theme
     /// flips re-resolve roles through it; a literal `Color::Rgba` is
@@ -605,7 +607,9 @@ impl ITextHost_Impl for HostBox {
     }
     fn TxGetParaFormat(&self, pppf: *const *const PARAFORMAT) -> Result<()> {
         unsafe {
-            *(pppf as *mut *const PARAFORMAT) = &*self.s().host.pf;
+            // the Base member sits at offset 0 — msftedit reads cbSize and
+            // continues into the v2 tail inside our box
+            *(pppf as *mut *const PARAFORMAT) = &self.s().host.pf.Base;
         }
         Ok(())
     }
@@ -669,7 +673,14 @@ impl ITextHost_Impl for HostBox {
     }
     fn OnTxParaFormatChange(&self, pppf: *const PARAFORMAT) -> Result<()> {
         unsafe {
-            *self.m().host.pf = *pppf;
+            // source may be v1 or v2 — copy only what it actually carries
+            // (a blind v2 read could walk past a v1 payload)
+            let n = ((*pppf).cbSize as usize).min(std::mem::size_of::<PARAFORMAT2>());
+            std::ptr::copy_nonoverlapping(
+                pppf as *const u8,
+                &mut *self.m().host.pf as *mut PARAFORMAT2 as *mut u8,
+                n,
+            );
         }
         Ok(())
     }
@@ -811,6 +822,8 @@ pub(crate) struct WindowlessPeer {
     sink: std::sync::Arc<std::sync::Mutex<Vec<super::NativeSinkItem>>>,
     /// multiline vs single-line init
     multiline: bool,
+    /// authored line box in twips as latched at create — snapshot introspection
+    line_twips: i32,
     /// THE TextServices activation state — NOT one boolean (F04):
     /// InPlace = formatted against the px client space (measure/draw);
     /// Ui = additionally UI-active — focus owner only (msftedit allows a
@@ -921,16 +934,30 @@ impl WindowlessPeer {
                     // CFE_AUTOCOLOR: draw-time theme recoloring without
                     // rewriting character formats on every view
                     dwEffects: CFE_EFFECTS(CFE_AUTOCOLOR.0 | if cfg.bold { CFE_BOLD.0 } else { 0 }),
-                    yHeight: cfg.size_twips,
+                    // An authored exact line box is reached by
+                    // calibrating the FONT SIZE: under TXTBIT_D2DDWRITE
+                    // msftedit ignores every paragraph line-spacing
+                    // control and derives the pitch from yHeight.
+                    // Measured on this host (Segoe UI, 96dpi):
+                    // yHeight 280→25px, 240→21, 230/224/220→20,
+                    // 210→19, 200→17 — i.e. ≈11.5 twips of yHeight per
+                    // px of pitch, so `line_twips * 23/30` lands the
+                    // authored DIP pitch (300tw/20dip → 230tw → 20px).
+                    yHeight: if cfg.line_twips > 0 {
+                        cfg.line_twips * 23 / 30
+                    } else {
+                        cfg.size_twips
+                    },
                     yOffset: 0,
                     crTextColor: colorref(cfg.fg),
                     bCharSet: DEFAULT_CHARSET,
                     bPitchAndFamily: 0,
                     szFaceName: face,
                 }),
-                pf: Box::new(PARAFORMAT {
-                    cbSize: std::mem::size_of::<PARAFORMAT>() as u32,
-                    ..Default::default()
+                pf: Box::new({
+                    let mut p = PARAFORMAT2::default();
+                    p.Base.cbSize = std::mem::size_of::<PARAFORMAT2>() as u32;
+                    p
                 }),
                 fg: colorref(cfg.fg),
                 fg_authored: cfg.fg_authored,
@@ -1012,6 +1039,7 @@ impl WindowlessPeer {
                 tx: Some(tx2),
                 host,
                 id,
+                line_twips: cfg.line_twips,
                 node: NodeId {
                     slot: u32::MAX,
                     generation: u64::MAX,
@@ -1425,6 +1453,14 @@ impl WindowlessPeer {
         self.restore_selection_utf16(anchor, focus)
     }
 
+    /// Staged-specimen selection setter — a forward `[start, end)` UTF-16
+    /// range applied WITHOUT requiring real focus (TXTBIT_HIDESELECTION
+    /// stays unset, so an unfocused selection renders). Same TOM route
+    /// the relatch restore uses.
+    pub(crate) fn set_selection_utf16(&self, start: usize, end: usize) -> UiResult {
+        self.restore_selection_utf16(start, end)
+    }
+
     /// Re-apply a directional (anchor, focus) selection after a relatch —
     /// SetStart/SetEnd + the tomSelStartActive flag restore direction.
     fn restore_selection_utf16(&self, anchor: usize, focus: usize) -> UiResult {
@@ -1567,6 +1603,11 @@ impl WindowlessPeer {
     /// update the bits the host reports, then OnTxPropertyBitsChange makes
     /// the service re-query. Editing, paste and IME are all dead inside
     /// msftedit — not just gated in the input router.
+    /// latched authored line box (twips) — 0 = natural pitch
+    pub(crate) fn line_twips_latched(&self) -> i32 {
+        self.line_twips
+    }
+
     pub(crate) fn set_read_only(&self, ro: bool) {
         {
             let mut s = self.shared_mut();
@@ -1666,6 +1707,14 @@ pub(crate) struct PeerConfig {
     pub read_only: bool,
     pub face: String,
     pub size_twips: i32,
+    /// target line box in twips — msftedit's D2DDWRITE layout ignores
+    /// EVERY paragraph-spacing control (EM_SETPARAFORMAT, the
+    /// TxGetParaFormat default, TOM ITextPara/ITextPara2
+    /// SetLineSpacing, RTF \sl, negative spaceBefore/After: all
+    /// measured inert/E_FAIL), so the peer reaches the target pitch by
+    /// calibrating `yHeight` instead — see `create`.
+    /// 0 keeps the font's natural height.
+    pub line_twips: i32,
     pub fg: [f32; 4],
     /// the consumer's authored foreground `Color` (roles re-resolve)
     pub fg_authored: crate::style::Color,
@@ -1740,6 +1789,18 @@ impl crate::node::TextPeer for WindowlessPeer {
     fn attach(&mut self, node: NodeId) {
         self.node = node;
         self.shared_mut().host.node = Some(node);
+    }
+
+    /// A staged selection is authoritative — apply it whenever the peer's
+    /// live selection differs (idempotent: no write when already staged);
+    /// `None` leaves selection to user/native control.
+    fn apply_selection(&mut self, sel: Option<(usize, usize)>) -> UiResult {
+        if let Some((s, e)) = sel
+            && self.selection_utf16().ok() != Some((s, e))
+        {
+            self.set_selection_utf16(s, e)?;
+        }
+        Ok(())
     }
 }
 

@@ -303,15 +303,22 @@ impl PeerCtx {
                 (c, _) => crate::style::resolve_color(c, theme.dark),
             };
             // capability boundary: the peer receives ONLY the resolved
-            // foreground — font face/size/weight/selection stay OS-owned.
-            // The AUTHORED `Color` is stored — roles re-resolve on theme
-            // flips; literals are invariant under resolve_color.
+            // foreground + an optional exact line box — font
+            // face/size/weight/selection stay OS-owned. The AUTHORED
+            // `Color` is stored — roles re-resolve on theme flips;
+            // literals are invariant under resolve_color.
             let cfg = PeerConfig {
                 multiline: spec.multiline,
                 // disabled peers mount read-only — inert until enabled
                 read_only: spec.read_only || spec.disabled,
                 face: "Segoe UI".into(),
                 size_twips: (14.0f32 * 20.0) as i32,
+                // 1 dip = 15 twips (twips are absolute — the authored
+                // DIP count lands exact at any scale)
+                line_twips: spec
+                    .line_height
+                    .map(|d| (d.0 * 15.0).round() as i32)
+                    .unwrap_or(0),
                 fg: fg_resolved,
                 fg_authored: spec.foreground,
                 sel_bg,
@@ -397,6 +404,14 @@ impl crate::node::TextPeer for PeerHandle {
     /// passes the composed value (`read_only || disabled`).
     fn set_read_only(&mut self, ro: bool) {
         self.peer.borrow().set_read_only(ro);
+    }
+    /// Staged selection — forwarded to the real peer; without this the
+    /// trait default no-ops and staged ranges never reach msftedit.
+    fn apply_selection(&mut self, sel: Option<(usize, usize)>) -> UiResult {
+        crate::node::TextPeer::apply_selection(&mut *self.peer.borrow_mut(), sel)
+    }
+    fn line_twips_latched(&self) -> Option<i32> {
+        Some(self.peer.borrow().line_twips_latched())
     }
     fn attach(&mut self, node: NodeId) {
         self.node_slot.set(node.slot);
@@ -2314,14 +2329,34 @@ where
         self.turn()
     }
 
+    /// Effective visual state = runtime interaction OR the node's staged
+    /// `presented` flags — paint, ink and layout resolve through these so
+    /// the two sources can never diverge. Devtools/UIA keep reporting the
+    /// raw runtime fields (presented grants no real state).
+    pub(crate) fn resolved_hot(&self, id: NodeId, n: &crate::node::Node) -> bool {
+        crate::layout::presented_or(self.hot, id, n.presented.hover)
+    }
+    pub(crate) fn resolved_pressed(&self, id: NodeId, n: &crate::node::Node) -> bool {
+        crate::layout::presented_or(self.pressed, id, n.presented.pressed)
+    }
+    pub(crate) fn resolved_focus_visible(&self, id: NodeId, n: &crate::node::Node) -> bool {
+        crate::layout::presented_or(self.focus, id, n.presented.focus_visible)
+    }
+
     /// The resolved interaction-state inputs — what the visual would be
     /// IF (pressed,hot,focus) held these values. Callers snapshot it
     /// BEFORE and AFTER flipping the state fields.
     fn interact(&self, id: NodeId) -> InteractState {
+        let p = self
+            .rt
+            .arena
+            .get(id)
+            .map(|n| n.presented)
+            .unwrap_or_default();
         InteractState {
-            pressed: self.pressed == Some(id),
-            hot: self.hot == Some(id),
-            focus: self.focus == Some(id),
+            pressed: self.pressed == Some(id) || p.pressed,
+            hot: self.hot == Some(id) || p.hover,
+            focus: self.focus == Some(id) || p.focus_visible,
         }
     }
 

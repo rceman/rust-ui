@@ -224,47 +224,56 @@ impl Gallery {
     }
 
     /// The frozen `components` slice — Button variants x states, sizes,
-    /// inline icons, IconButton grid, Card specimens. State cells beyond
-    /// `normal` are devctl-driven (hover/press/focus), not force-styled.
+    /// inline icons, IconButton grid, Card specimens. Interaction cells
+    /// (hover/pressed/focus-visible) are presentation-staged specimens
+    /// (`.presented`), never devctl-driven runtime state; disabled and
+    /// invalid remain semantic properties.
     fn components_page(&self, ui: &mut Ui<Msg>) {
         ui.column(Column::new().gap(Space::Md).align(Align::Stretch), |ui| {
-            for pair in [
-                [
-                    (ButtonVariant::Primary, "button.default", "Default"),
-                    (ButtonVariant::Secondary, "button.secondary", "Secondary"),
-                ],
-                [
-                    (ButtonVariant::Outline, "button.outline", "Outline"),
-                    (ButtonVariant::Ghost, "button.ghost", "Ghost"),
-                ],
-                [
-                    (
-                        ButtonVariant::Destructive,
-                        "button.destructive",
-                        "Destructive",
-                    ),
-                    (ButtonVariant::Link, "button.link", "Link"),
-                ],
+            // one variant per row — the frozen 6-cell state order:
+            // normal, hover, pressed, focus-visible, disabled, invalid
+            for (v, id, label) in [
+                (ButtonVariant::Primary, "button.default", "Default"),
+                (ButtonVariant::Secondary, "button.secondary", "Secondary"),
+                (ButtonVariant::Outline, "button.outline", "Outline"),
+                (ButtonVariant::Ghost, "button.ghost", "Ghost"),
+                (
+                    ButtonVariant::Destructive,
+                    "button.destructive",
+                    "Destructive",
+                ),
+                (ButtonVariant::Link, "button.link", "Link"),
             ] {
                 ui.row(Row::new().gap(Space::Md).align(Align::Center), |ui| {
-                    // state cells — devctl drives hover/press/focus on
-                    // `id`, `id.disabled`/`id.invalid` are semantic
-                    for (v, id, label) in pair {
-                        ui.button(label)
-                            .automation_id(id)
-                            .variant(v)
-                            .on_press(|| Msg::Invoke(id));
-                        ui.button("Disabled")
-                            .automation_id(&format!("{id}.disabled"))
-                            .variant(v)
-                            .disabled(true)
-                            .on_press(|| Msg::Invoke(id));
-                        ui.button("Invalid")
-                            .automation_id(&format!("{id}.invalid"))
-                            .variant(v)
-                            .invalid(true)
-                            .on_press(|| Msg::Invoke(id));
-                    }
+                    ui.button(label)
+                        .automation_id(id)
+                        .variant(v)
+                        .on_press(|| Msg::Invoke(id));
+                    ui.button(label)
+                        .automation_id(&format!("{id}.hover"))
+                        .variant(v)
+                        .presented(Presented::HOVER)
+                        .on_press(|| Msg::Invoke(id));
+                    ui.button(label)
+                        .automation_id(&format!("{id}.pressed"))
+                        .variant(v)
+                        .presented(Presented::PRESSED)
+                        .on_press(|| Msg::Invoke(id));
+                    ui.button(label)
+                        .automation_id(&format!("{id}.focus-visible"))
+                        .variant(v)
+                        .presented(Presented::FOCUS_VISIBLE)
+                        .on_press(|| Msg::Invoke(id));
+                    ui.button("Disabled")
+                        .automation_id(&format!("{id}.disabled"))
+                        .variant(v)
+                        .disabled(true)
+                        .on_press(|| Msg::Invoke(id));
+                    ui.button("Invalid")
+                        .automation_id(&format!("{id}.invalid"))
+                        .variant(v)
+                        .invalid(true)
+                        .on_press(|| Msg::Invoke(id));
                 });
             }
             // sizes + inline icons on the shared next row
@@ -290,30 +299,40 @@ impl Gallery {
                     .icon_end(Icon::ArrowRight)
                     .on_press(|| Msg::Invoke("button.default.icon-inline-end"));
             });
-            // IconButton — variants × states on one row; a second row for
-            // the disabled cells keeps the grid inside the client height
-            for half in [
-                &[
-                    (ButtonVariant::Primary, "icon-button.default"),
-                    (ButtonVariant::Secondary, "icon-button.secondary"),
-                    (ButtonVariant::Outline, "icon-button.outline"),
-                ][..],
-                &[
-                    (ButtonVariant::Ghost, "icon-button.ghost"),
-                    (ButtonVariant::Destructive, "icon-button.destructive"),
-                ][..],
+            // IconButton — one variant per row, the frozen 5-cell state
+            // order: normal, hover, pressed, focus-visible, disabled
+            // (no link, no invalid)
+            for (v, id) in [
+                (ButtonVariant::Primary, "icon-button.default"),
+                (ButtonVariant::Secondary, "icon-button.secondary"),
+                (ButtonVariant::Outline, "icon-button.outline"),
+                (ButtonVariant::Ghost, "icon-button.ghost"),
+                (ButtonVariant::Destructive, "icon-button.destructive"),
             ] {
                 ui.row(Row::new().gap(Space::Md).align(Align::Center), |ui| {
-                    for &(v, id) in half {
-                        ui.icon_button(Icon::ArrowRight, id)
-                            .automation_id(id)
-                            .variant(v)
-                            .on_press(|| Msg::Invoke(id));
-                        ui.icon_button(Icon::ArrowRight, "disabled")
-                            .automation_id(&format!("{id}.disabled"))
-                            .variant(v)
-                            .disabled(true);
-                    }
+                    ui.icon_button(Icon::ArrowRight, id)
+                        .automation_id(id)
+                        .variant(v)
+                        .on_press(|| Msg::Invoke(id));
+                    ui.icon_button(Icon::ArrowRight, id)
+                        .automation_id(&format!("{id}.hover"))
+                        .variant(v)
+                        .presented(Presented::HOVER)
+                        .on_press(|| Msg::Invoke(id));
+                    ui.icon_button(Icon::ArrowRight, id)
+                        .automation_id(&format!("{id}.pressed"))
+                        .variant(v)
+                        .presented(Presented::PRESSED)
+                        .on_press(|| Msg::Invoke(id));
+                    ui.icon_button(Icon::ArrowRight, id)
+                        .automation_id(&format!("{id}.focus-visible"))
+                        .variant(v)
+                        .presented(Presented::FOCUS_VISIBLE)
+                        .on_press(|| Msg::Invoke(id));
+                    ui.icon_button(Icon::ArrowRight, "disabled")
+                        .automation_id(&format!("{id}.disabled"))
+                        .variant(v)
+                        .disabled(true);
                 });
             }
             // IconButton sizes
@@ -565,6 +584,7 @@ impl Gallery {
                             ui.input(&self.texts[T_LABEL])
                                 .width(Length::Fixed(dp(214.0)))
                                 .height(Length::Fixed(dp(32.0)))
+                                .line_height(dp(20.0))
                                 .placeholder("With a label")
                                 .on_edit(move |e| Msg::Edit(T_LABEL, e))
                                 .on_conflict(move |c| Msg::Conflict(T_LABEL, c));
@@ -604,9 +624,15 @@ impl Gallery {
                     .input(&self.texts[idx])
                     .automation_id(id)
                     .width(Length::Fixed(dp(360.0)))
-                    .height(Length::Fixed(dp(32.0)));
+                    .height(Length::Fixed(dp(32.0)))
+                    .line_height(dp(20.0));
                 if let Some(p) = *ph {
                     b = b.placeholder(p);
+                }
+                // focus-visible is presentation-staged; invalid stays
+                // semantic (`invalid-focus-visible` carries both)
+                if id.ends_with("focus-visible") {
+                    b = b.presented(Presented::FOCUS_VISIBLE);
                 }
                 b.disabled(*dis)
                     .invalid(*inv)
@@ -641,9 +667,13 @@ impl Gallery {
                     .textarea(&self.texts[idx])
                     .automation_id(id)
                     .width(Length::Fixed(dp(360.0)))
-                    .height(Length::Fixed(dp(64.0)));
+                    .height(Length::Fixed(dp(64.0)))
+                    .line_height(dp(20.0));
                 if let Some(p) = *ph {
                     b = b.placeholder(p);
+                }
+                if id.ends_with("focus-visible") {
+                    b = b.presented(Presented::FOCUS_VISIBLE);
                 }
                 b.disabled(*dis)
                     .invalid(*inv)
@@ -694,6 +724,12 @@ impl Gallery {
                                     disabled: dis,
                                     invalid: inv,
                                     label: Some(lbl),
+                                    // frozen fv cell is checked + ringed
+                                    presented: if id == "checkbox.default.focus-visible" {
+                                        Presented::FOCUS_VISIBLE
+                                    } else {
+                                        Presented::default()
+                                    },
                                     ..Default::default()
                                 },
                                 move || Msg::ToggleCb(i),
@@ -738,6 +774,7 @@ impl Gallery {
                                                     RadioItemOpts {
                                                         disabled: dis,
                                                         invalid: inv,
+                                                        ..Default::default()
                                                     },
                                                 );
                                                 rg.item(
@@ -746,6 +783,16 @@ impl Gallery {
                                                     RadioItemOpts {
                                                         disabled: dis,
                                                         invalid: inv,
+                                                        // fv cell: option
+                                                        // B ringed while A
+                                                        // stays selected
+                                                        presented: if id
+                                                            == "radio-group.default.focus-visible"
+                                                        {
+                                                            Presented::FOCUS_VISIBLE
+                                                        } else {
+                                                            Presented::default()
+                                                        },
                                                     },
                                                 );
                                             },
@@ -782,6 +829,12 @@ impl Gallery {
                                     ToggleSize::Sm
                                 } else {
                                     ToggleSize::Default
+                                },
+                                // frozen fv cell is checked + ringed
+                                presented: if *id == "switch.default.focus-visible" {
+                                    Presented::FOCUS_VISIBLE
+                                } else {
+                                    Presented::default()
                                 },
                                 ..Default::default()
                             },
@@ -888,6 +941,7 @@ impl Gallery {
                                         let mut b = ui
                                             .input(&self.texts[idx])
                                             .height(Length::Fixed(dp(32.0)))
+                                            .line_height(dp(20.0))
                                             .disabled(dis)
                                             .invalid(inv);
                                         if let Some(p) = control_ph {
@@ -1052,9 +1106,27 @@ impl Gallery {
                 let mut b = b
                     .automation_id(id)
                     .width(Length::Fixed(dp(360.0)))
-                    .height(Length::Fixed(dp(*h)));
+                    .height(Length::Fixed(dp(*h)))
+                    .line_height(dp(20.0));
                 if let Some(p) = *ph {
                     b = b.placeholder(p);
+                }
+                // frozen `focused`/`selection` cells show the focus-visible
+                // ring; selection cells stage their UTF-16 range on the
+                // peer — no real focus required
+                if id.ends_with(".focused") || id.ends_with(".selection") {
+                    b = b.presented(Presented::FOCUS_VISIBLE);
+                }
+                match *id {
+                    "native-text.single-line.selection" => {
+                        // "Select" in "Select this phrase"
+                        b = b.selection(0, 6);
+                    }
+                    "native-text.multiline.selection" => {
+                        // "Second line"
+                        b = b.selection(22, 33);
+                    }
+                    _ => {}
                 }
                 b.disabled(*dis)
                     .read_only(*ro)

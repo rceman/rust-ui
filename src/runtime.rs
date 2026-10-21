@@ -184,6 +184,7 @@ where
                 kind: KIND_GROUP,
                 props: ContainerProps::default(),
             },
+            presented: Default::default(),
             visibility: Visibility::Visible,
             layout: Default::default(),
             factories: Default::default(),
@@ -550,6 +551,7 @@ where
             part_key,
             key,
             data,
+            presented,
             visibility,
             layout,
             factories,
@@ -586,6 +588,7 @@ where
             patch,
             read_only,
             disabled,
+            line_height,
             ..
         } = &data
             && let Some(pf) = &self.peer_factory
@@ -600,6 +603,7 @@ where
                 read_only: *read_only,
                 disabled: *disabled,
                 foreground,
+                line_height: *line_height,
             })?);
         }
 
@@ -610,6 +614,7 @@ where
             parent,
             children: Vec::new(),
             data,
+            presented,
             visibility,
             layout,
             factories,
@@ -625,11 +630,22 @@ where
             if let Some(p) = n.peer.as_mut() {
                 p.attach(id);
             }
-            if let NodeData::Editor { snapshot, sync, .. } = &mut n.data {
+            if let NodeData::Editor {
+                snapshot,
+                sync,
+                selection,
+                ..
+            } = &mut n.data
+            {
                 let token = TextValue::acquire_lease(&snapshot.lease)
                     .ok_or(UiError::InvalidUi(UiDiagnostic::DuplicateTextBinding))?;
                 match n.peer.as_mut() {
-                    Some(p) => sync.mount(p.as_mut(), snapshot, token)?,
+                    Some(p) => {
+                        sync.mount(p.as_mut(), snapshot, token)?;
+                        // staged selection applies once mounted — the peer
+                        // skips the write when already there
+                        p.apply_selection(*selection)?;
+                    }
                     None => {
                         sync.binding = Some(token);
                         sync.peer_revision = snapshot.revision;
@@ -678,6 +694,7 @@ where
         let StagedNode {
             automation_id,
             data,
+            presented,
             visibility,
             layout,
             factories,
@@ -741,13 +758,25 @@ where
                                 crate::style::Color::Role(crate::theme::ColorRole::Foreground),
                             ));
                         }
-                        if let NodeData::Editor { snapshot, sync, .. } = &mut n.data {
+                        if let NodeData::Editor {
+                            snapshot,
+                            sync,
+                            selection,
+                            ..
+                        } = &mut n.data
+                        {
                             match sync.commit(p.as_mut(), snapshot) {
                                 Ok(PeerDecision::Conflict) => {
                                     emit_conflict_for = Some(snapshot.clone())
                                 }
                                 Err(e) => commit_err = Some(e),
                                 _ => {}
+                            }
+                            // AFTER text sync — a staged selection is
+                            // authoritative; the peer writes only when
+                            // its current selection differs
+                            if let Err(e) = p.apply_selection(*selection) {
+                                commit_err = Some(e);
                             }
                         }
                     }
@@ -758,6 +787,15 @@ where
             n.layout = layout;
             n.factories = factories;
             n.adapters = adapters;
+            // presented visual state — paint always; layout only when a
+            // metric-bearing state branch could respond to it
+            if n.presented != presented {
+                n.presented = presented;
+                n.dirty |= Self::DIRTY_PAINT;
+                if n.state_metric_affecting() {
+                    n.dirty |= Self::DIRTY_LAYOUT;
+                }
+            }
             commit_err
         };
         if let Some(snap) = emit_conflict_for {

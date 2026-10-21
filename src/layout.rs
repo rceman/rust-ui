@@ -189,11 +189,12 @@ pub fn node_insets(id: NodeId, n: &crate::node::Node, ix: &Interaction) -> Inset
         NodeData::Action {
             style, disabled, ..
         } => {
+            // effective visual state = runtime OR staged presentation
             let b = style.resolve(
                 *disabled,
-                ix.pressed == Some(id),
-                ix.hot == Some(id),
-                ix.focus == Some(id) && !*disabled,
+                ix.pressed == Some(id) || n.presented.pressed,
+                ix.hot == Some(id) || n.presented.hover,
+                (ix.focus == Some(id) || n.presented.focus_visible) && !*disabled,
             );
             let mut i = b.padding;
             if let Some(side) = b.border.uniform() {
@@ -219,6 +220,31 @@ pub fn node_insets(id: NodeId, n: &crate::node::Node, ix: &Interaction) -> Inset
             i
         }
         _ => Insets::default(),
+    }
+}
+
+/// Effective visual-state bit = runtime owner OR staged presented flag.
+/// The one OR rule every paint/layout/dirty-resolution path shares —
+/// presented never substitutes the runtime fields, it only adds.
+pub fn presented_or(runtime: Option<crate::NodeId>, id: crate::NodeId, flag: bool) -> bool {
+    runtime == Some(id) || flag
+}
+
+/// The frozen ring's stroke-centerline radius for an element corner of
+/// `component_radius` (already normalized): the 3dp `ring/50` band is
+/// stroked 1.5dp outside the element edge — centerline = r + 1.5 (CSS
+/// `0 0 0 3px` box-shadow spread semantics; outer edge = r + 3).
+pub fn ring_radius(component_radius: f32) -> f32 {
+    component_radius.max(0.0) + 1.5
+}
+
+/// The single ring-color decision — the invalid ring is unconditional and
+/// never stacks: invalid wins over focus, one ring only.
+pub fn ring_color_role(invalid: bool) -> crate::theme::ColorRole {
+    if invalid {
+        crate::theme::ColorRole::DestructiveRing
+    } else {
+        crate::theme::ColorRole::Focus
     }
 }
 

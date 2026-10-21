@@ -30,7 +30,7 @@ pub use geom::{
 };
 pub use icons::{Icon, IconOp};
 pub use key::KeyId;
-pub use node::NodeId;
+pub use node::{NodeId, Presented};
 pub use runtime::UpdateCtx;
 pub use style::{
     Action, ActionStyle, Border, BorderPatch, BorderSide, BorderSidePatch, BoxProps, BoxStyle,
@@ -66,6 +66,7 @@ pub mod prelude {
     pub use crate::geom::{
         Align, Constraints, Dp, Justify, LayoutSpec, Length, Point, Rect, Size, Visibility, dp,
     };
+    pub use crate::node::Presented;
     pub use crate::runtime::UpdateCtx;
     pub use crate::style::{
         Action, ActionStyle, Border, BorderPatch, BorderSide, BorderSidePatch, BoxProps, BoxStyle,

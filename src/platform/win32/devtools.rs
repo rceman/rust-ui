@@ -272,10 +272,25 @@ where
                 && r.width > 0.
                 && r.height > 0.,
             enabled,
+            // runtime truth — presented flags never move these fields
             focused: self.focus == Some(id),
             focus_visible: self.focus == Some(id),
             hovered: self.hot == Some(id),
             pressed: self.pressed == Some(id),
+            presented: n.presented.any().then(|| d::Presented {
+                hover: n.presented.hover,
+                pressed: n.presented.pressed,
+                focus_visible: n.presented.focus_visible,
+            }),
+            selection: match &n.data {
+                crate::node::NodeData::Editor { selection, .. } => *selection,
+                _ => None,
+            },
+            line_height: match &n.data {
+                crate::node::NodeData::Editor { line_height, .. } => line_height.map(|d| d.0),
+                _ => None,
+            },
+            line_twips: self.peer_for(id).map(|p| p.borrow().line_twips_latched()),
             parts,
             children,
         })

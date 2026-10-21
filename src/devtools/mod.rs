@@ -198,6 +198,15 @@ pub struct PartNode {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
 }
+/// Staged presentation-only visual state (mirrors `crate::node::Presented`)
+/// — diagnostic honesty only; `focused`/`hovered`/`pressed` remain the
+/// runtime truth.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Presented {
+    pub hover: bool,
+    pub pressed: bool,
+    pub focus_visible: bool,
+}
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Node {
     pub automation_id: Option<String>,
@@ -213,6 +222,15 @@ pub struct Node {
     pub hovered: bool,
     #[serde(default)]
     pub pressed: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub presented: Option<Presented>,
+    /// staged app-model editor state — diagnostic; not runtime truth
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selection: Option<(usize, usize)>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub line_height: Option<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub line_twips: Option<i32>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub parts: Vec<PartNode>,
     pub children: Vec<Node>,
@@ -1145,6 +1163,10 @@ mod tests {
                 focus_visible: false,
                 hovered: false,
                 pressed: false,
+                presented: None,
+                selection: None,
+                line_height: None,
+                line_twips: None,
                 parts: vec![],
                 children: vec![],
             },
@@ -1748,6 +1770,10 @@ mod tests {
             focus_visible: false,
             hovered: false,
             pressed: false,
+            presented: None,
+            selection: None,
+            line_height: None,
+            line_twips: None,
             parts: vec![],
             children: vec![],
         }];
@@ -1947,6 +1973,10 @@ mod tests {
                 focus_visible: false,
                 hovered: false,
                 pressed: false,
+                presented: None,
+                selection: None,
+                line_height: None,
+                line_twips: None,
                 parts: vec![],
                 children: vec![],
             },

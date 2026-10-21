@@ -658,20 +658,20 @@ impl Renderer {
                     // deterministic chain: recipe -> consumer patch -> state
                     let state = crate::style::StyleState::classify(
                         *disabled,
-                        be.pressed == Some(id),
-                        be.hot == Some(id),
+                        be.resolved_pressed(id, n),
+                        be.resolved_hot(id, n),
                     );
                     let vs = crate::style::resolve_button(
                         *variant,
                         *size,
                         style,
                         state,
-                        be.focus == Some(id),
+                        be.resolved_focus_visible(id, n),
                         dark,
                         *invalid,
                     );
                     let bs = &vs.box_style;
-                    let pressed = be.pressed == Some(id);
+                    let pressed = be.resolved_pressed(id, n);
                     let ins = crate::layout::button_content_insets(&n.data, &vs);
                     // active:translate-y-px — the whole control shifts 1dp
                     let dy = if pressed && !*disabled { 1.0 } else { 0.0 };
@@ -717,20 +717,8 @@ impl Renderer {
                         // supplies it for Focus-role colors too. The
                         // invalid state carries the same 3dp band in
                         // ring-destructive and does NOT require focus.
-                        if (be.focus == Some(id) || *invalid) && !*disabled {
-                            let rc = resolve_render(vs.focus_ring, dark, forced);
-                            let rc_brush = target.CreateSolidColorBrush(&rc, None)?;
-                            let rr = D2D1_ROUNDED_RECT {
-                                rect: D2D_RECT_F {
-                                    left: br.left - 1.5,
-                                    top: br.top - 1.5,
-                                    right: br.right + 1.5,
-                                    bottom: br.bottom + 1.5,
-                                },
-                                radiusX: bs.radii.top_left.0 + 1.5,
-                                radiusY: bs.radii.top_left.0 + 1.5,
-                            };
-                            let _ = target.DrawRoundedRectangle(&rr, &rc_brush, 3.0, None);
+                        if (be.resolved_focus_visible(id, n) || *invalid) && !*disabled {
+                            paint_ring_color(&target, &br, &bs.radii, vs.focus_ring, dark, forced)?;
                         }
                         let fg = resolve_render(vs.text_style.foreground, dark, forced);
                         let fg_brush = target.CreateSolidColorBrush(&fg, None)?;
@@ -793,8 +781,8 @@ impl Renderer {
                 } => {
                     let state = crate::style::StyleState::classify(
                         *disabled,
-                        be.pressed == Some(id),
-                        be.hot == Some(id),
+                        be.resolved_pressed(id, n),
+                        be.resolved_hot(id, n),
                     );
                     let vs = crate::style::resolve_toggle_visual(
                         *kind,
@@ -802,7 +790,7 @@ impl Renderer {
                         *checked,
                         *invalid,
                         state,
-                        be.focus == Some(id),
+                        be.resolved_focus_visible(id, n),
                         dark,
                     );
                     let r_dp = crate::geom::Rect {
@@ -901,8 +889,15 @@ impl Renderer {
                         }
                         // focus-visible OR unconditional invalid ring —
                         // destructive tint when invalid
-                        if (be.focus == Some(id) || *invalid) && !*disabled {
-                            paint_ring_color(&target, &clip, vs.focus_ring, dark, forced)?;
+                        if (be.resolved_focus_visible(id, n) || *invalid) && !*disabled {
+                            paint_ring_color(
+                                &target,
+                                &clip,
+                                &vs.box_style.radii,
+                                vs.focus_ring,
+                                dark,
+                                forced,
+                            )?;
                         }
                         if let Some(lbl) = label {
                             if let Ok(lay) =
@@ -949,17 +944,23 @@ impl Renderer {
                         // focus ENFORCEMENT — same independent ring layer;
                         // `invalid` fires the destructive ring
                         // unconditionally (frozen `aria-invalid` rule)
-                        if (be.focus == Some(id) || *invalid) && !*disabled {
+                        if (be.resolved_focus_visible(id, n) || *invalid) && !*disabled {
+                            // the stack's leaf chrome is frameless — the
+                            // sibling overlay owns the element frame, so
+                            // the ring follows the OVERLAY radius (10dp);
+                            // a bare editor's own chrome is the frame
+                            let ring_radii = if chrome.border.any()
+                                || chrome.radii != crate::style::CornerRadii::default()
+                            {
+                                chrome.radii
+                            } else {
+                                crate::style::input_overlay_style(*disabled, *invalid).radii
+                            };
                             paint_ring_color(
                                 &target,
                                 &clip,
-                                if *invalid {
-                                    crate::style::Color::Role(
-                                        crate::theme::ColorRole::DestructiveRing,
-                                    )
-                                } else {
-                                    crate::style::Color::Role(crate::theme::ColorRole::Focus)
-                                },
+                                &ring_radii,
+                                crate::style::Color::Role(crate::layout::ring_color_role(*invalid)),
                                 dark,
                                 forced,
                             )?;
@@ -1052,9 +1053,9 @@ impl Renderer {
                 } => {
                     let bs = style.resolve(
                         *disabled,
-                        be.pressed == Some(id),
-                        be.hot == Some(id),
-                        be.focus == Some(id),
+                        be.resolved_pressed(id, n),
+                        be.resolved_hot(id, n),
+                        be.resolved_focus_visible(id, n),
                     );
                     unsafe {
                         paint_box(
@@ -1069,8 +1070,8 @@ impl Renderer {
                         )?;
                         // focus ENFORCEMENT — the ring lives at paint, a
                         // layer consumer patches can never erase
-                        if be.focus == Some(id) && !*disabled {
-                            paint_focus_ring(&target, &clip, dark, forced)?;
+                        if be.resolved_focus_visible(id, n) && !*disabled {
+                            paint_focus_ring(&target, &clip, &bs.radii, dark, forced)?;
                         }
                     }
                 }
@@ -2104,12 +2105,14 @@ fn shrink_radii(r: &CornerRadii, d: f32) -> CornerRadii {
 unsafe fn paint_focus_ring(
     target: &ID2D1RenderTarget,
     r: &D2D_RECT_F,
+    radii: &crate::style::CornerRadii,
     dark: bool,
     forced: Option<&dyn Fn(crate::style::SystemColor) -> [f32; 4]>,
 ) -> Result<()> {
     paint_ring_color(
         target,
         r,
+        radii,
         crate::style::Color::Role(crate::theme::ColorRole::Focus),
         dark,
         forced,
@@ -2117,10 +2120,13 @@ unsafe fn paint_focus_ring(
 }
 
 /// Ring painter with an explicit authored color — the destructive variant
-/// used by invalid controls.
+/// used by invalid controls. The corner radius follows the element's own
+/// normalized radii at +1.5dp stroke centerline (`layout::ring_radius`)
+/// — checkbox rings 5.5, inputs 11.5, pills stay pill.
 unsafe fn paint_ring_color(
     target: &ID2D1RenderTarget,
     r: &D2D_RECT_F,
+    radii: &crate::style::CornerRadii,
     color: crate::style::Color,
     dark: bool,
     forced: Option<&dyn Fn(crate::style::SystemColor) -> [f32; 4]>,
@@ -2130,6 +2136,8 @@ unsafe fn paint_ring_color(
         // the frozen `ring-3` band: 3dp stroke centered ±1.5dp outside
         // the border box (same geometry the Button arm draws) — a thin
         // 1.5dp stroke reads saturated where the soft 3dp band is frozen
+        let norm = radii.normalized(r.right - r.left, r.bottom - r.top);
+        let radius = crate::layout::ring_radius(norm.top_left.0);
         let outer = D2D1_ROUNDED_RECT {
             rect: D2D_RECT_F {
                 left: r.left - 1.5,
@@ -2137,8 +2145,8 @@ unsafe fn paint_ring_color(
                 right: r.right + 1.5,
                 bottom: r.bottom + 1.5,
             },
-            radiusX: 7.0,
-            radiusY: 7.0,
+            radiusX: radius,
+            radiusY: radius,
         };
         let og: ID2D1RoundedRectangleGeometry = target
             .GetFactory()?

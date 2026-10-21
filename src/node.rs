@@ -47,9 +47,12 @@ pub struct PeerSpec {
     pub multiline: bool,
     pub read_only: bool,
     pub disabled: bool,
-    /// resolved editable foreground — the ONLY style input a native peer
+    /// resolved editable foreground — the ONLY color input a native peer
     /// receives (selection/caret/IME colors and fonts stay OS-owned)
     pub foreground: crate::style::Color,
+    /// authored exact line box — `None` keeps the font's natural height;
+    /// a geometry knob, not a style channel (mount-time like `multiline`)
+    pub line_height: Option<crate::geom::Dp>,
 }
 
 /// Backend surface the retained core talks to. Windowless rich-text peers
@@ -80,6 +83,18 @@ pub(crate) trait TextPeer {
     /// char format. Capability-limited — no size/weight knobs reach the
     /// peer. Default no-op — core tests use peers that don't style.
     fn apply_foreground(&mut self, _fg: crate::style::Color) {}
+    /// Staged selection — UTF-16 `[start, end)` char range. `None` leaves
+    /// the selection to native/user control; `Some` is authoritative —
+    /// the peer applies it when its current selection differs. Default
+    /// no-op — core tests use peers that don't select.
+    fn apply_selection(&mut self, _sel: Option<(usize, usize)>) -> UiResult {
+        Ok(())
+    }
+    /// latched authored line box (twips) for snapshot introspection —
+    /// `None` for peers that don't carry a line box
+    fn line_twips_latched(&self) -> Option<i32> {
+        None
+    }
     /// The node's effective editability changed — push it into native
     /// behavior (EM_SETREADONLY gates edits inside msftedit, not just in
     /// the input router). The runtime passes `read_only || disabled`.
@@ -100,6 +115,42 @@ pub(crate) trait TextPeer {
 pub struct NodeId {
     pub slot: u32,
     pub generation: u64,
+}
+
+/// Presentation-only staged visual state — painted/laid-out exactly like
+/// the runtime interaction state it mirrors (`runtime || presented`), but
+/// never grants interactivity, real focus, or semantics. Specimen pages
+/// stage the interaction cells declaratively instead of driving them
+/// through input. Devtools/UIA keep reporting the runtime truth.
+#[derive(Clone, Copy, Default, PartialEq, Eq, Debug)]
+pub struct Presented {
+    pub hover: bool,
+    pub pressed: bool,
+    pub focus_visible: bool,
+}
+
+impl Presented {
+    pub const HOVER: Presented = Presented {
+        hover: true,
+        pressed: false,
+        focus_visible: false,
+    };
+    pub const PRESSED: Presented = Presented {
+        hover: false,
+        pressed: true,
+        focus_visible: false,
+    };
+    pub const FOCUS_VISIBLE: Presented = Presented {
+        hover: false,
+        pressed: false,
+        focus_visible: true,
+    };
+
+    /// Any presented bit set — the "is this a staged specimen" query
+    /// devtools uses to report presentation honestly.
+    pub fn any(&self) -> bool {
+        self.hover || self.pressed || self.focus_visible
+    }
 }
 
 /// Private peer-side text model for one mounted editable node.
@@ -397,6 +448,12 @@ pub(crate) enum NodeData {
         /// unconditional (always-on `ring-destructive`), orthogonal to
         /// focus/disabled
         invalid: bool,
+        /// staged selection — UTF-16 `[start, end)`; `None` leaves the
+        /// peer's selection unmanaged (user/native owns it)
+        selection: Option<(usize, usize)>,
+        /// authored exact line box — reaches the peer at mount
+        /// (`PeerSpec`), `None` keeps the font's natural height
+        line_height: Option<crate::geom::Dp>,
         sync: TextPeerSync,
     },
     /// `ui.checkbox` / `ui.switch` / `ui.radio_group` item — one painted
@@ -442,6 +499,8 @@ pub(crate) struct Node {
     pub parent: Option<u32>,
     pub children: Vec<u32>,
     pub data: NodeData,
+    /// staged presentation-only visual state (`Presented` docs)
+    pub presented: Presented,
     pub visibility: Visibility,
     /// explicit sizing hints (validated at stage time)
     pub layout: LayoutSpec,
@@ -758,6 +817,7 @@ pub(crate) fn dirty_diff(
                 submit: asu,
                 patch: ap,
                 invalid: ainv,
+                selection: asl,
                 ..
             },
             NodeData::Editor {
@@ -770,6 +830,7 @@ pub(crate) fn dirty_diff(
                 submit: bsu,
                 patch: bp,
                 invalid: binv,
+                selection: bsl,
                 ..
             },
         ) => {
@@ -777,7 +838,7 @@ pub(crate) fn dirty_diff(
             if aml != bml {
                 d |= LAYOUT;
             }
-            if ainv != binv {
+            if ainv != binv || asl != bsl {
                 d |= PAINT;
             }
             // committed text feeds the peer's natural measurement — a
