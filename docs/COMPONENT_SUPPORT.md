@@ -16,7 +16,7 @@ does not change Native API, platform, parity or implementation status.
 
 ## Vocabulary
 
-| Field | core | complete | yes | verified | - | - | yes | partial | group+parts | yes | VERIFIED | ui.field; vertical+horizontal, label/control/description/error parts. Labeled-by not wired (no infra). |
+| Field | Values |
 |---|---|
 | Tier | `core` (first native Gallery milestone) - `later` (planned desktop component, not first milestone) - `reference-only` (visual coverage, no native promise) |
 | Reference | `none` - `partial` - `representative` (later-tier: representative states only) - `complete` (all visually material desktop states frozen) |
