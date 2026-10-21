@@ -445,16 +445,18 @@ pub(crate) fn palette(
             sys(crate::style::SystemColor::HighlightText),
         );
     }
+    // frozen contract selection tokens — NOT the OS default: light
+    // selection=#000 on #fff text, dark=#e5e5e5 on #171717
     if theme.dark {
         (
             [0.94, 0.94, 0.94, 1.0],
-            [0.17, 0.36, 0.72, 1.0],
-            [1.0, 1.0, 1.0, 1.0],
+            [0.898, 0.898, 0.898, 1.0],
+            [0.09, 0.09, 0.09, 1.0],
         )
     } else {
         (
             [0.09, 0.09, 0.11, 1.0],
-            [0.23, 0.47, 0.85, 1.0],
+            [0.0, 0.0, 0.0, 1.0],
             [1.0, 1.0, 1.0, 1.0],
         )
     }
@@ -2296,9 +2298,6 @@ where
             .flatten()
             .map(|id| (id, self.interact(id)))
             .collect();
-        for (id, old) in olds {
-            self.mark_state_dirty(id, old);
-        }
         if let Some(old) = self.focus {
             if self.rt.arena.is_live(old) {
                 self.push_input(old, NodeEvent::Focus(false))?;
@@ -2306,6 +2305,14 @@ where
             self.deliver_native(old, WM_KILLFOCUS, 0, 0)?;
         }
         self.focus = node;
+        // mark AFTER the assignment — `mark_state_dirty` recomputes the
+        // NEW resolved state; running it before `self.focus` flips
+        // compared old-to-old and scheduled no repaint on every focus
+        // transition (ring never appeared/disappeared until an
+        // incidental repaint)
+        for (id, old) in olds {
+            self.mark_state_dirty(id, old);
+        }
         if let Some(u) = &self.uia {
             u.set_focus(node);
         }

@@ -2010,8 +2010,11 @@ impl<'a, 'ui, 'b, M: 'static> TextInputBuilder<'a, 'ui, 'b, M> {
         self.selection = Some((start, end));
         self
     }
-    /// exact line box (native paragraph line-spacing rule 4) — the
-    /// authored Dp count lands at any scale; omit for natural height
+    /// exact line box — the authored Dp count is calibrated into the
+    /// peer font (D2DDWRITE ignores paragraph line-spacing; pitch comes
+    /// from `CHARFORMAT.yHeight`). Omit for natural height. Mount-time
+    /// only: not diffed/applied on update — a changed value needs a
+    /// remount (same as `multiline`)
     pub fn line_height(mut self, h: crate::geom::Dp) -> Self {
         self.line_height = Some(h);
         self
@@ -2727,8 +2730,11 @@ impl<'a, 'ui, 'b, M: 'static> InputBuilder<'a, 'ui, 'b, M> {
         self.selection = Some((start, end));
         self
     }
-    /// exact line box (native paragraph line-spacing rule 4) — the
-    /// authored Dp count lands at any scale; omit for natural height
+    /// exact line box — the authored Dp count is calibrated into the
+    /// peer font (D2DDWRITE ignores paragraph line-spacing; pitch comes
+    /// from `CHARFORMAT.yHeight`). Omit for natural height. Mount-time
+    /// only: not diffed/applied on update — a changed value needs a
+    /// remount (same as `multiline`)
     pub fn line_height(mut self, h: crate::geom::Dp) -> Self {
         self.line_height = Some(h);
         self

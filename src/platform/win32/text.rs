@@ -1111,6 +1111,35 @@ impl WindowlessPeer {
     /// Selection as native UTF-16 (anchor, focus) char offsets — the
     /// direction is preserved via ITextDocument's selection flags, not
     /// EM_EXGETSEL's sorted cpMin/cpMax.
+    /// whole-story length in UTF-16 units — clamp bound for staged ranges
+    /// so an out-of-range author value can't fight read-back idempotence
+    pub(crate) fn story_len_utf16(&self) -> UiResult<usize> {
+        unsafe {
+            let mut doc_raw: *mut c_void = std::ptr::null_mut();
+            let vt = Interface::vtable(self.tx());
+            (vt.base__.base__.QueryInterface)(
+                self.tx().as_raw(),
+                &ITextDocument::IID as *const GUID,
+                &mut doc_raw,
+            )
+            .ok()
+            .map_err(|e| UiError::Platform(format!("QI(ITextDocument): {e}")))?;
+            let doc = ITextDocument::from_raw(doc_raw);
+            // tomStory=6 is a UNIT (MoveEnd expands to the story end),
+            // not a char position — Range(0,6) would mean "chars 0..6"
+            let range = doc
+                .Range(0, 0)
+                .map_err(|e| UiError::Platform(format!("Range: {e}")))?;
+            range
+                .MoveEnd(6, 1)
+                .map_err(|e| UiError::Platform(format!("MoveEnd(tomStory): {e}")))?;
+            let end = range
+                .GetEnd()
+                .map_err(|e| UiError::Platform(format!("GetEnd: {e}")))?;
+            Ok(end.max(0) as usize)
+        }
+    }
+
     pub(crate) fn selection_utf16(&self) -> UiResult<(usize, usize)> {
         unsafe {
             let mut doc_raw: *mut c_void = std::ptr::null_mut();
@@ -1795,10 +1824,22 @@ impl crate::node::TextPeer for WindowlessPeer {
     /// live selection differs (idempotent: no write when already staged);
     /// `None` leaves selection to user/native control.
     fn apply_selection(&mut self, sel: Option<(usize, usize)>) -> UiResult {
-        if let Some((s, e)) = sel
-            && self.selection_utf16().ok() != Some((s, e))
-        {
-            self.set_selection_utf16(s, e)?;
+        // never write a staged range into an in-flight composition — a
+        // SetStart/SetEnd while msftedit holds a marked range would
+        // clobber the IME's target
+        if self.composing.get() {
+            return Ok(());
+        }
+        if let Some((s, e)) = sel {
+            // clamp the staged range to the story length so an
+            // out-of-range author value doesn't re-apply every commit
+            // (TOM clamps on write but the staged value never equals
+            // read-back → idempotence broken)
+            let story = self.story_len_utf16().unwrap_or(usize::MAX);
+            let (s, e) = (s.min(story), e.min(story));
+            if self.selection_utf16().ok() != Some((s, e)) {
+                self.set_selection_utf16(s, e)?;
+            }
         }
         Ok(())
     }

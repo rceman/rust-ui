@@ -260,3 +260,30 @@ neighbors — a partially visible caret is hidden rather than leaked.
 **Contract implication:** a native text peer is an offscreen leaf
 surface the compositor samples — `TxDrawD2D` into the peer's own target
 is the only supported draw route; compositor clips apply at the blit.
+
+## 13. `TXTBIT_D2DDWRITE` ignores every paragraph line-spacing control — line pitch comes from `CHARFORMAT.yHeight`
+
+Under `TXTBIT_D2DDWRITE`, msftedit's D2D text layout derives the line
+pitch from the character format's `yHeight` alone. Verified dead on this
+host (all probed with `EM_GETPARAFORMAT`/TOM read-backs confirming the
+values were *stored* yet produced no drawn-pitch change):
+
+- `EM_SETPARAFORMAT` + `PARAFORMAT2` `PFM_LINESPACING` (rules 4/5) —
+  stored, read-back correct, inert for `TxDrawD2D`
+- TOM `ITextPara::SetLineSpacing` / `ITextPara2` — `E_FAIL`
+- Negative `dySpaceBefore/After` — inert
+- RTF streams carrying `\sl` — destructive (zero ink / doc loss)
+- dropping `TXTBIT_D2DDWRITE` — zero ink (not a fallback)
+
+The effective lever is the font size itself: measured on this host
+(Segoe UI, 96 dpi) ≈ **11.5 twips of `yHeight` per px of drawn pitch**
+(280→25px, 230→20px, 200→17px). `PeerConfig.line_twips` (authored `Dp`
+× 15) therefore maps to `yHeight = line_twips * 23/30` in the peer's
+default `CHARFORMAT` — `line_height(dp(20))` produces a verified 20px
+pitch (`EM_POSFROMCHAR` line origins 0/20/40).
+
+**Residual:** `EM_REQUESTRESIZE` (the `natural_size` extent source)
+stays stale under this mode — it reports a pre-calibration natural
+extent (~75px for 3 lines at authored-20px pitch). The doc's *drawn*
+truth (`TxDrawD2D` pixels, `EM_POSFROMCHAR`) is authoritative; the
+stale extent must never be treated as a fresh measurement.
