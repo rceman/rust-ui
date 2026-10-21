@@ -165,6 +165,11 @@ pub(crate) struct HostShared {
     pub fg_authored: crate::style::Color,
     pub sel_bg: COLORREF,
     pub sel_fg: COLORREF,
+    /// COLOR_WINDOW — the selection band's blend base under D2DDWRITE
+    /// (band = 0.4·sel_bg + 0.6·win_bg). Near-black so the contract's
+    /// dark selection tokens render near-solid; must stay ≠ sel_bg or
+    /// msftedit skips the band (TXTBACK_TRANSPARENT → never painted)
+    pub win_bg: COLORREF,
     /// system-caret state recorded from Tx*Caret calls
     pub caret_pos: POINT,
     pub caret_size: SIZE,
@@ -620,7 +625,9 @@ impl ITextHost_Impl for HostBox {
             COLOR_HIGHLIGHT => s.host.sel_bg,
             COLOR_HIGHLIGHTTEXT => s.host.sel_fg,
             COLOR_GRAYTEXT => s.host.fg,
-            COLOR_WINDOW => COLORREF(0), // TXTBACK_TRANSPARENT — we paint
+            // real field color, not 0 — a #000 selection band equals
+            // COLOR_WINDOW=0 and msftedit then skips drawing it
+            COLOR_WINDOW => s.host.win_bg,
             _ => unsafe { COLORREF(GetSysColor(nindex)) },
         }
     }
@@ -963,6 +970,7 @@ impl WindowlessPeer {
                 fg_authored: cfg.fg_authored,
                 sel_bg: colorref(cfg.sel_bg),
                 sel_fg: colorref(cfg.sel_fg),
+                win_bg: COLORREF(0x010101),
                 caret_pos: POINT::default(),
                 caret_size: SIZE::default(),
                 caret_shown: false,
@@ -1621,6 +1629,13 @@ impl WindowlessPeer {
         s.host.cf.crTextColor = colorref(resolved);
         s.host.sel_bg = colorref(sel_bg);
         s.host.sel_fg = colorref(sel_fg);
+        // COLOR_WINDOW is the selection band's blend BASE (band =
+        // 0.4·sel_bg + 0.6·win_bg under D2DDWRITE — UI activation does
+        // NOT change it, verified live). A near-black base makes the
+        // contract's #000 band render ≈#010101 instead of the washed
+        // #9b9b9b that a truthful white window color produced; must
+        // stay ≠ sel_bg or the band is skipped entirely.
+        s.host.win_bg = COLORREF(0x010101);
         s.host.ev(HostEvent::Invalidate);
     }
 

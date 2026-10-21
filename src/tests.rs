@@ -9302,12 +9302,15 @@ fn staged_selection_survives_first_activation() {
     peer.draw(&rt, island, 0).expect("draw");
     unsafe { rt.EndDraw(None, None).expect("end") };
     let data = unsafe { std::slice::from_raw_parts(bits as *const u8, (FBW * FBH * 4) as usize) };
+    // band = 0.4·sel_bg + 0.6·win_bg under D2DDWRITE → a (0.2,0.4,0.8)
+    // highlight over win_bg #010101 lands ≈ (21,42,83) — dark blue, not
+    // the saturated source color
     let mut blue = 0usize;
     for y in 0..FBH {
         for x in 0..FBW {
             let o = (y * FBW + x) as usize * 4;
             let (b, r) = (data[o] as i32, data[o + 2] as i32);
-            if b > 120 && b > r + 40 {
+            if b > 60 && b > r + 20 {
                 blue += 1;
             }
         }
@@ -9315,5 +9318,81 @@ fn staged_selection_survives_first_activation() {
     assert!(
         blue > 300,
         "staged selection must paint selection-colored ink, got {blue}px"
+    );
+}
+
+/// (windows) the contract's #000 selection band must render near-solid:
+/// COLOR_WINDOW is the band's blend BASE under D2DDWRITE
+/// (band = 0.4·sel_bg + 0.6·win_bg) — a white/truthful window color
+/// washed every highlight out to ~60% gray and a #000 highlight was
+/// skipped entirely when window was 0. win_bg is near-black so the
+/// band lands ≈#010101 and AUTOCOLOR swaps selected text to sel_fg.
+#[test]
+#[cfg(target_os = "windows")]
+fn selection_band_renders_contract_dark() {
+    use crate::platform::win32::space::{LogicalRect, ScaleFactor};
+    let lib = crate::platform::win32::Msftedit::load().expect("msftedit");
+    let hwnd = probe_hwnd();
+    let cfg = crate::platform::win32::PeerConfig {
+        multiline: true,
+        read_only: false,
+        face: "Segoe UI".into(),
+        size_twips: 280,
+        line_twips: 300,
+        fg: [0., 0., 0., 1.],
+        fg_authored: crate::style::Color::rgba(10, 10, 10, 255),
+        sel_bg: [0., 0., 0., 1.],
+        sel_fg: [1., 1., 1., 1.],
+        bold: false,
+    };
+    let sink = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let mut peer = crate::platform::win32::WindowlessPeer::create(
+        1,
+        &lib,
+        hwnd,
+        ScaleFactor(1.0),
+        &cfg,
+        sink,
+        std::sync::Arc::new(std::sync::Mutex::new(
+            crate::platform::win32::text::TimerPool::new(),
+        )),
+    )
+    .expect("peer create");
+    crate::node::TextPeer::initialize(
+        &mut peer,
+        "First line of a note.\nSecond line with more text.\nThird line closes it out.",
+        crate::text::TextRevision::mint(),
+        crate::text::BindingToken::mint(),
+    )
+    .expect("init");
+    crate::node::TextPeer::apply_selection(&mut peer, Some((22, 33))).expect("sel");
+    peer.apply_bounds(
+        LogicalRect {
+            x: 0.,
+            y: 0.,
+            width: 340.,
+            height: 62.,
+        },
+        ScaleFactor(1.0),
+    )
+    .expect("bounds");
+    let fb = draw_peer_dib(&peer); // 800x600, cleared BLACK
+    // the band rows of the second line: count near-black (band) and
+    // near-white (selected glyphs, swapped to sel_fg by AUTOCOLOR)
+    let (mut band, mut seltext) = (0usize, 0usize);
+    for y in 20..50usize {
+        for x in 0..200usize {
+            let o = (y * 800 + x) * 4;
+            let (r, g, b) = (fb[o + 2], fb[o + 1], fb[o]);
+            if r < 8 && g < 8 && b < 8 {
+                band += 1;
+            } else if r > 200 && g > 200 && b > 200 {
+                seltext += 1;
+            }
+        }
+    }
+    assert!(
+        band > 500 && seltext > 10,
+        "contract selection must draw a near-black band with light text,          got band={band}px seltext={seltext}px"
     );
 }
