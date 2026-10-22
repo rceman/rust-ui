@@ -1311,6 +1311,8 @@ pub fn role_color(role: ColorRole, dark: bool) -> [f32; 4] {
         (Foreground10, true) => rgba(0xfafafa, 0.10),
         (Foreground60, false) => rgba(0x0a0a0a, 0.60),
         (Foreground60, true) => rgba(0xfafafa, 0.60),
+        (Muted40, false) => rgba(0xf5f5f5, 0.4),
+        (Muted40, true) => rgba(0x262626, 0.4),
         (Muted50, false) => rgba(0xf5f5f5, 0.5),
         (Muted50, true) => rgba(0x262626, 0.5),
         (Input30, _) => rgba(0xffffff, 0.045),
@@ -2472,6 +2474,7 @@ pub fn system_slot(role: crate::theme::ColorRole) -> SystemColor {
         | R::Code
         | R::Secondary
         | R::Muted50
+        | R::Muted40
         | R::DestructiveTint
         | R::DestructiveTintHover
         | R::Input30

@@ -1395,7 +1395,7 @@ impl Gallery {
                         };
                         ui.box_(
                             BoxProps::new()
-                                .width(Length::Fixed(dp(208.0)))
+                                .width(Length::Fixed(dp(224.0)))
                                 .style(BoxStyle {
                                     background: Color::Role(ColorRole::Sidebar),
                                     padding: Insets::all(dp(8.0)),
@@ -1422,60 +1422,114 @@ impl Gallery {
         });
     }
 
+    /// Frozen `.overlay-stage` panel chrome — `rounded-xl` (r14)
+    /// `bg-muted/40` panel with a 1dp `foreground/10` ring and fixed
+    /// demo height; the popup itself escapes into the deferred overlay
+    /// layer, only the panel bounds the specimen.
+    fn overlay_stage(
+        ui: &mut Ui<'_, '_, Msg>,
+        height: f32,
+        padding: Insets,
+        draw: impl FnOnce(&mut Ui<'_, '_, Msg>),
+    ) {
+        let style = BoxStyle::new()
+            .background(Color::Role(ColorRole::Muted40))
+            .border(Border::all(BorderSide::new(
+                dp(1.0),
+                Color::Role(ColorRole::Foreground10),
+            )))
+            .radii(CornerRadii::all(dp(14.0)))
+            .padding(padding);
+        ui.box_(
+            BoxProps::new()
+                .style(style)
+                .width(Length::Fill(1))
+                .height(Length::Fixed(dp(height))),
+            draw,
+        );
+    }
+
     fn overlays_page(&self, ui: &mut Ui<Msg>) {
-        ui.column(Column::new().gap(Space::Lg).align(Align::Start), |ui| {
+        ui.column(Column::new().gap(Space::Lg).align(Align::Stretch), |ui| {
             ui.named("select.default.open", |ui| {
-                ui.row(Row::new(), |ui| {
-                    let mut select = Select::new("select.default.open.trigger");
-                    select.content_id = Some("select.default.open.content");
-                    select.open = self.select_open;
-                    select.selected = Some(self.env);
-                    select.value = Some(match self.env {
-                        "development" => "Development",
-                        "staging" => "Staging",
-                        "preview" => "Preview",
-                        "deprecated" => "Deprecated",
-                        _ => "Production",
-                    });
-                    ui.select(
-                        select,
-                        |event| match event {
-                            SelectChange::Open(open) => {
-                                Msg::SelectOpen("select.default.open", open)
-                            }
-                            SelectChange::Pick(key) => Msg::SelectPick("select.default.open", key),
-                        },
-                        |items| {
-                            items.group("environment", "Environment", |items| {
-                                for (key, text, disabled, presented) in [
-                                    ("development", "Development", false, Presented::default()),
-                                    ("staging", "Staging", false, Presented::HOVER),
-                                    ("production", "Production", false, Presented::default()),
-                                    ("preview", "Preview", false, Presented::default()),
-                                    ("deprecated", "Deprecated", true, Presented::default()),
-                                ] {
-                                    items.item(
-                                        key,
-                                        text,
-                                        SelectItemOpts {
-                                            disabled,
-                                            automation_id: if key == "staging" {
-                                                Some("select.default.open.item-highlighted")
-                                            } else {
-                                                None
-                                            },
-                                            presented,
-                                        },
-                                    );
-                                }
+                Self::overlay_stage(
+                    ui,
+                    360.0,
+                    Insets {
+                        top: dp(24.0),
+                        ..Default::default()
+                    },
+                    |ui| {
+                        ui.column(Column::new().align(Align::Center), |ui| {
+                            let mut select = Select::new("select.default.open.trigger");
+                            select.content_id = Some("select.default.open.content");
+                            select.open = self.select_open;
+                            select.selected = Some(self.env);
+                            select.value = Some(match self.env {
+                                "development" => "Development",
+                                "staging" => "Staging",
+                                "preview" => "Preview",
+                                "deprecated" => "Deprecated",
+                                _ => "Production",
                             });
-                            items.separator();
-                            items.group("region", "Region", |items| {
-                                items.item("eu-west", "EU West", SelectItemOpts::default());
-                            });
-                        },
-                    );
-                });
+                            ui.select(
+                                select,
+                                |event| match event {
+                                    SelectChange::Open(open) => {
+                                        Msg::SelectOpen("select.default.open", open)
+                                    }
+                                    SelectChange::Pick(key) => {
+                                        Msg::SelectPick("select.default.open", key)
+                                    }
+                                },
+                                |items| {
+                                    items.group("environment", "Environment", |items| {
+                                        for (key, text, disabled, presented) in [
+                                            (
+                                                "development",
+                                                "Development",
+                                                false,
+                                                Presented::default(),
+                                            ),
+                                            ("staging", "Staging", false, Presented::HOVER),
+                                            (
+                                                "production",
+                                                "Production",
+                                                false,
+                                                Presented::default(),
+                                            ),
+                                            ("preview", "Preview", false, Presented::default()),
+                                            (
+                                                "deprecated",
+                                                "Deprecated",
+                                                true,
+                                                Presented::default(),
+                                            ),
+                                        ] {
+                                            items.item(
+                                                key,
+                                                text,
+                                                SelectItemOpts {
+                                                    disabled,
+                                                    automation_id: if key == "staging" {
+                                                        Some("select.default.open.item-highlighted")
+                                                    } else {
+                                                        None
+                                                    },
+                                                    presented,
+                                                },
+                                            );
+                                        }
+                                    });
+                                    items.separator();
+                                    items.group("region", "Region", |items| {
+                                        items.item("eu-west", "EU West", SelectItemOpts::default());
+                                    });
+                                },
+                            );
+                        });
+                    },
+                );
             });
             ui.box_(
                 BoxProps::new()
@@ -1491,130 +1545,144 @@ impl Gallery {
                 width: dp(192.0),
             };
             ui.named("dropdown-menu.default", |ui| {
-                ui.row(Row::new(), |ui| {
-                    ui.dropdown_menu(
-                        props,
-                        |event: DropdownMenuChange| -> Msg {
-                            match event {
-                                DropdownMenuChange::Open(open) => Msg::MenuOpen(open),
-                                DropdownMenuChange::Activate(key) => Msg::MenuAction(key),
-                                DropdownMenuChange::Checkbox(key, value) => {
-                                    Msg::MenuCheck(key, value)
-                                }
-                                DropdownMenuChange::Radio(key) => Msg::MenuRadio(key),
-                            }
-                        },
-                        |menu| {
-                            menu.group("account", "My Account", |items| {
-                                items.item(
-                                    "profile",
-                                    "Profile",
-                                    DropdownItemOpts {
-                                        icon: Some(Icon::User),
-                                        shortcut: Some("Ctrl+Shift+P"),
-                                        ..Default::default()
-                                    },
-                                );
-                                items.item(
-                                    "settings",
-                                    "Settings",
-                                    DropdownItemOpts {
-                                        icon: Some(Icon::Settings),
-                                        shortcut: Some("Ctrl+,"),
-                                        ..Default::default()
-                                    },
-                                );
-                                items.item(
-                                    "team-members",
-                                    "Team members",
-                                    DropdownItemOpts {
-                                        icon: Some(Icon::User),
-                                        automation_id: Some(
-                                            "dropdown-menu.default.item-highlighted",
-                                        ),
-                                        presented: Presented::HOVER,
-                                        ..Default::default()
-                                    },
-                                );
-                                items.item(
-                                    "billing",
-                                    "Billing",
-                                    DropdownItemOpts {
-                                        icon: Some(Icon::Settings),
-                                        disabled: true,
-                                        ..Default::default()
-                                    },
-                                );
-                            });
-                            menu.separator();
-                            menu.group("appearance", "Appearance", |items| {
-                                items.item(
-                                    "toolbar",
-                                    "Show toolbar",
-                                    DropdownItemOpts {
-                                        kind: DropdownItemKind::Checkbox {
-                                            checked: self.menu_toolbar,
-                                        },
-                                        ..Default::default()
-                                    },
-                                );
-                                items.item(
-                                    "word-wrap",
-                                    "Word wrap",
-                                    DropdownItemOpts {
-                                        kind: DropdownItemKind::Checkbox {
-                                            checked: self.menu_wrap,
-                                        },
-                                        ..Default::default()
-                                    },
-                                );
-                            });
-                            menu.separator();
-                            menu.group("panel-position", "Panel Position", |items| {
-                                items.item(
-                                    "left",
-                                    "Panel left",
-                                    DropdownItemOpts {
-                                        kind: DropdownItemKind::Radio {
-                                            selected: self.menu_panel == "left",
-                                        },
-                                        ..Default::default()
-                                    },
-                                );
-                                items.item(
-                                    "right",
-                                    "Panel right",
-                                    DropdownItemOpts {
-                                        kind: DropdownItemKind::Radio {
-                                            selected: self.menu_panel == "right",
-                                        },
-                                        ..Default::default()
-                                    },
-                                );
-                            });
-                            menu.separator();
-                            menu.item(
-                                "delete-account",
-                                "Delete account",
-                                DropdownItemOpts {
-                                    kind: DropdownItemKind::Destructive,
-                                    icon: Some(Icon::LogOut),
-                                    ..Default::default()
+                Self::overlay_stage(
+                    ui,
+                    464.0,
+                    Insets {
+                        top: dp(24.0),
+                        left: dp(32.0),
+                        ..Default::default()
+                    },
+                    |ui| {
+                        ui.row(Row::new(), |ui| {
+                            ui.dropdown_menu(
+                                props,
+                                |event: DropdownMenuChange| -> Msg {
+                                    match event {
+                                        DropdownMenuChange::Open(open) => Msg::MenuOpen(open),
+                                        DropdownMenuChange::Activate(key) => Msg::MenuAction(key),
+                                        DropdownMenuChange::Checkbox(key, value) => {
+                                            Msg::MenuCheck(key, value)
+                                        }
+                                        DropdownMenuChange::Radio(key) => Msg::MenuRadio(key),
+                                    }
                                 },
-                            );
-                            menu.item(
-                                "delete-workspace",
+                                |menu| {
+                                    menu.group("account", "My Account", |items| {
+                                        items.item(
+                                            "profile",
+                                            "Profile",
+                                            DropdownItemOpts {
+                                                icon: Some(Icon::User),
+                                                shortcut: Some("Ctrl+Shift+P"),
+                                                ..Default::default()
+                                            },
+                                        );
+                                        items.item(
+                                            "settings",
+                                            "Settings",
+                                            DropdownItemOpts {
+                                                icon: Some(Icon::Settings),
+                                                shortcut: Some("Ctrl+,"),
+                                                ..Default::default()
+                                            },
+                                        );
+                                        items.item(
+                                            "team",
+                                            "Team members",
+                                            DropdownItemOpts {
+                                                icon: Some(Icon::User),
+                                                automation_id: Some(
+                                                    "dropdown-menu.default.item-highlighted",
+                                                ),
+                                                presented: Presented::HOVER,
+                                                ..Default::default()
+                                            },
+                                        );
+                                        items.item(
+                                            "billing",
+                                            "Billing",
+                                            DropdownItemOpts {
+                                                icon: Some(Icon::Settings),
+                                                disabled: true,
+                                                ..Default::default()
+                                            },
+                                        );
+                                    });
+                                    menu.separator();
+                                    menu.group("appearance", "Appearance", |items| {
+                                        items.item(
+                                            "toolbar",
+                                            "Show toolbar",
+                                            DropdownItemOpts {
+                                                kind: DropdownItemKind::Checkbox {
+                                                    checked: self.menu_toolbar,
+                                                },
+                                                ..Default::default()
+                                            },
+                                        );
+                                        items.item(
+                                            "word-wrap",
+                                            "Word wrap",
+                                            DropdownItemOpts {
+                                                kind: DropdownItemKind::Checkbox {
+                                                    checked: self.menu_wrap,
+                                                },
+                                                ..Default::default()
+                                            },
+                                        );
+                                    });
+                                    menu.separator();
+                                    menu.group("panel-position", "Panel Position", |items| {
+                                        items.item(
+                                            "left",
+                                            "Panel left",
+                                            DropdownItemOpts {
+                                                kind: DropdownItemKind::Radio {
+                                                    selected: self.menu_panel == "left",
+                                                },
+                                                ..Default::default()
+                                            },
+                                        );
+                                        items.item(
+                                            "right",
+                                            "Panel right",
+                                            DropdownItemOpts {
+                                                kind: DropdownItemKind::Radio {
+                                                    selected: self.menu_panel == "right",
+                                                },
+                                                ..Default::default()
+                                            },
+                                        );
+                                    });
+                                    menu.separator();
+                                    menu.item(
+                                        "delete",
+                                        "Delete account",
+                                        DropdownItemOpts {
+                                            kind: DropdownItemKind::Destructive,
+                                            icon: Some(Icon::LogOut),
+                                            ..Default::default()
+                                        },
+                                    );
+                                    menu.item(
+                                "delete-ws",
                                 "Delete workspace",
                                 DropdownItemOpts {
                                     kind: DropdownItemKind::Destructive,
                                     presented: Presented::HOVER,
-                                    icon: Some(Icon::Trash2),
+                                    icon: Some(Icon::LogOut),
+                                    automation_id: Some(
+                                        "dropdown-menu.default.item-destructive-highlighted",
+                                    ),
                                     ..Default::default()
                                 },
                             );
-                        },
-                    );
-                });
+                                },
+                            );
+                        });
+                    },
+                );
             });
         });
     }

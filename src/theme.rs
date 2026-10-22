@@ -80,6 +80,8 @@ pub enum ColorRole {
     Foreground10,
     /// `foreground-60` — inactive nav/tabs text
     Foreground60,
+    /// `muted-40` — overlay stage panel fill (bg-muted/40)
+    Muted40,
     /// `muted-50` — ghost dark hover / card footer fill
     Muted50,
     /// `input-30-dark` — dark outline-control fill (#fff @ 4.5%)
