@@ -3425,10 +3425,16 @@ impl<'a, 'ui, 'tx, M: 'static> SelectItems<'a, 'ui, 'tx, M> {
     /// `separator` part — the `-mx-1 my-1 h-px` bleeding hairline: a
     /// popup-width line centered so it bleeds 4dp past the content lane
     /// to the popup border while staying inside the popup rect.
+    /// Frozen select separators sit BETWEEN `p-1` groups, so the contract
+    /// zone is group-pad(4) + my-1(4) + line(1) + my-1(4) + group-pad(4)
+    /// = 17dp; the `Space::Sm` wrapper models the whole zone (the group
+    /// columns stay unpadded so items aren't double-inset). Adjacent
+    /// groups without a separator lose the inter-group 8dp — unexercised
+    /// by the frozen specimen; true group `p-1` needs per-side insets.
     pub fn separator(&mut self) {
         let w = self.popup_width;
         self.ui.column(
-            Column::new().padding(Space::Xs).align(Align::Center),
+            Column::new().padding(Space::Sm).align(Align::Center),
             |ui| {
                 ui.part("separator", |ui| {
                     ui.box_(

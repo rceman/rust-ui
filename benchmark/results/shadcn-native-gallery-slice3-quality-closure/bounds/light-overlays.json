@@ -661,13 +661,13 @@
                                           "height": 1.0,
                                           "width": 208.0,
                                           "x": 378.0,
-                                          "y": 349.0
+                                          "y": 353.0
                                         },
                                         "rect_px": {
                                           "height": 1.0,
                                           "width": 208.0,
                                           "x": 378.0,
-                                          "y": 349.0
+                                          "y": 353.0
                                         },
                                         "visible": true
                                       }
@@ -680,13 +680,13 @@
                                     "label": "",
                                     "pressed": false,
                                     "rect_dp": {
-                                      "height": 9.0,
+                                      "height": 17.0,
                                       "width": 200.0,
                                       "x": 382.0,
                                       "y": 345.0
                                     },
                                     "rect_px": {
-                                      "height": 9.0,
+                                      "height": 17.0,
                                       "width": 200.0,
                                       "x": 382.0,
                                       "y": 345.0
@@ -710,13 +710,13 @@
                                           "height": 24.0,
                                           "width": 200.0,
                                           "x": 382.0,
-                                          "y": 354.0
+                                          "y": 362.0
                                         },
                                         "rect_px": {
                                           "height": 24.0,
                                           "width": 200.0,
                                           "x": 382.0,
-                                          "y": 354.0
+                                          "y": 362.0
                                         },
                                         "visible": true
                                       },
@@ -734,13 +734,13 @@
                                           "height": 28.0,
                                           "width": 200.0,
                                           "x": 382.0,
-                                          "y": 378.0
+                                          "y": 386.0
                                         },
                                         "rect_px": {
                                           "height": 28.0,
                                           "width": 200.0,
                                           "x": 382.0,
-                                          "y": 378.0
+                                          "y": 386.0
                                         },
                                         "selected": false,
                                         "visible": true
@@ -757,13 +757,13 @@
                                       "height": 52.0,
                                       "width": 200.0,
                                       "x": 382.0,
-                                      "y": 354.0
+                                      "y": 362.0
                                     },
                                     "rect_px": {
                                       "height": 52.0,
                                       "width": 200.0,
                                       "x": 382.0,
-                                      "y": 354.0
+                                      "y": 362.0
                                     },
                                     "visible": true
                                   }
@@ -776,13 +776,13 @@
                                 "label": "",
                                 "pressed": false,
                                 "rect_dp": {
-                                  "height": 225.0,
+                                  "height": 233.0,
                                   "width": 200.0,
                                   "x": 382.0,
                                   "y": 181.0
                                 },
                                 "rect_px": {
-                                  "height": 225.0,
+                                  "height": 233.0,
                                   "width": 200.0,
                                   "x": 382.0,
                                   "y": 181.0
@@ -899,13 +899,13 @@
                                   "height": 1.0,
                                   "width": 208.0,
                                   "x": 378.0,
-                                  "y": 349.0
+                                  "y": 353.0
                                 },
                                 "rect_px": {
                                   "height": 1.0,
                                   "width": 208.0,
                                   "x": 378.0,
-                                  "y": 349.0
+                                  "y": 353.0
                                 },
                                 "visible": true
                               },
@@ -915,13 +915,13 @@
                                   "height": 52.0,
                                   "width": 200.0,
                                   "x": 382.0,
-                                  "y": 354.0
+                                  "y": 362.0
                                 },
                                 "rect_px": {
                                   "height": 52.0,
                                   "width": 200.0,
                                   "x": 382.0,
-                                  "y": 354.0
+                                  "y": 362.0
                                 },
                                 "visible": true
                               },
@@ -931,13 +931,13 @@
                                   "height": 24.0,
                                   "width": 200.0,
                                   "x": 382.0,
-                                  "y": 354.0
+                                  "y": 362.0
                                 },
                                 "rect_px": {
                                   "height": 24.0,
                                   "width": 200.0,
                                   "x": 382.0,
-                                  "y": 354.0
+                                  "y": 362.0
                                 },
                                 "visible": true
                               },
@@ -947,26 +947,26 @@
                                   "height": 28.0,
                                   "width": 200.0,
                                   "x": 382.0,
-                                  "y": 378.0
+                                  "y": 386.0
                                 },
                                 "rect_px": {
                                   "height": 28.0,
                                   "width": 200.0,
                                   "x": 382.0,
-                                  "y": 378.0
+                                  "y": 386.0
                                 },
                                 "visible": true
                               }
                             ],
                             "pressed": false,
                             "rect_dp": {
-                              "height": 233.0,
+                              "height": 241.0,
                               "width": 208.0,
                               "x": 378.0,
                               "y": 177.0
                             },
                             "rect_px": {
-                              "height": 233.0,
+                              "height": 241.0,
                               "width": 208.0,
                               "x": 378.0,
                               "y": 177.0
