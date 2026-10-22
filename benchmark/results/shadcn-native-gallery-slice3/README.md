@@ -1,6 +1,6 @@
 # Shadcn Native Gallery — Slice 3 evidence
 
-Production code candidate: **`b14c79a`** on `agent/shadcn-native-gallery-slice3-opus55` (base `4e38097`).
+Production code candidate: **`79816a4`** on `agent/shadcn-native-gallery-slice3-opus55` (base `4e38097`); evidence/docs corrections on `main` (`5e3261c`+).
 Frozen reference: `reference/shadcn-gallery-v0.1/` @ `2e14e417a69ef8967b8fb17120282e3de6449fae` (unmodified).
 Capture host: native Windows 11 VM, scale_factor 1.0, WGC (`Windows.Graphics.Capture`), `stable_retained_scene` verified per shot.
 
@@ -8,8 +8,14 @@ Slice 3 ships: **Tabs** (default + line), **Select** (combobox + listbox popup),
 
 ## Layout
 
-- `visual/fullpages/{light,dark}/` — full client captures per page (`components`, `forms`, `navigation`, `typography`, `overlays`, `native-text`). Staged via `RUI_GALLERY_PAGE=<page>`; dark via `shell.theme.dark` click.
+- `visual/fullpages/{light,dark}/` — full client captures per page (`components`, `forms`, `navigation`, `typography`, `overlays`, `native-text`). Staged via `RUI_GALLERY_PAGE=<page>`; theme via explicit `shell.theme.{light,dark}` click each cycle.
 - `visual/states/{light,dark}/` — element crops: `tabs.default.active`, `tabs.line.active`, `settings-nav.expanded`, `settings-nav.collapsed` (via `RUI_SETTINGS_NAV_COLLAPSED=1`), `select.open`, `dropdown-menu.open`, `button.default`, `card.default`.
+
+## Capture notes
+
+- **Theme selection is explicit**: every cycle clicks `shell.theme.light` or `shell.theme.dark` after launch — the app boots `ThemeMode::System` (OS dark on this host), so a capture with no theme click yields dark pixels regardless of the output directory.
+- **Overlays page popup ordering**: both specimens boot `open: true`; the theme click is an outside press that dismisses only the *topmost* light-dismiss popup (the menu, staged last) — the select listbox legitimately remains open in `overlays` fullpages and `select.open`. `dropdown-menu.open` re-clicks the trigger after the theme click to restore the open menu.
+- `select.open`/`dropdown-menu.open` crops are the `.overlay-stage` panel bounds (r14, `bg-muted/40`, 1dp `fg/10` ring, fixed 360/464 height) — element = stage box per the frozen contract.
 - `interaction/devctl-slice3-verify.txt` — scripted `rust-ui-devctl` run: semantic ids, `expanded`/`selected`/`checked`/`focused`/`enabled` fields, Escape topmost dismissal, focus-on-open into content, arrow nav, Enter pick → close+value+focus restore, outside-press dismiss + restore.
 - `resize-sanity/` — 3× `resize`+`wait-idle` cycles (800/1200/960 wide) = 130 ms wall total incl. RPC; `resized-960.png` + `.capture.json`.
 - `*.capture.json` — devctl capture metadata (backend, client crop, scale).
