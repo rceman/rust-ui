@@ -1036,8 +1036,9 @@ where
             // VANISHED popups restore BEFORE new books are written — a
             // book created in the same commit must record the
             // post-restore owner, not a focus about to die with the old
-            // popup. Restore runs newest-layer-first so the OLDEST
-            // opener's return target lands last (the pre-stack owner).
+            // popup. Restore runs newest-layer-first — a nested stack
+            // unwinds to the pre-stack owner; sibling closes land the
+            // newest vanished book with a live return target.
             let mut vanished: Vec<(u64, u32)> = self
                 .open_popups
                 .iter()
@@ -1064,13 +1065,17 @@ where
                     self.set_focus(ret)?;
                 }
             }
-            for (slot, (id, focus_on_open)) in &live {
-                if let std::collections::hash_map::Entry::Vacant(e) = self.open_popups.entry(*slot)
-                {
+            // insert in sorted slot order — same-commit multi-open seq
+            // assignment is commit-deterministic
+            let mut fresh: Vec<(u32, NodeId, bool)> =
+                live.iter().map(|(s, (id, f))| (*s, *id, *f)).collect();
+            fresh.sort_by_key(|(s, _, _)| *s);
+            for (slot, id, focus_on_open) in fresh {
+                if let std::collections::hash_map::Entry::Vacant(e) = self.open_popups.entry(slot) {
                     e.insert(PopupBook {
-                        id: *id,
-                        focus_return: carried.remove(slot).flatten().or(self.focus),
-                        focus_pending: *focus_on_open,
+                        id,
+                        focus_return: carried.remove(&slot).flatten().or(self.focus),
+                        focus_pending: focus_on_open,
                         open_seq: self.popup_seq,
                     });
                     self.popup_seq += 1;
@@ -2062,8 +2067,8 @@ where
             .or_else(|| {
                 self.open_popups
                     .values()
+                    .max_by_key(|book| book.open_seq)
                     .map(|book| book.id)
-                    .max_by_key(|id| id.slot)
             })
     }
 
