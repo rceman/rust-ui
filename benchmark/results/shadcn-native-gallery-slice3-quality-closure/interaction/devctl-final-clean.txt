@@ -1,0 +1,42 @@
+
+LAUNCH ok pid=28868 scale=1.0
+NAV ids: shell.root, page.scroll, settings-nav-item.default.disabled, settings-nav-item.default.active, settings-nav-item.default.focus-visible, settings-nav-item.default.hover, settings-nav-item.default, settings-nav.theme, settings-nav.default, settings-nav.advanced, settings-nav.integrations, settings-nav.voice, settings-nav.agents, settings-nav.appearance, settings-nav.general, tabs.line.disabled, tabs.line.focus-visible, tabs.line.hover, tabs.line.inactive, tabs.line.active, tabs.default.disabled, tabs.default.focus-visible, tabs.default.hover, tabs.default.inactive, tabs.default.active, shell.header, shell.theme, shell.theme.system, shell.theme.dark, shell.theme.light
+TAB node id=tabs.line.disabled kind=tablist selected= focused=False label=
+TAB node id=tabs.line.focus-visible kind=tablist selected= focused=False label=
+TAB node id=tabs.line.hover kind=tablist selected= focused=False label=
+TAB node id=tabs.line.inactive kind=tablist selected= focused=False label=
+TAB node id=tabs.line.active kind=tablist selected= focused=False label=
+TAB node id=tabs.default.disabled kind=tablist selected= focused=False label=
+TAB node id=tabs.default.focus-visible kind=tablist selected= focused=False label=
+TAB node id=tabs.default.hover kind=tablist selected= focused=False label=
+TAB node id=tabs.default.inactive kind=tablist selected= focused=False label=
+TAB node id=tabs.default.active kind=tablist selected= focused=False label=
+TAB items: 30
+TAB initial selected: 
+TAB after Right: selected= focused_id=
+TAB after End: selected=
+TAB after Home: selected=
+NAVITEM id=settings-nav.theme kind=combobox selected= label=System
+NAVITEM id=settings-nav.default kind=container selected= label=
+NAVITEM id=settings-nav.advanced kind=navigation-item selected=False label=Advanced
+NAVITEM id=settings-nav.integrations kind=navigation-item selected=False label=Integrations
+NAVITEM id=settings-nav.voice kind=navigation-item selected=False label=Voice
+NAVITEM id=settings-nav.agents kind=navigation-item selected=False label=Agents
+NAVITEM id=settings-nav.appearance kind=navigation-item selected=True label=Appearance
+NAVITEM id=settings-nav.general kind=navigation-item selected=False label=General
+SELECT trigger expanded=True focused=False
+SELECT content present=True kind=popup
+SELECT options=6: EU West|sel=False|foc=False, Deprecated|sel=False|foc=False, Preview|sel=False|foc=False, Production|sel=True|foc=False, Staging|sel=False|foc=False, Development|sel=False|foc=False
+MENU trigger expanded=True
+MENU items=10: Delete workspace|chk=|foc=False|en=True | Delete account|chk=|foc=False|en=True | Panel right|chk=False|foc=False|en=True | Panel left|chk=True|foc=False|en=True | Word wrap|chk=False|foc=False|en=True | Show toolbar|chk=True|foc=False|en=True | Billing|chk=|foc=False|en=False | Team members|chk=|foc=False|en=True | Settings|chk=|foc=False|en=True | Profile|chk=|foc=True|en=True
+FOCUSED on open: id= kind=menuitem label=Profile
+ESC1: menu expanded=False select content present=True
+ESC2: select expanded=False focus restored to=shell.nav.overlays
+REOPEN select expanded=True focused=/Production
+DOWN -> focused=/Preview
+ENTER pick: expanded=False trigger label=Preview focus=select.default.open.trigger
+MENU reopen expanded=True focused=/Profile
+MENU Down -> focused=/Settings/chk=
+MENU Down x2 -> focused=/Show toolbar/chk=True
+OUTSIDE press-at(480,573): menu expanded=False focus=dropdown-menu.default.trigger
+DONE

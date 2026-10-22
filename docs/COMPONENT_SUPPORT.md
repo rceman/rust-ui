@@ -65,7 +65,7 @@ The `Desktop-responsive` column ("responsive layout target" - `layout`,
 | Tooltip | core | complete | partial | foundation | - | - | - | - | - | - | FOUNDATION_AVAILABLE | Foundation button `.tooltip(..)`; shadcn tooltip surface/arrow not implemented. |
 | Popover | core | complete | partial | foundation | - | - | - | - | - | - | PLANNED | Generic popup layer shipped (`ui.popover`): anchored placement (side/align/offset, flip+clamp), light-dismiss + Escape, modal scrim + hit/focus/scroll gate, focus_on_open/restore, UIA Pane/Menu/List. The shadcn Popover component contract stays PLANNED. |
 | Dialog | core | complete | no | - | - | - | - | - | - | - | PLANNED | |
-| Gallery shell | core | complete | yes | verified | - | - | - | - | - | PARTIAL | Native Gallery acceptance shell shipped — nav rail, Light/Dark/System theme switch, per-page routing, RUI_GALLERY_PAGE boot. Full frozen-catalog page completeness lands with remaining component slices. | Page tabs + Light/Dark/System switch for the native Gallery. |
+| Gallery shell | core | complete | yes | verified | - | - | - | - | - | - | PARTIAL | Native Gallery acceptance shell shipped — nav rail, Light/Dark/System theme switch, per-page routing, RUI_GALLERY_PAGE boot. Full frozen-catalog page completeness lands with remaining component slices. |
 
 ## Later
 

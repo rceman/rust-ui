@@ -1,0 +1,87 @@
+{
+ "tool": "tools/bounds_check.py",
+ "total_violations": 0,
+ "snapshots": 20,
+ "reports": {
+  "dark-compact-forms": {
+   "nodes": 142,
+   "violations": []
+  },
+  "dark-compact-navigation-collapsed": {
+   "nodes": 141,
+   "violations": []
+  },
+  "dark-compact-navigation": {
+   "nodes": 151,
+   "violations": []
+  },
+  "dark-compact-overlays": {
+   "nodes": 38,
+   "violations": []
+  },
+  "dark-components": {
+   "nodes": 172,
+   "violations": []
+  },
+  "dark-forms": {
+   "nodes": 142,
+   "violations": []
+  },
+  "dark-native-text": {
+   "nodes": 59,
+   "violations": []
+  },
+  "dark-navigation": {
+   "nodes": 151,
+   "violations": []
+  },
+  "dark-overlays": {
+   "nodes": 38,
+   "violations": []
+  },
+  "dark-typography": {
+   "nodes": 35,
+   "violations": []
+  },
+  "light-compact-forms": {
+   "nodes": 142,
+   "violations": []
+  },
+  "light-compact-navigation-collapsed": {
+   "nodes": 141,
+   "violations": []
+  },
+  "light-compact-navigation": {
+   "nodes": 151,
+   "violations": []
+  },
+  "light-compact-overlays": {
+   "nodes": 38,
+   "violations": []
+  },
+  "light-components": {
+   "nodes": 172,
+   "violations": []
+  },
+  "light-forms": {
+   "nodes": 142,
+   "violations": []
+  },
+  "light-native-text": {
+   "nodes": 59,
+   "violations": []
+  },
+  "light-navigation": {
+   "nodes": 151,
+   "violations": []
+  },
+  "light-overlays": {
+   "nodes": 38,
+   "violations": []
+  },
+  "light-typography": {
+   "nodes": 35,
+   "violations": []
+  }
+ }
+}

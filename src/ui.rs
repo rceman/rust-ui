@@ -3045,7 +3045,10 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
         let mut p = self
             .popover(props.open, |ui| {
                 ui.column(
-                    Column::new().align(Align::Stretch).padding(Space::None),
+                    Column::new()
+                        .align(Align::Stretch)
+                        .padding(Space::None)
+                        .gap(Space::None),
                     |ui| {
                         let mut st = SelectItems {
                             ui,
@@ -3140,7 +3143,10 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
         let mut popup = self
             .popover(props.open, |ui| {
                 ui.column(
-                    Column::new().align(Align::Stretch).padding(Space::None),
+                    Column::new()
+                        .align(Align::Stretch)
+                        .padding(Space::None)
+                        .gap(Space::None),
                     |ui| {
                         let mut items = DropdownMenuItems {
                             ui,
@@ -3351,7 +3357,10 @@ impl<'a, 'ui, 'tx, M: 'static> SelectItems<'a, 'ui, 'tx, M> {
         let on_change = self.on_change.clone();
         self.ui.part(&format!("group[{key}]"), |ui| {
             ui.column(
-                Column::new().align(Align::Stretch).padding(Space::None),
+                Column::new()
+                    .align(Align::Stretch)
+                    .padding(Space::None)
+                    .gap(Space::None),
                 |ui| {
                     let mut items = SelectItems {
                         ui,
@@ -3413,13 +3422,13 @@ impl<'a, 'ui, 'tx, M: 'static> SelectItems<'a, 'ui, 'tx, M> {
         });
     }
 
-    /// `separator` part — the `-mx-1 my-1 h-px` bleeding hairline:
-    /// popup-width + 8dp centered inside a padded wrapper so the line
-    /// reaches 4dp past each side of the content lane.
+    /// `separator` part — the `-mx-1 my-1 h-px` bleeding hairline: a
+    /// popup-width line centered so it bleeds 4dp past the content lane
+    /// to the popup border while staying inside the popup rect.
     pub fn separator(&mut self) {
-        let w = self.popup_width + 8.0;
+        let w = self.popup_width;
         self.ui.column(
-            Column::new().padding(Space::Sm).align(Align::Center),
+            Column::new().padding(Space::Xs).align(Align::Center),
             |ui| {
                 ui.part("separator", |ui| {
                     ui.box_(
@@ -3492,7 +3501,10 @@ impl<'a, 'ui, 'tx, M: 'static> DropdownMenuItems<'a, 'ui, 'tx, M> {
         let width = self.width;
         self.ui.part(&format!("group[{key}]"), |ui| {
             ui.column(
-                Column::new().align(Align::Stretch).padding(Space::None),
+                Column::new()
+                    .align(Align::Stretch)
+                    .padding(Space::None)
+                    .gap(Space::None),
                 |ui| {
                     ui.part(&format!("label[{key}]"), |ui| {
                         ui.text(label)

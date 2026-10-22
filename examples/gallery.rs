@@ -1274,7 +1274,7 @@ impl Gallery {
                                 ui.field(
                                     Field {
                                         orientation: FieldOrientation::Horizontal,
-                                        width: Some(dp(640.0)),
+                                        width: None,
                                     },
                                     |ui| {
                                         ui.part("content", |ui| {
@@ -1282,7 +1282,8 @@ impl Gallery {
                                                 Column::new()
                                                     .padding(Space::None)
                                                     .gap(Space::Xs)
-                                                    .align(Align::Start),
+                                                    .align(Align::Start)
+                                                    .width(Length::Fill(1)),
                                                 |ui| {
                                                     ui.text("Theme")
                                                         .style(field_label_style(false));
@@ -1291,7 +1292,6 @@ impl Gallery {
                                                 },
                                             );
                                         });
-                                        ui.box_(BoxProps::new().width(Length::Fill(1)), |_| {});
                                         let mut select = Select::new("settings-nav.theme");
                                         select.content_id = Some("settings-nav.theme.content");
                                         select.open = self.settings_theme_open;
@@ -1339,7 +1339,7 @@ impl Gallery {
                                     ui.field(
                                         Field {
                                             orientation: FieldOrientation::Horizontal,
-                                            width: Some(dp(640.0)),
+                                            width: None,
                                         },
                                         |ui| {
                                             ui.part("content", |ui| {
@@ -1347,7 +1347,8 @@ impl Gallery {
                                                     Column::new()
                                                         .padding(Space::None)
                                                         .gap(Space::Xs)
-                                                        .align(Align::Start),
+                                                        .align(Align::Start)
+                                                        .width(Length::Fill(1)),
                                                     |ui| {
                                                         ui.text(label)
                                                             .style(field_label_style(false));
@@ -1356,7 +1357,6 @@ impl Gallery {
                                                     },
                                                 );
                                             });
-                                            ui.box_(BoxProps::new().width(Length::Fill(1)), |_| {});
                                             ui.switch(
                                                 Switch {
                                                     checked: self.sw[idx],
