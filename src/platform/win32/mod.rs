@@ -477,6 +477,9 @@ struct PopupBook {
     id: NodeId,
     focus_return: Option<NodeId>,
     focus_pending: bool,
+    /// monotonic open order — a same-commit multi-close restores the
+    /// DEEPEST layer's return target deterministically
+    open_seq: u64,
 }
 
 /// Interaction state snapshot for transition classification.
@@ -618,6 +621,8 @@ where
     /// unmounts. Populated/cleared in turn_body between dirty drain and
     /// focus sanitize.
     open_popups: HashMap<u32, PopupBook>,
+    /// next popup open sequence — books restore deepest-layer-first
+    popup_seq: u64,
     #[cfg(feature = "devtools")]
     devtools: Option<crate::devtools::client::Server>,
     #[cfg(feature = "devtools")]
@@ -678,6 +683,7 @@ where
             committed_ink: std::cell::RefCell::new(HashMap::new()),
             applied_palette: std::cell::RefCell::new(None),
             open_popups: HashMap::new(),
+            popup_seq: 0,
         })
     }
 }
@@ -1027,23 +1033,19 @@ where
                     carried.insert(slot, book.focus_return);
                 }
             }
-            for (slot, (id, focus_on_open)) in &live {
-                if let std::collections::hash_map::Entry::Vacant(e) = self.open_popups.entry(*slot)
-                {
-                    e.insert(PopupBook {
-                        id: *id,
-                        focus_return: carried.remove(slot).flatten().or(self.focus),
-                        focus_pending: *focus_on_open,
-                    });
-                }
-            }
-            let vanished: Vec<u32> = self
+            // VANISHED popups restore BEFORE new books are written — a
+            // book created in the same commit must record the
+            // post-restore owner, not a focus about to die with the old
+            // popup. Restore runs newest-layer-first so the OLDEST
+            // opener's return target lands last (the pre-stack owner).
+            let mut vanished: Vec<(u64, u32)> = self
                 .open_popups
-                .keys()
-                .filter(|s| !live.contains_key(s))
-                .copied()
+                .iter()
+                .filter(|(s, _)| !live.contains_key(s))
+                .map(|(s, book)| (book.open_seq, *s))
                 .collect();
-            for slot in vanished {
+            vanished.sort_by(|a, b| b.0.cmp(&a.0));
+            for (_, slot) in vanished {
                 let Some(book) = self.open_popups.remove(&slot) else {
                     continue;
                 };
@@ -1060,6 +1062,18 @@ where
                             .is_some_and(|n| n.interactive() && n.visibility == Visibility::Visible)
                     });
                     self.set_focus(ret)?;
+                }
+            }
+            for (slot, (id, focus_on_open)) in &live {
+                if let std::collections::hash_map::Entry::Vacant(e) = self.open_popups.entry(*slot)
+                {
+                    e.insert(PopupBook {
+                        id: *id,
+                        focus_return: carried.remove(slot).flatten().or(self.focus),
+                        focus_pending: *focus_on_open,
+                        open_seq: self.popup_seq,
+                    });
+                    self.popup_seq += 1;
                 }
             }
         }
@@ -3748,6 +3762,7 @@ where
         committed_ink: std::cell::RefCell::new(HashMap::new()),
         applied_palette: std::cell::RefCell::new(None),
         open_popups: HashMap::new(),
+        popup_seq: 0,
     });
     backend.rt.theme = theme;
 

@@ -745,8 +745,13 @@ pub(crate) fn dirty_diff(
             if aa != ba || asi != bsi || aal != bal || ao != bo {
                 d |= LAYOUT | PAINT;
             }
+            // `modal` feeds layout (viewport scrim rect vs content rect)
+            // AND paint (scrim) — a kept popup flipping it must relayout
+            if am != bm {
+                d |= LAYOUT | PAINT | SEMANTICS;
+            }
             // dismiss/focus/role semantics — UIA + input routing truth
-            if ar != br || am != bm || ad != bd || af != bf {
+            if ar != br || ad != bd || af != bf {
                 d |= SEMANTICS;
             }
             // popup chrome resolves like a surface container

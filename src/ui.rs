@@ -1678,6 +1678,11 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
     /// on) moves focus to the first eligible descendant and restores the
     /// pre-open focus on close. `modal` paints a dim scrim and gates
     /// hit/focus/scroll to the popup subtree.
+    ///
+    /// Constraint: do NOT stage a `popover` inside an `ui.action`'s draw
+    /// closure — `inside_action` covers the whole subtree and would make
+    /// the popup inert (arena-live but unhittable). Popups anchor against
+    /// sibling nodes by automation id instead.
     pub fn popover<'a>(
         &'a mut self,
         open: bool,

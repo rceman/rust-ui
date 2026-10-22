@@ -88,6 +88,17 @@ fail explicitly. Input editing remains native RichEdit, with the application's
 normal TextEdit acknowledgement. An editor's label in a snapshot is the
 retained committed TextValue, not an independent native read.
 
+`press-at --x <dp> --y <dp>` takes client-relative **DIP** coordinates (the live
+`ScaleFactor` converts to physical), hit-tests the point, and runs the real
+pointer Down/Up sequence on the hit owner — the path used for overlay light-
+dismiss testing. `scroll <id> --dy <dp>` routes `NodeEvent::Scroll` to a scroll
+viewport id; `scroll-into-view <id>` scrolls the target's nearest retained
+scroll ancestor just enough to make it visible (against the shared
+`node_insets` authority). `resize --width <dp> --height <dp>` resizes the
+client window so the following `wait-idle` observes the relayout.
+`perf`/`perf-reset` dump and reset the backend counters (native notifications,
+timer fires, animation callbacks, peer sends) used by boundedness assertions.
+
 ## Idle and presentation
 
 `wait-idle` is an observed barrier, not a sleep. After a guarded UI turn and its

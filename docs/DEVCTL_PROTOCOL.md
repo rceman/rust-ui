@@ -48,7 +48,7 @@ Runtime commands:
 | focus | `id`, optional `modality: keyboard`; drains peer events before the turn |
 | key | `key`; documented bounded unmodified subset through backend normalization |
 | press-at | `x`, `y` — client-relative **DIP** coordinates (converted to physical via the live `ScaleFactor`); real pointer Down/Up through `hit_test` + `pointer`, not synthetic state |
-| scroll | `id`, `dy` — routes `NodeEvent::Scroll` to the id's nearest retained scroll ancestor |
+| scroll | `id`, `dy` — `id` must name a scroll viewport (`KIND_SCROLL`); routes `NodeEvent::Scroll` to it, `NOT_SUPPORTED` otherwise |
 | scroll-into-view | `id` — scrolls the target's nearest scroll ancestor by the delta against the shared `node_insets` authority |
 | resize | `width`, `height` — resizes the client window; next `wait-idle` observes the relayout |
 | perf / perf-reset | backend counters dump / counter reset — read-only runtime observability |
