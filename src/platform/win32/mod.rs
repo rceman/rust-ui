@@ -1018,15 +1018,21 @@ where
                         .then_some(*slot)
                 })
                 .collect();
+            // a slot REUSED by a new popup generation in one commit
+            // inherits the displaced book's focus-return — the pre-open
+            // owner belongs to the opener, not the slot
+            let mut carried: HashMap<u32, Option<NodeId>> = HashMap::new();
             for slot in replaced {
-                self.open_popups.remove(&slot);
+                if let Some(book) = self.open_popups.remove(&slot) {
+                    carried.insert(slot, book.focus_return);
+                }
             }
             for (slot, (id, focus_on_open)) in &live {
                 if let std::collections::hash_map::Entry::Vacant(e) = self.open_popups.entry(*slot)
                 {
                     e.insert(PopupBook {
                         id: *id,
-                        focus_return: self.focus,
+                        focus_return: carried.remove(slot).flatten().or(self.focus),
                         focus_pending: *focus_on_open,
                     });
                 }
@@ -1137,16 +1143,23 @@ where
             needs_paint = true;
             needs_uia = true;
         }
-        let pending_focus: Vec<(u32, NodeId)> = self
-            .open_popups
+        // pending focus resolves in PAINT order — the topmost (last)
+        // popup deterministically wins when several open in one turn
+        let pending_focus: Vec<NodeId> = self
+            .order
             .iter()
-            .filter_map(|(slot, book)| book.focus_pending.then_some((*slot, book.id)))
+            .copied()
+            .filter(|id| {
+                self.open_popups
+                    .get(&id.slot)
+                    .is_some_and(|book| book.id == *id && book.focus_pending)
+            })
             .collect();
-        for (slot, popup) in pending_focus {
+        for popup in pending_focus {
             if let Some(first) = self.first_focusable(popup) {
                 self.set_focus(Some(first))?;
             }
-            if let Some(book) = self.open_popups.get_mut(&slot) {
+            if let Some(book) = self.open_popups.get_mut(&popup.slot) {
                 book.focus_pending = false;
             }
         }
@@ -2085,11 +2098,11 @@ where
                     {
                         return Some(id);
                     }
-                    NodeData::Popup {
-                        dismiss_light,
-                        modal,
-                        ..
-                    } if *dismiss_light || *modal => {
+                    // a painted popup captures hits within its rect
+                    // unconditionally — paint-last implies hit-first;
+                    // `dismiss_light`/`modal` govern dismissal, not
+                    // whether its own surface is opaque to input
+                    NodeData::Popup { .. } => {
                         return Some(id);
                     }
                     NodeData::Custom { render, .. } if n.interactive() => {
@@ -2131,12 +2144,13 @@ where
         // dismiss_light popup's subtree emits OpenChange(false) BEFORE the
         // press routes — the press still lands on its real target
         if phase == crate::node::PointerPhase::Down {
-            let dismiss: Vec<NodeId> = self
-                .open_popups
-                .values()
-                .map(|book| book.id)
-                .filter(|&id| {
-                    self.rt.arena.get(id).is_some_and(|n| {
+            // light-dismiss one LAYER per press — the topmost (last in
+            // paint order) dismiss_light popup whose subtree misses the
+            // hit. Deeper layers dismiss on subsequent presses, matching
+            // Escape's topmost-only semantics.
+            let dismiss: Option<NodeId> = self.order.iter().rev().copied().find(|&id| {
+                self.open_popups.values().any(|book| book.id == id)
+                    && self.rt.arena.get(id).is_some_and(|n| {
                         matches!(
                             &n.data,
                             NodeData::Popup {
@@ -2144,10 +2158,10 @@ where
                                 ..
                             }
                         )
-                    }) && !hit.is_some_and(|hit_id| self.inside_subtree(id, hit_id))
-                })
-                .collect();
-            for id in dismiss {
+                    })
+                    && !hit.is_some_and(|hit_id| self.inside_subtree(id, hit_id))
+            });
+            if let Some(id) = dismiss {
                 self.push_input(id, NodeEvent::OpenChange(false))?;
             }
         }

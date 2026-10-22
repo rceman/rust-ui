@@ -447,13 +447,21 @@ impl LayoutCache {
         // popup placement — staging order, each against its anchor's
         // committed rect (translated anchor rects make reposition free on
         // scroll). A clipped-out anchor hides the popup truthfully.
+        // `nested` is a REAL worklist: a popup staged inside another
+        // popup's subtree defers into it during the children walk and is
+        // appended back for its own placement pass — arbitrary nesting
+        // depth resolves because parents are placed first.
         let viewport = LogicalRect {
             x: 0.0,
             y: 0.0,
             width: w,
             height: h,
         };
-        for id in deferred {
+        let mut nested: Vec<NodeId> = Vec::new();
+        let mut i = 0;
+        while i < deferred.len() {
+            let id = deferred[i];
+            i += 1;
             let Some(n) = rt.arena.get(id) else {
                 continue;
             };
@@ -543,12 +551,13 @@ impl LayoutCache {
                         &mut rects,
                         &mut order,
                         &mut clips,
-                        &mut Vec::new(),
+                        &mut nested,
                         None,
                         KIND_STACK,
                     )?;
                 }
             }
+            deferred.extend(nested.drain(..));
         }
         Ok((rects, order, clips))
     }

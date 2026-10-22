@@ -2635,9 +2635,17 @@ impl<'a, 'ui, M: 'static> PopupBuilder<'a, 'ui, M> {
         self.edit(|p| *p.role = r);
         self
     }
-    /// modal overlay — scrim + hit/focus/scroll gate to the subtree
+    /// modal overlay — scrim + hit/focus/scroll gate to the subtree.
+    /// `modal(true)` also clears `dismiss_light` (a modal surface never
+    /// light-dismisses); re-enable it afterwards only for deliberate
+    /// hybrid behavior.
     pub fn modal(mut self, on: bool) -> Self {
-        self.edit(|p| *p.modal = on);
+        self.edit(|p| {
+            *p.modal = on;
+            if on {
+                *p.dismiss_light = false;
+            }
+        });
         self
     }
     /// outside-press dismisses via `on_open_change(false)` (default on)
