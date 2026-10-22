@@ -15,6 +15,19 @@ The originally published `visual/light/*` set was **invalid/mislabeled**: `evide
 - Fresh bounded Argon review on the corrected set: light genuineness, Slice-3 light parity vs contract, Slice-1/2 light sanity, stage chrome — **`SLICE3_LIGHT_THEME_VISUAL_EVIDENCE_CLEARED`** on `0211dbe`.
 - Ledger reconciliation: Slice-3 rows now carry `Windows=verified`, `Visual/Interaction parity=partial` matching the VERIFIED convention; `Gallery shell` `PLANNED`→`PARTIAL` (shell shipped as the devctl acceptance app; full catalog completeness lands with later slices).
 
+## Post-publication quality/overflow closure (RUI_LEAD_P7-261022-180000)
+
+A deeper inspection found real layout defects missed by earlier visual review:
+
+- **SettingsNav overflow**: `Field.width = Fixed(640)` pushed Appearance-pane controls off-viewport → `Fill`-bounded row + `Fill(1)` content lane (gallery recipe, no production semantics change).
+- **Select/Dropdown stage clipping**: implicit `Space::Sm` gaps between popup/group column children inflated select (~280) and menu (~483) contents past the frozen 360/464 stages → `.gap(Space::None)`; select content now 241 and menu 387, both contract-exact.
+- **Separator zone**: select separator models the full 17dp frozen zone (group `p-1` + `my-1` + line + `my-1` + `p-1`); dropdown keeps contract 9dp. Separator line width `pw+8`→`pw` (stays inside popup rect).
+- **Tooling**: `tools/bounds_check.py` overflow QA — 0 violations / 20 snapshots.
+- **Evidence**: `benchmark/results/shadcn-native-gallery-slice3-quality-closure/` — true per-page fullpage heights (forms 1690 includes all six select specimens), compact-800 QA both themes, clean devctl transcript, resize sanity.
+- **Reviews:** Astra `SLICE3_QUALITY_OVERFLOW_SYSTEM_APPROVED` @ `38469bf`; Argon `SLICE3_TEXT_AND_OVERFLOW_VISUALLY_APPROVED`.
+- **Launcher:** Desktop `rust-ui Gallery.lnk` → `tools/windows/run-gallery.ps1` builds+launches authoritative source; documented in `docs/MANUAL_GALLERY_TESTING.md`.
+- Full record: `docs/SLICE3_QUALITY_OVERFLOW_CLOSURE.md`.
+
 ## Scope delivered
 
 | Area | Items |

@@ -19,5 +19,5 @@ Capture host: native Windows 11 VM, scale 1.0, WGC, explicit `shell.theme.*` cli
 ## Corrections proven by this set
 
 - SettingsNav Appearance fields now respect pane width — Theme Select / Animations / Compact switches visible inside the pane (was `Fixed(640)` overflow).
-- Select popup fits its frozen 360dp stage; Dropdown fits 464dp — implicit `Space::Sm` container gaps removed from popup/group columns; separator wrapper `my-1` semantics (4+4).
+- Select popup fits its frozen 360dp stage at contract-exact 241dp content height; Dropdown fits 464dp at contract-exact 387dp — implicit `Space::Sm` container gaps removed from popup/group columns; select separator wrapper models the full 17dp frozen zone (group p-1 + `my-1` + line + `my-1` + group p-1), dropdown separator keeps the contract 9dp `my-1` zone.
 - Every fullpage genuinely includes its whole implemented page.
