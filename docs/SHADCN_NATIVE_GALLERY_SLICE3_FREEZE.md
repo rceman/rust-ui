@@ -3,7 +3,17 @@
 **Candidate SHA:** `79816a4` on `agent/shadcn-native-gallery-slice3-opus55`
 **Based on:** `4e380975e8b544781bb6fcfd939a0e76fafe3105` (published pre-Slice-3 `main`)
 **Frozen reference:** `reference/shadcn-gallery-v0.1/` (unchanged — payload `2e14e417`)
-**Reviews:** Astra **SYSTEM_APPROVED** (round 3, advisories landed `79816a4`); Argon **VISUALLY_APPROVED** (structural findings fixed `6909d99`)
+**Reviews:** Astra **SYSTEM_APPROVED** (round 3, advisories landed `79816a4`); Argon **VISUALLY_APPROVED** (structural findings fixed `6909d99`) + **`SLICE3_LIGHT_THEME_VISUAL_EVIDENCE_CLEARED`** (post-publication correction closure, see below)
+
+## Post-publication evidence correction (RUI_LEAD_P6-261022-151300)
+
+The originally published `visual/light/*` set was **invalid/mislabeled**: `evidence-slice3.ps1`'s capture cycle clicked `shell.theme.dark` for dark passes but clicked *nothing* for light passes — the Gallery boots `ThemeMode::System` and the host OS is dark, so every "light" PNG rendered dark. Root cause is a **capture-automation defect only** — manual `click shell.theme.light` verification proves Light resolves correctly (page `#fff`, primary `#171717`, sidebar `#fafafa`); no production code changed (`79816a4` stands).
+
+- Corrected captures: all `visual/fullpages/light/*` (6) + `visual/states/light/*` (8) recaptured with explicit `shell.theme.light` clicks and asserted devctl results; `states/{light,dark}/{select,dropdown-menu}.open` recaptured at current overlay-stage geometry (884×360/464 — the stale dark set held pre-stage trigger-only crops); `fullpages/dark/overlays.png` relocated from a path-collapsed file after Argon found the canonical file stale. Flat-name accident files deleted.
+- Capture-order note: the theme click is an outside press that dismisses only the topmost light-dismiss popup (the menu) — `select.open` captures legitimately show the listbox still open; `dropdown-menu.open` re-clicks the trigger before capture.
+- Original invalid set is superseded by `5e3261c`/`0211dbe` on `main`; the mistake is preserved in history, not rewritten.
+- Fresh bounded Argon review on the corrected set: light genuineness, Slice-3 light parity vs contract, Slice-1/2 light sanity, stage chrome — **`SLICE3_LIGHT_THEME_VISUAL_EVIDENCE_CLEARED`** on `0211dbe`.
+- Ledger reconciliation: Slice-3 rows now carry `Windows=verified`, `Visual/Interaction parity=partial` matching the VERIFIED convention; `Gallery shell` `PLANNED`→`PARTIAL` (shell shipped as the devctl acceptance app; full catalog completeness lands with later slices).
 
 ## Scope delivered
 
