@@ -104,8 +104,25 @@ where
                 label.as_deref().unwrap_or("").chars().take(1024).collect(),
                 !*disabled,
             ),
+            NodeData::Popup { .. } => ("popup", String::new(), true),
             NodeData::Custom { .. } => ("custom", String::new(), true),
             NodeData::Icon { .. } => ("icon", String::new(), true),
+        };
+        // a semantic role refines the kind label — the snapshot vocabulary
+        // mirrors UIA control types (combobox/option/tablist/tab)
+        let kind = match n.role {
+            Some(crate::node::SemanticRole::ComboBox) => "combobox",
+            Some(crate::node::SemanticRole::Option) => "option",
+            Some(crate::node::SemanticRole::TabList) => "tablist",
+            Some(crate::node::SemanticRole::Tab) => "tab",
+            Some(crate::node::SemanticRole::MenuItem) => "menuitem",
+            Some(crate::node::SemanticRole::MenuItemCheckbox) => "menuitemcheckbox",
+            Some(crate::node::SemanticRole::MenuItemRadio) => "menuitemradio",
+            Some(crate::node::SemanticRole::MenuItemDestructive) => "menuitem",
+            Some(crate::node::SemanticRole::MenuButton) => "menu-button",
+            Some(crate::node::SemanticRole::SettingsNavItem) => "navigation-item",
+            Some(crate::node::SemanticRole::Group) => "group",
+            None => kind,
         };
         let children = n
             .children
@@ -161,6 +178,7 @@ where
                 variant,
                 style,
                 invalid,
+                selected,
                 ..
             } = &n.data
             {
@@ -173,6 +191,7 @@ where
                         crate::style::StyleState::Normal,
                         false,
                         false,
+                        *selected,
                         *invalid,
                     );
                     // one part per populated icon edge, mirroring the paint
@@ -291,6 +310,41 @@ where
                 _ => None,
             },
             line_twips: self.peer_for(id).map(|p| p.borrow().line_twips_latched()),
+            selected: match (&n.data, n.role) {
+                (
+                    NodeData::Button { selected, .. },
+                    Some(
+                        crate::node::SemanticRole::Option
+                        | crate::node::SemanticRole::Tab
+                        | crate::node::SemanticRole::SettingsNavItem,
+                    ),
+                ) => Some(*selected),
+                (
+                    NodeData::Action { checked, .. },
+                    Some(crate::node::SemanticRole::SettingsNavItem),
+                ) => *checked,
+                _ => None,
+            },
+            checked: match (&n.data, n.role) {
+                (
+                    NodeData::Action { checked, .. },
+                    Some(
+                        crate::node::SemanticRole::MenuItemCheckbox
+                        | crate::node::SemanticRole::MenuItemRadio,
+                    ),
+                ) => *checked,
+                (NodeData::Toggle { checked, .. }, _) => Some(*checked),
+                _ => None,
+            },
+            expanded: match (&n.data, n.role) {
+                (
+                    NodeData::Button { expanded, .. },
+                    Some(
+                        crate::node::SemanticRole::ComboBox | crate::node::SemanticRole::MenuButton,
+                    ),
+                ) => *expanded,
+                _ => None,
+            },
             parts,
             children,
         })
@@ -535,6 +589,42 @@ where
                 }
                 self.focus_and_settle(Some(id)).map_err(platform)?;
                 Ok(json!({"focused":args["id"],"modality":"keyboard"}))
+            }
+            "press-at" => {
+                // raw client-space press (DIP coords) — outside-click /
+                // light-dismiss testing; same routing as a real LMB
+                // down+up at the point
+                let coord = |k: &str| -> Result<f32> {
+                    let v = args[k]
+                        .as_f64()
+                        .or_else(|| args[k].as_str().and_then(|s| s.parse().ok()))
+                        .ok_or_else(|| Error::new("INVALID_ARGUMENT", format!("{k} required")))?;
+                    if !v.is_finite() {
+                        return Err(Error::new("INVALID_ARGUMENT", format!("{k} not finite")));
+                    }
+                    Ok(v as f32)
+                };
+                let (x, y) = (coord("x")?, coord("y")?);
+                let sc = self.peer_ctx.scale.get();
+                let p = space::ClientPhysicalPoint(crate::geom::PhysicalPoint {
+                    x: sc.to_physical(x),
+                    y: sc.to_physical(y),
+                });
+                self.pointer(
+                    crate::node::PointerPhase::Down,
+                    p,
+                    Some(PointerButton::Primary),
+                    1,
+                )
+                .map_err(platform)?;
+                self.pointer(
+                    crate::node::PointerPhase::Up,
+                    p,
+                    Some(PointerButton::Primary),
+                    0,
+                )
+                .map_err(platform)?;
+                Ok(json!({"performed":"press-at","x":x,"y":y}))
             }
             "leave" => {
                 self.leave().map_err(platform)?;

@@ -53,6 +53,8 @@ pub enum Key {
     ArrowRight,
     ArrowUp,
     ArrowDown,
+    Home,
+    End,
     Char(char),
     /// A key outside the portable set — the payload is the PLATFORM's raw
     /// keycode (a Windows VK on Win32), explicitly platform-scoped and

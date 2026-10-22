@@ -405,6 +405,30 @@ pub enum Align {
     Stretch,
 }
 
+/// Anchored-overlay side — the edge of the anchor rect a popup opens on
+/// (`Bottom` opens below, Radix-style `side` prop).
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
+pub enum Side {
+    Top,
+    Right,
+    #[default]
+    Bottom,
+    Left,
+}
+
+impl Side {
+    /// The opposite edge — the flip candidate when the preferred side
+    /// overflows the viewport.
+    pub(crate) fn flipped(self) -> Side {
+        match self {
+            Side::Top => Side::Bottom,
+            Side::Bottom => Side::Top,
+            Side::Left => Side::Right,
+            Side::Right => Side::Left,
+        }
+    }
+}
+
 #[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
 pub enum Justify {
     #[default]

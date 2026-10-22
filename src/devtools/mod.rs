@@ -231,6 +231,12 @@ pub struct Node {
     pub line_height: Option<f32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub line_twips: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selected: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checked: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expanded: Option<bool>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub parts: Vec<PartNode>,
     pub children: Vec<Node>,
@@ -1147,7 +1153,7 @@ mod tests {
                 height: 125.,
             },
             root: Node {
-                automation_id: Some("probe.button".into()),
+                automation_id: Some("sample.button".into()),
                 kind: "button".into(),
                 label: "test \"\\\n\r\t é".into(),
                 rect_dp: r,
@@ -1167,6 +1173,9 @@ mod tests {
                 selection: None,
                 line_height: None,
                 line_twips: None,
+                selected: None,
+                checked: None,
+                expanded: None,
                 parts: vec![],
                 children: vec![],
             },
@@ -1774,6 +1783,9 @@ mod tests {
             selection: None,
             line_height: None,
             line_twips: None,
+            selected: None,
+            checked: None,
+            expanded: None,
             parts: vec![],
             children: vec![],
         }];
@@ -1977,6 +1989,9 @@ mod tests {
                 selection: None,
                 line_height: None,
                 line_twips: None,
+                selected: None,
+                checked: None,
+                expanded: None,
                 parts: vec![],
                 children: vec![],
             },

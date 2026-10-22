@@ -17,7 +17,7 @@ use crate::node::{
 };
 use crate::runtime::UpdateCtx;
 use crate::style::Insets;
-use crate::theme::{ControlSize, Space};
+use crate::theme::Space;
 use crate::{NodeId, UiResult};
 
 use super::space::{LogicalRect, ScaleFactor};
@@ -136,6 +136,7 @@ where
             icon_end,
             icon_only,
             invalid,
+            selected,
             ..
         } => {
             // resolved Normal-state style drives the natural size — state
@@ -148,6 +149,7 @@ where
                 crate::style::StyleState::Normal,
                 false,
                 ctx.colors.borrow().1.dark,
+                *selected,
                 *invalid,
             );
             let h = size.height().0;
@@ -159,8 +161,16 @@ where
             // insets already reserve icon size+gap on the icon side(s);
             // natural width = ink advance + content insets + a uniform
             // ink-vs-layout epsilon (GetMetrics width is the ink box —
-            // the laid-out line can need a hair more; not per-label)
-            let w = tw + ins.left.0 + ins.right.0 + 2.0;
+            // the laid-out line can need a hair more; not per-label).
+            // The frozen select/tabs cells measure ink+insets exactly.
+            let eps = match variant {
+                crate::theme::ButtonVariant::Select
+                | crate::theme::ButtonVariant::SelectItem
+                | crate::theme::ButtonVariant::Tab
+                | crate::theme::ButtonVariant::TabLine => 0.0,
+                _ => 2.0,
+            };
+            let w = tw + ins.left.0 + ins.right.0 + eps;
             let _ = disabled;
             (w, h)
         }
@@ -250,9 +260,28 @@ where
                 }
             }
         }
+        NodeData::Popup { .. } => {
+            // popup children stack — max box inside the chrome insets
+            let pad = node_insets(ctx, id, n);
+            let inner_w = (avail_w - pad.left.0 - pad.right.0).max(0.0);
+            let kids: Vec<(f32, f32)> = n
+                .children
+                .iter()
+                .filter_map(|slot| {
+                    let g = rt.arena.generation_of(*slot);
+                    let cid = NodeId {
+                        slot: *slot,
+                        generation: g,
+                    };
+                    rt.arena.get(cid)?;
+                    Some(natural(rt, ctx, cid, inner_w, measure))
+                })
+                .collect();
+            let w = kids.iter().map(|k| k.0).fold(0.0f32, f32::max) + pad.left.0 + pad.right.0;
+            let h = kids.iter().map(|k| k.1).fold(0.0f32, f32::max) + pad.top.0 + pad.bottom.0;
+            (w.min(avail_w.max(0.0)), h)
+        }
         NodeData::Action { .. } => {
-            // semantic action wraps decorative content — stack semantics:
-            // children overlay inside the resolved live-state padding
             let pad = node_insets(ctx, id, n);
             let inner_w = (avail_w - pad.left.0 - pad.right.0).max(0.0);
             let kids: Vec<(f32, f32)> = n
@@ -354,6 +383,10 @@ impl LayoutCache {
         // scroll-clip map: descendant NodeId -> the viewport clip that
         // bounds its paint/hit/peer geometry (nested viewports intersect)
         let mut clips: HashMap<NodeId, LogicalRect> = HashMap::new();
+        // popups are deferred: they lay out LAST — each resolves against
+        // its anchor's final rect inside the client viewport, lands at
+        // the END of `order` (paint-last/hit-first), and carries no clip
+        let mut deferred: Vec<NodeId> = Vec::new();
         // window client size in DIP
         let (w, h) = client_dip(ctx.hwnd.get(), self.scale)?;
         let root_children = rt
@@ -405,10 +438,117 @@ impl LayoutCache {
                 &mut rects,
                 &mut order,
                 &mut clips,
+                &mut deferred,
                 None,
                 KIND_COLUMN,
             )?;
             y += *size + space_px(Space::Sm);
+        }
+        // popup placement — staging order, each against its anchor's
+        // committed rect (translated anchor rects make reposition free on
+        // scroll). A clipped-out anchor hides the popup truthfully.
+        let viewport = LogicalRect {
+            x: 0.0,
+            y: 0.0,
+            width: w,
+            height: h,
+        };
+        for id in deferred {
+            let Some(n) = rt.arena.get(id) else {
+                continue;
+            };
+            let NodeData::Popup {
+                anchor,
+                side,
+                align,
+                offset,
+                modal,
+                ..
+            } = &n.data
+            else {
+                continue;
+            };
+            let (side, align, offset, modal) = (*side, *align, *offset, *modal);
+            // anchor rect = its laid-out rect intersected with its own
+            // scroll clip — the popup tracks the VISIBLE anchor
+            let anchor_rect = anchor.as_deref().and_then(|wanted| {
+                (0..rt.arena.slot_len() as u32).find_map(|slot| {
+                    let n = rt.arena.slot(slot)?;
+                    (n.automation_id.as_deref() == Some(wanted)).then(|| NodeId {
+                        slot,
+                        generation: rt.arena.generation_of(slot),
+                    })
+                })
+            });
+            let Some(ar) = anchor_rect.and_then(|a| rects.get(&a).copied()).map(|r| {
+                anchor_rect
+                    .and_then(|a| clips.get(&a).copied())
+                    .map_or(r, |c| r.intersection(c))
+            }) else {
+                continue; // unanchored or unlaid-out anchor — hidden
+            };
+            if ar.width <= 0.0 || ar.height <= 0.0 {
+                continue; // anchor fully clipped — truthful hide
+            }
+            let (nw, nh) = natural(rt, ctx, id, viewport.width, &mut measurer);
+            let content = crate::layout::resolve_popup_placement(
+                crate::geom::Rect {
+                    x: ar.x,
+                    y: ar.y,
+                    width: ar.width,
+                    height: ar.height,
+                },
+                side,
+                align,
+                offset,
+                crate::geom::Size {
+                    width: nw,
+                    height: nh,
+                },
+                crate::geom::Rect {
+                    x: viewport.x,
+                    y: viewport.y,
+                    width: viewport.width,
+                    height: viewport.height,
+                },
+            );
+            // the popup lands LAST in paint order => paint-last /
+            // hit-test-first. Modal takes the whole client as its rect
+            // (the scrim); non-modal takes the resolved placement. Either
+            // way its CHILDREN lay out inside the content box minus the
+            // popup chrome insets — walking `id` itself here would
+            // re-defer the popup into a discarded list and drop the
+            // entire subtree out of rects/order/clips.
+            rects.insert(id, if modal { viewport } else { content });
+            order.push(id);
+            let pad = node_insets(ctx, id, n);
+            let inner = LogicalRect {
+                x: content.x + pad.left.0,
+                y: content.y + pad.top.0,
+                width: (content.width - pad.left.0 - pad.right.0).max(0.0),
+                height: (content.height - pad.top.0 - pad.bottom.0).max(0.0),
+            };
+            for slot in n.children.clone() {
+                let g = rt.arena.generation_of(slot);
+                let cid = NodeId {
+                    slot,
+                    generation: g,
+                };
+                if rt.arena.get(cid).is_some() {
+                    self.walk(
+                        rt,
+                        ctx,
+                        cid,
+                        inner,
+                        &mut rects,
+                        &mut order,
+                        &mut clips,
+                        &mut Vec::new(),
+                        None,
+                        KIND_STACK,
+                    )?;
+                }
+            }
         }
         Ok((rects, order, clips))
     }
@@ -425,6 +565,7 @@ impl LayoutCache {
         rects: &mut HashMap<NodeId, LogicalRect>,
         order: &mut Vec<NodeId>,
         clips: &mut HashMap<NodeId, LogicalRect>,
+        deferred: &mut Vec<NodeId>,
         clip: Option<LogicalRect>,
         parent_axis: u8,
     ) -> UiResult
@@ -438,6 +579,12 @@ impl LayoutCache {
         };
         if n.visibility == Visibility::Hidden {
             // footprint retained — no rect/order entry
+            return Ok(());
+        }
+        // popups defer to the end-of-run placement pass — BEFORE the clip
+        // insert so a scroll-viewport ancestor can never confine a popup
+        if matches!(n.data, NodeData::Popup { .. }) {
+            deferred.push(id);
             return Ok(());
         }
         // a scroll viewport ancestor confines this node: paint, hit-test
@@ -559,6 +706,7 @@ impl LayoutCache {
                         rects,
                         order,
                         clips,
+                        deferred,
                         Some(child_clip),
                         KIND_COLUMN,
                     )?;
@@ -616,6 +764,7 @@ impl LayoutCache {
                         rects,
                         order,
                         clips,
+                        deferred,
                         clip,
                         kind,
                     )?;
@@ -671,6 +820,7 @@ impl LayoutCache {
                         rects,
                         order,
                         clips,
+                        deferred,
                         clip,
                         kind,
                     )?;
@@ -681,7 +831,9 @@ impl LayoutCache {
             // (declaration order paints later siblings on top).
             _ => {
                 for cid in ids {
-                    self.walk(rt, ctx, cid, inner, rects, order, clips, clip, kind)?;
+                    self.walk(
+                        rt, ctx, cid, inner, rects, order, clips, deferred, clip, kind,
+                    )?;
                 }
             }
         }

@@ -111,6 +111,12 @@ pub enum ColorRole {
     /// `destructive-90` — destructive alert description
     /// (`text-destructive/90`, both themes 90% alpha)
     Destructive90,
+    Sidebar,
+    SidebarForeground,
+    SidebarAccent,
+    SidebarAccentForeground,
+    SidebarRing,
+    SidebarForeground70,
 }
 
 #[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
@@ -167,6 +173,25 @@ pub enum ButtonVariant {
     Ghost,
     Destructive,
     Link,
+    /// frozen `cn-select-trigger` — combobox value button (`ui.select`)
+    Select,
+    /// frozen `cn-select-item` — listbox option row (`ui.select` content)
+    SelectItem,
+    /// frozen `cn-tabs-trigger` default-variant tab (`ui.tabs`)
+    Tab,
+    /// frozen `cn-tabs-trigger` line-variant tab — active paints the
+    /// `::after` underline marker instead of a filled chip
+    TabLine,
+}
+
+/// Tabs list variant — `default` is the muted contiguous pill list,
+/// `line` is the transparent gapped list whose active tab carries the
+/// foreground underline marker.
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
+pub enum TabsVariant {
+    #[default]
+    Default,
+    Line,
 }
 
 /// Built-in Shadcn badge variant vocabulary — `Default` is the frozen

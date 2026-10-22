@@ -26,11 +26,11 @@ pub use app::App;
 pub use event::{FrameTime, Key, KeyEvent, Modifiers, PointerButton, PointerEvent, ScrollOffset};
 pub use geom::{
     Align, Constraints, Dp, Justify, LayoutSpec, Length, PhysicalPoint, PhysicalPx, PhysicalRect,
-    PhysicalSize, Point, Rect, ScaleFactor, Size, Visibility, dp,
+    PhysicalSize, Point, Rect, ScaleFactor, Side, Size, Visibility, dp,
 };
 pub use icons::{Icon, IconOp};
 pub use key::KeyId;
-pub use node::{NodeId, Presented};
+pub use node::{NodeId, PopupRole, Presented, SemanticRole};
 pub use runtime::UpdateCtx;
 pub use style::{
     Action, ActionStyle, Border, BorderPatch, BorderSide, BorderSidePatch, BoxProps, BoxStyle,
@@ -49,14 +49,17 @@ pub use text::{
 pub use theme::{
     AlertVariant, Appearance, BadgeVariant, ButtonVariant, CardSize, ColorRole, ControlSize,
     FieldOrientation, FontFamily, MotionToken, Radius, ReducedMotion, SeparatorOrientation, Space,
-    SubmitPolicy, Theme, ThemeMode, ToggleKind, ToggleSize,
+    SubmitPolicy, TabsVariant, Theme, ThemeMode, ToggleKind, ToggleSize,
 };
 pub use typography::Typography;
 pub use ui::{
     ActionBuilder, Alert, ButtonBuilder, Canvas, Card, Checkbox, Column, CustomBuilder,
-    CustomRender, Field, IconBuilder, InputBuilder, LabelBuilder, Paint, Path2d, PathOp,
-    RadioGroup, RadioItemOpts, Role, Row, Scroll, Semantics, SemanticsAction, Separator, Skeleton,
-    Stack, Surface, Switch, TextBuilder, TextInputBuilder, TextRun, Ui,
+    CustomRender, DropdownItemKind, DropdownItemOpts, DropdownMenu, DropdownMenuChange,
+    DropdownMenuItems, Field, IconBuilder, InputBuilder, LabelBuilder, Paint, Path2d, PathOp,
+    PopupBuilder, RadioGroup, RadioItemOpts, Role, Row, Scroll, Select, SelectChange,
+    SelectItemOpts, SelectItems, Semantics, SemanticsAction, Separator, SettingsNav,
+    SettingsNavGroups, SettingsNavItemOpts, SettingsNavItems, Skeleton, Stack, Surface, Switch,
+    TabList, TabOpts, Tabs, TextBuilder, TextInputBuilder, TextRun, Ui,
 };
 
 /// `use rust_ui::prelude::*` — the documented consumer surface in one place.
@@ -64,9 +67,10 @@ pub mod prelude {
     pub use crate::app::App;
     pub use crate::event::{FrameTime, KeyEvent, PointerEvent, ScrollOffset};
     pub use crate::geom::{
-        Align, Constraints, Dp, Justify, LayoutSpec, Length, Point, Rect, Size, Visibility, dp,
+        Align, Constraints, Dp, Justify, LayoutSpec, Length, Point, Rect, Side, Size, Visibility,
+        dp,
     };
-    pub use crate::node::Presented;
+    pub use crate::node::{PopupRole, Presented, SemanticRole};
     pub use crate::runtime::UpdateCtx;
     pub use crate::style::{
         Action, ActionStyle, Border, BorderPatch, BorderSide, BorderSidePatch, BoxProps, BoxStyle,
@@ -75,7 +79,8 @@ pub mod prelude {
         VisualStyle, VisualStylePatch, alert_description_style, alert_icon_role, alert_recipe,
         alert_title_style, badge_recipe, card_content_style, card_footer_style, card_part_box,
         card_part_insets, card_spacing, card_title_style, field_description_style,
-        field_error_style, field_label_style, kbd_recipe, separator_recipe, skeleton_recipe,
+        field_error_style, field_label_style, kbd_recipe, select_content_patch, select_label_style,
+        select_placeholder_patch, separator_recipe, skeleton_recipe, tabs_list_recipe,
     };
     pub use crate::text::{
         AcceptOutcome, BindingToken, EditOrigin, TextConflict, TextEdit, TextRevision,
@@ -84,13 +89,15 @@ pub mod prelude {
     pub use crate::theme::{
         AlertVariant, Appearance, BadgeVariant, ButtonVariant, CardSize, ColorRole, ControlSize,
         FieldOrientation, FontFamily, MotionToken, Radius, ReducedMotion, SeparatorOrientation,
-        Space, SubmitPolicy, Theme, ThemeMode, ToggleKind, ToggleSize,
+        Space, SubmitPolicy, TabsVariant, Theme, ThemeMode, ToggleKind, ToggleSize,
     };
     pub use crate::typography::Typography;
     pub use crate::ui::{
-        Alert, Canvas, Card, Checkbox, Column, CustomRender, Field, Paint, Path2d, PathOp,
-        RadioItemOpts, Role, Row, Scroll, Semantics, SemanticsAction, Separator, Skeleton, Stack,
-        Surface, Switch, TextRun, Ui,
+        Alert, Canvas, Card, Checkbox, Column, CustomRender, DropdownItemKind, DropdownItemOpts,
+        DropdownMenu, DropdownMenuChange, DropdownMenuItems, Field, Paint, Path2d, PathOp,
+        RadioItemOpts, Role, Row, Scroll, Select, SelectChange, SelectItemOpts, SelectItems,
+        Semantics, SemanticsAction, Separator, SettingsNav, SettingsNavGroups, SettingsNavItemOpts,
+        SettingsNavItems, Skeleton, Stack, Surface, Switch, TabList, TabOpts, Tabs, TextRun, Ui,
     };
     pub use crate::{AssetError, SendError, TaskSender, UiDiagnostic, UiError, UiProxy, UiResult};
 }

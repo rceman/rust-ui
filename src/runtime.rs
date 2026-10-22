@@ -174,6 +174,7 @@ where
         let root = arena.alloc(Node {
             automation_id: None,
             part_key: None,
+            role: None,
             key: ChildKey::Static {
                 kind: KIND_GROUP,
                 ordinal: 0,
@@ -549,6 +550,7 @@ where
         let StagedNode {
             automation_id,
             part_key,
+            role,
             key,
             data,
             presented,
@@ -610,6 +612,7 @@ where
         let id = self.arena.alloc(Node {
             automation_id,
             part_key,
+            role,
             key,
             parent,
             children: Vec::new(),
@@ -693,6 +696,7 @@ where
     ) -> UiResult {
         let StagedNode {
             automation_id,
+            role,
             data,
             presented,
             visibility,
@@ -718,8 +722,9 @@ where
                 .forced_colors
                 .then(|| self.forced_resolver.as_deref())
                 .flatten();
-            let identity_changed = n.automation_id != automation_id;
+            let identity_changed = n.automation_id != automation_id || n.role != role;
             n.automation_id = automation_id;
+            n.role = role;
             n.dirty = crate::node::dirty_diff(&old_data, &n.data, dark, forced);
             if identity_changed {
                 n.dirty |= Self::DIRTY_SEMANTICS;
@@ -1444,6 +1449,7 @@ fn validate_styles(tx: &Tx, dark: bool) -> Option<UiError> {
                 variant,
                 size,
                 invalid,
+                selected,
                 ..
             } => {
                 crate::style::button_patch_ok(style)
@@ -1454,6 +1460,7 @@ fn validate_styles(tx: &Tx, dark: bool) -> Option<UiError> {
                         crate::style::StyleState::Normal,
                         false,
                         false,
+                        *selected,
                         *invalid,
                     ))
             }
@@ -1472,6 +1479,12 @@ fn validate_styles(tx: &Tx, dark: bool) -> Option<UiError> {
                     ));
                 }
                 true
+            }
+            NodeData::Popup { props, .. } => {
+                crate::style::box_patch_ok(&props.patch)
+                    && props
+                        .resolved_box(crate::node::KIND_POPUP)
+                        .is_none_or(|b| crate::style::box_style_ok(&b))
             }
             NodeData::Action { style, .. } => crate::style::action_style_ok(style),
             _ => true,

@@ -27,7 +27,7 @@ enter the existing guarded Backend turn, followed by reentrant drain.
 ## Request
 
 ```json
-{"protocol":"rust-ui.devctl/0.1","token":"<session token>","id":1,"command":"rect","arguments":{"id":"probe.button","timeout_ms":4750}}
+{"protocol":"rust-ui.devctl/0.1","token":"<session token>","id":1,"command":"rect","arguments":{"id":"button.default","timeout_ms":4750}}
 ```
 
 `id` is a u64 echoed unchanged (scoped to that request/connection). Command string
@@ -57,7 +57,7 @@ command exists in the protocol.
 ## Response
 
 ```json
-{"protocol":"rust-ui.devctl/0.1","id":1,"ok":true,"result":{"id":"probe.button","coordinate_space":"client-relative","scale_factor":1.25,"rect_dp":{"x":53,"y":83.62109375,"width":69.4609375,"height":36},"rect_px":{"x":66,"y":105,"width":87,"height":45},"visible":true,"enabled":true}}
+{"protocol":"rust-ui.devctl/0.1","id":1,"ok":true,"result":{"id":"button.default","coordinate_space":"client-relative","scale_factor":1.25,"rect_dp":{"x":53,"y":83.62109375,"width":69.4609375,"height":36},"rect_px":{"x":66,"y":105,"width":87,"height":45},"visible":true,"enabled":true}}
 ```
 
 Failure has `ok:false,error:{code,message,details?}` and no result. Success has

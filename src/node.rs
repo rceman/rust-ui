@@ -38,6 +38,51 @@ pub(crate) const KIND_SCROLL: u8 = 16;
 /// actionable leaf owning hit/focus/press and its own painted indicator/
 /// track/thumb.
 pub(crate) const KIND_TOGGLE: u8 = 17;
+/// Anchored overlay layer — staged inline, laid out LAST: the layout pass
+/// defers popups, resolves each against its anchor rect inside the client
+/// viewport (`crate::layout::resolve_popup_placement`), and appends them
+/// at the end of paint/hit order outside any scroll clip.
+pub(crate) const KIND_POPUP: u8 = 18;
+
+/// Semantic overlay role — drives the UIA control type. `Popup` is the
+/// generic floating pane; `Menu`/`Listbox` mark menu/list-popups.
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
+pub enum PopupRole {
+    #[default]
+    Popup,
+    Menu,
+    Listbox,
+}
+
+/// Semantic control role — the ARIA-analog carried when the painted kind
+/// doesn't fully express the control's semantics: a Button staged as a
+/// combobox trigger or a listbox option, a styled row as a tablist.
+/// Drives the UIA control type and the shared directional-navigation
+/// policy (`crate::layout::nav_target`); `None` means the node kind
+/// speaks for itself.
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum SemanticRole {
+    /// select trigger — a button that opens a listbox (UIA ComboBox)
+    ComboBox,
+    /// listbox option — directional nav (arrows/Home/End) moves focus
+    /// among same-role siblings inside the enclosing popup
+    Option,
+    /// tab list container — bounds directional nav for `Tab` descendants
+    /// (UIA Tab)
+    TabList,
+    /// tab item — directional nav moves focus AND activates the target
+    /// (UIA TabItem)
+    Tab,
+    /// dropdown menu entry — directional nav skips disabled menu entries
+    MenuItem,
+    MenuItemCheckbox,
+    MenuItemRadio,
+    MenuItemDestructive,
+    MenuButton,
+    Group,
+    /// settings navigation link, exposed as a button-like item
+    SettingsNavItem,
+}
 
 /// Everything the platform needs to build one native editor peer —
 /// behavior gates are part of the spec so a mounted editor never defaults
@@ -367,7 +412,7 @@ impl ContainerProps {
     /// layout-only containers (row/column/stack/group/scope).
     pub(crate) fn resolved_box(&self, kind: u8) -> Option<crate::style::BoxStyle> {
         match kind {
-            KIND_SURFACE => {
+            KIND_SURFACE | KIND_POPUP => {
                 let mut s = crate::style::surface_recipe();
                 s.patch(&self.patch);
                 Some(s)
@@ -423,6 +468,17 @@ pub(crate) enum NodeData {
         /// semantic `aria-invalid` — destructive chrome, orthogonal to
         /// every interaction state
         invalid: bool,
+        /// semantic `data-active`/`aria-selected` — the recipe's selected
+        /// overlay (variant-dependent), orthogonal to interaction state.
+        /// `focus_on_open` popups prefer a `selected` descendant for the
+        /// initial focus (listbox opens with the selected option live).
+        selected: bool,
+        /// expanded/collapsed state for popup triggers, if applicable
+        expanded: Option<bool>,
+        /// icon tint override — `None` paints icons in the resolved
+        /// foreground (the `currentColor` analog); the select trigger's
+        /// chevron keeps `muted-foreground` against a filled value
+        icon_color: Option<crate::style::Color>,
     },
     /// Decorative vector icon leaf (Lucide stroke geometry) — paints a
     /// stroke path at `size`; `color` is the `currentColor` analog.
@@ -482,6 +538,25 @@ pub(crate) enum NodeData {
         label: Rc<str>,
         style: crate::style::ActionStyle,
         disabled: bool,
+        checked: Option<bool>,
+    },
+    /// `ui.popover` — open anchored overlay. Staged inline; the backend
+    /// resolves `anchor`'s laid-out rect each pass and places the popup
+    /// over it per `side`/`align`/`offset` (signed Dp, `x` = align axis,
+    /// `y` = side axis for top/bottom). `dismiss_light` =
+    /// outside-press-dismiss, `focus_on_open` moves focus inside on open
+    /// (restored on close), `modal` paints a scrim + gates hit/focus to
+    /// the popup subtree. `props` chrome resolves like `surface`.
+    Popup {
+        anchor: Option<Rc<str>>,
+        side: crate::geom::Side,
+        align: Align,
+        offset: crate::geom::Point,
+        role: PopupRole,
+        modal: bool,
+        dismiss_light: bool,
+        focus_on_open: bool,
+        props: ContainerProps,
     },
 }
 
@@ -495,6 +570,10 @@ pub(crate) struct Node {
     /// `ui.part("header", …)`/`ui.part("header.title", …)`; emitted by
     /// devtools as `owner#part`
     pub part_key: Option<Rc<str>>,
+    /// semantic control role (`SemanticRole` docs) — staged when the
+    /// painted kind doesn't express the control's full semantics
+    /// (combobox trigger / option / tablist / tab)
+    pub role: Option<SemanticRole>,
     pub key: ChildKey,
     pub parent: Option<u32>,
     pub children: Vec<u32>,
@@ -638,6 +717,53 @@ pub(crate) fn dirty_diff(
             d
         }
         (
+            NodeData::Popup {
+                anchor: aa,
+                side: asi,
+                align: aal,
+                offset: ao,
+                role: ar,
+                modal: am,
+                dismiss_light: ad,
+                focus_on_open: af,
+                props: ap,
+            },
+            NodeData::Popup {
+                anchor: ba,
+                side: bsi,
+                align: bal,
+                offset: bo,
+                role: br,
+                modal: bm,
+                dismiss_light: bd,
+                focus_on_open: bf,
+                props: bp,
+            },
+        ) => {
+            let mut d = 0;
+            // placement inputs — the anchored rect is computed at layout
+            if aa != ba || asi != bsi || aal != bal || ao != bo {
+                d |= LAYOUT | PAINT;
+            }
+            // dismiss/focus/role semantics — UIA + input routing truth
+            if ar != br || am != bm || ad != bd || af != bf {
+                d |= SEMANTICS;
+            }
+            // popup chrome resolves like a surface container
+            let mut ra = ap.resolved_box(KIND_POPUP);
+            let mut rb = bp.resolved_box(KIND_POPUP);
+            if let Some(v) = &mut ra {
+                crate::style::os_enforce_box(v, forced);
+            }
+            if let Some(v) = &mut rb {
+                crate::style::os_enforce_box(v, forced);
+            }
+            if let (Some(ra), Some(rb)) = (ra, rb) {
+                box_dirty(&ra, &rb, dark, &mut d);
+            }
+            d
+        }
+        (
             NodeData::Label {
                 text: at,
                 wrap: aw,
@@ -711,6 +837,9 @@ pub(crate) fn dirty_diff(
                 icon_only: aio,
                 accessible_name: aan,
                 invalid: ai,
+                selected: ase,
+                expanded: aex,
+                icon_color: aic,
             },
             NodeData::Button {
                 text: bt,
@@ -725,16 +854,19 @@ pub(crate) fn dirty_diff(
                 icon_only: bio,
                 accessible_name: ban,
                 invalid: bi,
+                selected: bse,
+                expanded: bex,
+                icon_color: bic,
             },
         ) => {
             let mut d = 0;
             if at != bt || asz != bsz || ais != bis || aie != bie || aio != bio {
                 d |= LAYOUT;
             }
-            if at != bt || av != bv || am != bm || ais != bis || aie != bie {
+            if at != bt || av != bv || am != bm || ais != bis || aie != bie || aic != bic {
                 d |= PAINT;
             }
-            if ad != bd || atp != btp || aan != ban {
+            if ad != bd || atp != btp || aan != ban || ase != bse || aex != bex {
                 d |= SEMANTICS;
             }
             // RESOLVED normal-state styles — recipe+patch applied, then
@@ -747,6 +879,7 @@ pub(crate) fn dirty_diff(
                 crate::style::StyleState::Normal,
                 false,
                 dark,
+                *ase,
                 *ai,
             );
             crate::style::os_enforce_visual(&mut ra, forced);
@@ -757,6 +890,7 @@ pub(crate) fn dirty_diff(
                 crate::style::StyleState::Normal,
                 false,
                 dark,
+                *bse,
                 *bi,
             );
             crate::style::os_enforce_visual(&mut rb, forced);
@@ -768,8 +902,8 @@ pub(crate) fn dirty_diff(
                 crate::style::StyleState::Pressed,
                 crate::style::StyleState::Disabled,
             ] {
-                let ra = crate::style::resolve_button(*av, *asz, ast, st, false, dark, *ai);
-                let rb = crate::style::resolve_button(*bv, *bsz, bst, st, false, dark, *bi);
+                let ra = crate::style::resolve_button(*av, *asz, ast, st, false, dark, *ase, *ai);
+                let rb = crate::style::resolve_button(*bv, *bsz, bst, st, false, dark, *bse, *bi);
                 if ra.box_style.padding != rb.box_style.padding
                     || ra.box_style.border.top.width != rb.box_style.border.top.width
                     || ra.box_style.border.right.width != rb.box_style.border.right.width
@@ -922,11 +1056,13 @@ pub(crate) fn dirty_diff(
                 label: al,
                 style: ast,
                 disabled: ad,
+                checked: ac,
             },
             NodeData::Action {
                 label: bl,
                 style: bst,
                 disabled: bd,
+                checked: bc,
             },
         ) => {
             let mut d = 0;
@@ -951,7 +1087,7 @@ pub(crate) fn dirty_diff(
                     d |= LAYOUT;
                 }
             }
-            if ad != bd || al != bl {
+            if ad != bd || al != bl || ac != bc {
                 d |= SEMANTICS;
             }
             d
@@ -1001,6 +1137,7 @@ impl Node {
             NodeData::Action { .. } => KIND_ACTION,
             NodeData::Icon { .. } => KIND_ICON,
             NodeData::Toggle { .. } => KIND_TOGGLE,
+            NodeData::Popup { .. } => KIND_POPUP,
         }
     }
 

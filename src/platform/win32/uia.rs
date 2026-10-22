@@ -194,6 +194,9 @@ struct ChildState {
     /// the node's published rect ∩ viewport clip was empty — a
     /// scroll-clipped element exists but shows nothing on screen
     offscreen: std::sync::atomic::AtomicBool,
+    selected: Mutex<Option<bool>>,
+    checked: Mutex<Option<bool>>,
+    expanded: Mutex<Option<bool>>,
 }
 
 #[implement(
@@ -256,6 +259,27 @@ impl IRawElementProviderSimple_Impl for PaintFragment_Impl {
                 Ok(VARIANT::from(BSTR::from(self.localized)))
             }
             x if x == UIA_IsEnabledPropertyId => Ok(VARIANT::from(self.enabled())),
+            x if x == UIA_SelectionItemIsSelectedPropertyId => Ok(self
+                .state
+                .selected
+                .lock()
+                .unwrap()
+                .map(VARIANT::from)
+                .unwrap_or_default()),
+            x if x == UIA_ToggleToggleStatePropertyId => Ok(self
+                .state
+                .checked
+                .lock()
+                .unwrap()
+                .map(|checked| VARIANT::from(if checked { 1i32 } else { 0i32 }))
+                .unwrap_or_default()),
+            x if x == UIA_ExpandCollapseExpandCollapseStatePropertyId => Ok(self
+                .state
+                .expanded
+                .lock()
+                .unwrap()
+                .map(|expanded| VARIANT::from(if expanded { 1i32 } else { 0i32 }))
+                .unwrap_or_default()),
             x if x == UIA_IsKeyboardFocusablePropertyId => {
                 Ok(VARIANT::from(self.actionable() && self.enabled()))
             }
@@ -1335,6 +1359,9 @@ pub(crate) struct ChildBuild {
     pub enabled: bool,
     /// rect ∩ viewport clip is empty — nothing of the node is on screen
     pub offscreen: bool,
+    pub selected: Option<bool>,
+    pub checked: Option<bool>,
+    pub expanded: Option<bool>,
     /// the node's real windowless provider when this is an editor
     pub native: Option<IRawElementProviderFragment>,
     /// the node is an editor — needs the native provider if available
@@ -1482,6 +1509,9 @@ impl UiaRoot {
                     h.state
                         .actionable
                         .store(k.actionable, std::sync::atomic::Ordering::SeqCst);
+                    *h.state.selected.lock().unwrap() = k.selected;
+                    *h.state.checked.lock().unwrap() = k.checked;
+                    *h.state.expanded.lock().unwrap() = k.expanded;
                     order.push((k.id, h.frag.downgrade()?));
                     continue;
                 }
@@ -1493,6 +1523,9 @@ impl UiaRoot {
                     enabled: std::sync::atomic::AtomicBool::new(k.enabled),
                     actionable: std::sync::atomic::AtomicBool::new(k.actionable),
                     offscreen: std::sync::atomic::AtomicBool::new(k.offscreen),
+                    selected: Mutex::new(k.selected),
+                    checked: Mutex::new(k.checked),
+                    expanded: Mutex::new(k.expanded),
                 });
                 // editor → wrap the peer's native provider (delegating
                 // fragment owns Name/Bounds/Enabled/Focus); painted → our

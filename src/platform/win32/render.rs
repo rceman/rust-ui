@@ -24,9 +24,9 @@ use crate::geom::Point;
 use crate::node::NodeData;
 use crate::runtime::UpdateCtx;
 use crate::ui::{Canvas, Paint, PathOp, TextRun};
-use crate::{UiError, UiResult};
+use crate::{NodeId, UiError, UiResult};
 
-use super::Backend;
+use super::{Backend, LogicalRect};
 
 const FONT: &str = "Segoe UI";
 
@@ -590,6 +590,9 @@ impl Renderer {
                     if patch.foreground.is_none() {
                         ts.foreground = crate::style::Color::Role(*color_role);
                     }
+                    if let Some(ink) = inherited_action_ink(be, id, n) {
+                        ts.foreground = crate::style::Color::Role(ink);
+                    }
                     unsafe {
                         // framed chrome under the text — h2 rule line,
                         // inline-code surface
@@ -620,7 +623,13 @@ impl Renderer {
                             f32::MAX
                         };
                         if let Ok(layout) = layout_for(tx, draw_max_w, r.height.max(1.0), &ts) {
-                            let c = resolve_render(ts.foreground, dark, forced);
+                            let ink = inherited_action_ink(be, id, n)
+                                .map(crate::style::Color::Role)
+                                .unwrap_or(ts.foreground);
+                            let mut c = resolve_render(ink, dark, forced);
+                            if inherited_action_disabled(be, n) {
+                                c.a *= 0.5;
+                            }
                             let brush = target.CreateSolidColorBrush(&c, None)?;
                             target.DrawTextLayout(
                                 Vector2 {
@@ -635,7 +644,13 @@ impl Renderer {
                     }
                 }
                 NodeData::Icon { icon, size, color } => {
-                    let c = resolve_render(*color, dark, forced);
+                    let ink = inherited_action_ink(be, id, n)
+                        .map(crate::style::Color::Role)
+                        .unwrap_or(*color);
+                    let mut c = resolve_render(ink, dark, forced);
+                    if inherited_action_disabled(be, n) {
+                        c.a *= 0.5;
+                    }
                     let brush = unsafe { target.CreateSolidColorBrush(&c, None)? };
                     unsafe {
                         draw_icon(&target, &self.factory, icon, *size, &r, &brush)?;
@@ -651,6 +666,9 @@ impl Renderer {
                     icon_end,
                     icon_only,
                     invalid,
+                    selected,
+                    icon_color,
+                    expanded: _,
                     motion: _,
                     tooltip: _,
                     accessible_name: _,
@@ -668,6 +686,7 @@ impl Renderer {
                         state,
                         be.resolved_focus_visible(id, n),
                         dark,
+                        *selected,
                         *invalid,
                     );
                     let bs = &vs.box_style;
@@ -722,6 +741,14 @@ impl Renderer {
                         }
                         let fg = resolve_render(vs.text_style.foreground, dark, forced);
                         let fg_brush = target.CreateSolidColorBrush(&fg, None)?;
+                        // icon tint — `icon_color` overrides the text
+                        // foreground (the select chevron stays muted
+                        // against a filled value)
+                        let icon_brush = match icon_color {
+                            Some(c) => target
+                                .CreateSolidColorBrush(&resolve_render(*c, dark, forced), None)?,
+                            None => fg_brush.clone(),
+                        };
                         // icon content — the part rect is shared geometry
                         // with measure/devtools
                         let rect_dp = crate::geom::Rect {
@@ -735,7 +762,7 @@ impl Renderer {
                                 && let Some(ir) =
                                     crate::layout::button_icon_rect(&n.data, &vs, &rect_dp, edge)
                             {
-                                draw_icon_at(&target, &self.factory, &icon, &ir, &fg_brush)?;
+                                draw_icon_at(&target, &self.factory, &icon, &ir, &icon_brush)?;
                             }
                         }
                         if *icon_only
@@ -743,7 +770,7 @@ impl Renderer {
                             && let Some(ir) =
                                 crate::layout::button_icon_rect(&n.data, &vs, &rect_dp, false)
                         {
-                            draw_icon_at(&target, &self.factory, &icon, &ir, &fg_brush)?;
+                            draw_icon_at(&target, &self.factory, &icon, &ir, &icon_brush)?;
                         }
                         if !*icon_only {
                             let wide: Vec<u16> = text.as_ref().encode_utf16().collect();
@@ -753,7 +780,16 @@ impl Renderer {
                                 (br.bottom - br.top).max(1.0),
                                 &vs.text_style,
                             )?;
-                            lay.SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER)?;
+                            // select-family controls are `text-left`
+                            // (justify-between value + indicator);
+                            // button labels center
+                            lay.SetTextAlignment(match variant {
+                                crate::theme::ButtonVariant::Select
+                                | crate::theme::ButtonVariant::SelectItem => {
+                                    DWRITE_TEXT_ALIGNMENT_LEADING
+                                }
+                                _ => DWRITE_TEXT_ALIGNMENT_CENTER,
+                            })?;
                             lay.SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER)?;
                             // whitespace-nowrap — button labels are always
                             // single-line; a tight box must never wrap
@@ -766,6 +802,28 @@ impl Renderer {
                                 &lay,
                                 &fg_brush,
                                 D2D1_DRAW_TEXT_OPTIONS_NONE,
+                            );
+                        }
+                        // line-variant active tab — the frozen `::after`
+                        // underline (bottom-[-5px] h-0.5 bg-foreground)
+                        if *selected && *variant == crate::theme::ButtonVariant::TabLine {
+                            let ur = crate::layout::tab_underline_rect(&rect_dp);
+                            let ub = target.CreateSolidColorBrush(
+                                &resolve_render(
+                                    crate::style::Color::Role(crate::theme::ColorRole::Foreground),
+                                    dark,
+                                    forced,
+                                ),
+                                None,
+                            )?;
+                            target.FillRectangle(
+                                &D2D_RECT_F {
+                                    left: ur.x,
+                                    top: ur.y,
+                                    right: ur.x + ur.width,
+                                    bottom: ur.y + ur.height,
+                                },
+                                &ub,
                             );
                         }
                     }
@@ -1058,6 +1116,22 @@ impl Renderer {
                         be.resolved_focus_visible(id, n),
                     );
                     unsafe {
+                        let _layer_guard = (*disabled).then(|| {
+                            target.PushLayer(
+                                &D2D1_LAYER_PARAMETERS {
+                                    contentBounds: D2D_RECT_F {
+                                        left: f32::MIN,
+                                        top: f32::MIN,
+                                        right: f32::MAX,
+                                        bottom: f32::MAX,
+                                    },
+                                    opacity: 0.5,
+                                    ..Default::default()
+                                },
+                                None,
+                            );
+                            LayerGuard(&target)
+                        });
                         paint_box(
                             &target,
                             &clip,
@@ -1071,8 +1145,91 @@ impl Renderer {
                         // focus ENFORCEMENT — the ring lives at paint, a
                         // layer consumer patches can never erase
                         if be.resolved_focus_visible(id, n) && !*disabled {
-                            paint_focus_ring(&target, &clip, &bs.radii, dark, forced)?;
+                            match n.role {
+                                Some(
+                                    crate::node::SemanticRole::MenuItem
+                                    | crate::node::SemanticRole::MenuItemCheckbox
+                                    | crate::node::SemanticRole::MenuItemRadio
+                                    | crate::node::SemanticRole::MenuItemDestructive,
+                                ) => {}
+                                Some(crate::node::SemanticRole::SettingsNavItem) => {
+                                    paint_ring_color_width(
+                                        &target,
+                                        &clip,
+                                        &bs.radii,
+                                        crate::style::Color::Role(
+                                            crate::theme::ColorRole::SidebarRing,
+                                        ),
+                                        2.0,
+                                        dark,
+                                        forced,
+                                    )?;
+                                }
+                                _ => paint_focus_ring(&target, &clip, &bs.radii, dark, forced)?,
+                            }
                         }
+                    }
+                }
+                NodeData::Popup { modal, props, .. } => {
+                    // modal: the popup's own rect is the full-client
+                    // backdrop — dim scrim fills it; chrome + children
+                    // paint at the resolved content box (the children
+                    // were walked at content-minus-insets, so the frame
+                    // rect is the first child's rect inflated by insets)
+                    let bs = props
+                        .resolved_box(crate::node::KIND_POPUP)
+                        .unwrap_or_default();
+                    let frame = if *modal {
+                        n.children
+                            .first()
+                            .map(|s| NodeId {
+                                slot: *s,
+                                generation: be.rt.arena.generation_of(*s),
+                            })
+                            .and_then(|cid| be.rects.get(&cid).copied())
+                            .map(|ir| {
+                                let ins = crate::layout::node_insets(
+                                    id,
+                                    n,
+                                    &crate::layout::Interaction {
+                                        dark,
+                                        ..Default::default()
+                                    },
+                                );
+                                LogicalRect {
+                                    x: ir.x - ins.left.0,
+                                    y: ir.y - ins.top.0,
+                                    width: ir.width + ins.left.0 + ins.right.0,
+                                    height: ir.height + ins.top.0 + ins.bottom.0,
+                                }
+                            })
+                            .unwrap_or(r)
+                    } else {
+                        r
+                    };
+                    let frame_clip = D2D_RECT_F {
+                        left: frame.x,
+                        top: frame.y,
+                        right: frame.x + frame.width,
+                        bottom: frame.y + frame.height,
+                    };
+                    unsafe {
+                        if *modal {
+                            let scrim = crate::style::Color::rgba(0, 0, 0, 26);
+                            let c = resolve_render(scrim, dark, forced);
+                            let b = target.CreateSolidColorBrush(&c, None)?;
+                            target.FillRectangle(&clip, &b);
+                        }
+                        paint_box(
+                            &target,
+                            &frame_clip,
+                            &bs,
+                            dark,
+                            forced,
+                            dpi,
+                            &self.shadow_cache,
+                            self.target_gen.get(),
+                        )?;
                     }
                 }
                 _ => {}
@@ -2131,19 +2288,29 @@ unsafe fn paint_ring_color(
     dark: bool,
     forced: Option<&dyn Fn(crate::style::SystemColor) -> [f32; 4]>,
 ) -> Result<()> {
+    paint_ring_color_width(target, r, radii, color, 3.0, dark, forced)
+}
+
+unsafe fn paint_ring_color_width(
+    target: &ID2D1RenderTarget,
+    r: &D2D_RECT_F,
+    radii: &crate::style::CornerRadii,
+    color: crate::style::Color,
+    width: f32,
+    dark: bool,
+    forced: Option<&dyn Fn(crate::style::SystemColor) -> [f32; 4]>,
+) -> Result<()> {
     unsafe {
         let ring = target.CreateSolidColorBrush(&resolve_render(color, dark, forced), None)?;
-        // the frozen `ring-3` band: 3dp stroke centered ±1.5dp outside
-        // the border box (same geometry the Button arm draws) — a thin
-        // 1.5dp stroke reads saturated where the soft 3dp band is frozen
+        let spread = width.max(0.0) / 2.0;
         let norm = radii.normalized(r.right - r.left, r.bottom - r.top);
-        let radius = crate::layout::ring_radius(norm.top_left.0);
+        let radius = norm.top_left.0 + spread;
         let outer = D2D1_ROUNDED_RECT {
             rect: D2D_RECT_F {
-                left: r.left - 1.5,
-                top: r.top - 1.5,
-                right: r.right + 1.5,
-                bottom: r.bottom + 1.5,
+                left: r.left - spread,
+                top: r.top - spread,
+                right: r.right + spread,
+                bottom: r.bottom + spread,
             },
             radiusX: radius,
             radiusY: radius,
@@ -2151,9 +2318,70 @@ unsafe fn paint_ring_color(
         let og: ID2D1RoundedRectangleGeometry = target
             .GetFactory()?
             .CreateRoundedRectangleGeometry(&outer)?;
-        target.DrawGeometry(&og, &ring, 3.0, None);
+        target.DrawGeometry(&og, &ring, width.max(0.0), None);
     }
     Ok(())
+}
+
+fn inherited_action_ink<S, M, U, V>(
+    be: &Backend<S, M, U, V>,
+    node: NodeId,
+    n: &crate::node::Node,
+) -> Option<crate::theme::ColorRole>
+where
+    M: 'static,
+    U: Fn(&mut S, M, &mut UpdateCtx<'_, M>),
+    V: Fn(&S, &mut crate::Ui<'_, '_, M>),
+{
+    let mut parent = n.parent;
+    while let Some(slot) = parent {
+        let action_id = NodeId {
+            slot,
+            generation: be.rt.arena.generation_of(slot),
+        };
+        let action = be.rt.arena.get(action_id)?;
+        if let crate::node::NodeData::Action { disabled, .. } = &action.data
+            && !disabled
+            && (be.resolved_hot(action_id, action) || be.resolved_focus_visible(action_id, action))
+        {
+            return match action.role {
+                Some(
+                    crate::node::SemanticRole::MenuItem
+                    | crate::node::SemanticRole::MenuItemCheckbox
+                    | crate::node::SemanticRole::MenuItemRadio,
+                ) => Some(crate::theme::ColorRole::AccentForeground),
+                Some(crate::node::SemanticRole::SettingsNavItem) => {
+                    Some(crate::theme::ColorRole::SidebarAccentForeground)
+                }
+                _ => None,
+            };
+        }
+        parent = action.parent;
+    }
+    let _ = node;
+    None
+}
+
+fn inherited_action_disabled<S, M, U, V>(be: &Backend<S, M, U, V>, n: &crate::node::Node) -> bool
+where
+    M: 'static,
+    U: Fn(&mut S, M, &mut UpdateCtx<'_, M>),
+    V: Fn(&S, &mut crate::Ui<'_, '_, M>),
+{
+    let mut parent = n.parent;
+    while let Some(slot) = parent {
+        let Some(action) = be.rt.arena.slot(slot) else {
+            return false;
+        };
+        if matches!(
+            &action.data,
+            crate::node::NodeData::Action { disabled: true, .. }
+        ) {
+            return true;
+        }
+        parent = action.parent;
+    }
+    false
 }
 
 /// The DIP footprint a shadow's ink can reach — the box rect offset by
@@ -2212,37 +2440,45 @@ unsafe fn draw_icon_at(
                     );
                     open = true;
                 }
-                crate::icons::IconOp::LineTo(x, y) => sink.AddLine(Vector2 {
-                    X: r.x + x * scale,
-                    Y: r.y + y * scale,
-                }),
-                crate::icons::IconOp::QuadTo(cx, cy, x, y) => {
-                    sink.AddQuadraticBezier(&D2D1_QUADRATIC_BEZIER_SEGMENT {
-                        point1: Vector2 {
-                            X: r.x + cx * scale,
-                            Y: r.y + cy * scale,
-                        },
-                        point2: Vector2 {
+                crate::icons::IconOp::LineTo(x, y) => {
+                    if open {
+                        sink.AddLine(Vector2 {
                             X: r.x + x * scale,
                             Y: r.y + y * scale,
-                        },
-                    });
+                        });
+                    }
+                }
+                crate::icons::IconOp::QuadTo(cx, cy, x, y) => {
+                    if open {
+                        sink.AddQuadraticBezier(&D2D1_QUADRATIC_BEZIER_SEGMENT {
+                            point1: Vector2 {
+                                X: r.x + cx * scale,
+                                Y: r.y + cy * scale,
+                            },
+                            point2: Vector2 {
+                                X: r.x + x * scale,
+                                Y: r.y + y * scale,
+                            },
+                        });
+                    }
                 }
                 crate::icons::IconOp::CubicTo(cx1, cy1, cx2, cy2, x, y) => {
-                    sink.AddBezier(&D2D1_BEZIER_SEGMENT {
-                        point1: Vector2 {
-                            X: r.x + cx1 * scale,
-                            Y: r.y + cy1 * scale,
-                        },
-                        point2: Vector2 {
-                            X: r.x + cx2 * scale,
-                            Y: r.y + cy2 * scale,
-                        },
-                        point3: Vector2 {
-                            X: r.x + x * scale,
-                            Y: r.y + y * scale,
-                        },
-                    });
+                    if open {
+                        sink.AddBezier(&D2D1_BEZIER_SEGMENT {
+                            point1: Vector2 {
+                                X: r.x + cx1 * scale,
+                                Y: r.y + cy1 * scale,
+                            },
+                            point2: Vector2 {
+                                X: r.x + cx2 * scale,
+                                Y: r.y + cy2 * scale,
+                            },
+                            point3: Vector2 {
+                                X: r.x + x * scale,
+                                Y: r.y + y * scale,
+                            },
+                        });
+                    }
                 }
                 crate::icons::IconOp::Close => {
                     if open {
@@ -2258,27 +2494,35 @@ unsafe fn draw_icon_at(
                     sweep,
                     x,
                     y,
-                } => sink.AddArc(&D2D1_ARC_SEGMENT {
-                    point: Vector2 {
-                        X: r.x + x * scale,
-                        Y: r.y + y * scale,
-                    },
-                    size: D2D_SIZE_F {
-                        width: rx * scale,
-                        height: ry * scale,
-                    },
-                    rotationAngle: x_axis_rotation,
-                    sweepDirection: if sweep {
-                        D2D1_SWEEP_DIRECTION_CLOCKWISE
-                    } else {
-                        D2D1_SWEEP_DIRECTION_COUNTER_CLOCKWISE
-                    },
-                    arcSize: if large_arc {
-                        D2D1_ARC_SIZE_LARGE
-                    } else {
-                        D2D1_ARC_SIZE_SMALL
-                    },
-                }),
+                } => {
+                    // AddArc outside an open figure trips
+                    // D2DERR_WRONG_STATE — one malformed icon must not
+                    // fail the whole frame; skip continuation ops until a
+                    // figure is open
+                    if open {
+                        sink.AddArc(&D2D1_ARC_SEGMENT {
+                            point: Vector2 {
+                                X: r.x + x * scale,
+                                Y: r.y + y * scale,
+                            },
+                            size: D2D_SIZE_F {
+                                width: rx * scale,
+                                height: ry * scale,
+                            },
+                            rotationAngle: x_axis_rotation,
+                            sweepDirection: if sweep {
+                                D2D1_SWEEP_DIRECTION_CLOCKWISE
+                            } else {
+                                D2D1_SWEEP_DIRECTION_COUNTER_CLOCKWISE
+                            },
+                            arcSize: if large_arc {
+                                D2D1_ARC_SIZE_LARGE
+                            } else {
+                                D2D1_ARC_SIZE_SMALL
+                            },
+                        });
+                    }
+                }
                 crate::icons::IconOp::Circle { cx, cy, r: rad } => {
                     if open {
                         sink.EndFigure(D2D1_FIGURE_END_OPEN);

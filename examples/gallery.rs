@@ -1,8 +1,10 @@
-//! Gallery — the native rust-ui Shadcn specimen host. Built on the same
-//! retained tree + component recipes as any app: Gallery code composes
-//! Button / IconButton / Card / Typography / Icon, never reimplements
-//! them. The frozen `reference/shadcn-gallery-v0.1/` contract owns the
-//! automation ids, geometry and styling this host must reproduce.
+// Gallery — the native rust-ui Shadcn specimen host. Built on the same
+// retained tree + component recipes as any app: Gallery code composes
+// Button / IconButton / Card / Typography / Icon, never reimplements
+// them. The frozen `reference/shadcn-gallery-v0.1/` contract owns the
+// automation ids, geometry and styling this host must reproduce.
+// `src/bin/rust-ui-gallery.rs` includes this file verbatim — keep
+// top-of-file comments as `//` (inner `//!` docs cannot be included).
 
 use rust_ui::prelude::*;
 use rust_ui::{Icon, Typography};
@@ -53,12 +55,16 @@ impl Page {
         }
     }
 
-    /// Slice-2 ships Components, Typography, Forms and Native Text; the
-    /// rest are present in the shell (frozen ids) but not yet implemented.
+    /// All stays a stub until the Gallery-completeness milestone.
     fn implemented(self) -> bool {
         matches!(
             self,
-            Page::Components | Page::Typography | Page::Forms | Page::NativeText
+            Page::Components
+                | Page::Typography
+                | Page::Forms
+                | Page::Navigation
+                | Page::Overlays
+                | Page::NativeText
         )
     }
 }
@@ -85,6 +91,18 @@ struct Gallery {
     cb: [bool; 7],
     radio: [&'static str; 5],
     sw: [bool; 8],
+    env: &'static str,
+    select_open: bool,
+    menu_open: bool,
+    menu_toolbar: bool,
+    menu_wrap: bool,
+    menu_panel: &'static str,
+    tabs_default: &'static str,
+    tabs_line: &'static str,
+    nav_selected: &'static str,
+    nav_collapsed: bool,
+    settings_theme: &'static str,
+    settings_theme_open: bool,
 }
 
 enum Msg {
@@ -97,6 +115,14 @@ enum Msg {
     ToggleCb(usize),
     SetRadio(usize, &'static str),
     ToggleSw(usize),
+    SelectOpen(&'static str, bool),
+    SelectPick(&'static str, &'static str),
+    MenuOpen(bool),
+    MenuAction(&'static str),
+    MenuCheck(&'static str, bool),
+    MenuRadio(&'static str),
+    SetTab(bool, &'static str),
+    SetNav(&'static str),
 }
 
 impl Gallery {
@@ -116,6 +142,44 @@ impl Gallery {
             Msg::ToggleCb(i) => self.cb[i] = !self.cb[i],
             Msg::SetRadio(g, k) => self.radio[g] = k,
             Msg::ToggleSw(i) => self.sw[i] = !self.sw[i],
+            Msg::SelectOpen(id, open) => {
+                if id == "select.default.open" {
+                    self.select_open = open;
+                } else if id == "settings-nav.theme" {
+                    self.settings_theme_open = open;
+                }
+            }
+            Msg::SelectPick(id, key) => {
+                if id == "select.default.open" {
+                    self.env = key;
+                    self.select_open = false;
+                } else if id == "settings-nav.theme" {
+                    self.settings_theme = key;
+                    self.settings_theme_open = false;
+                }
+            }
+            Msg::MenuOpen(open) => self.menu_open = open,
+            Msg::MenuAction(_) => self.menu_open = false,
+            Msg::MenuCheck(key, value) => {
+                match key {
+                    "toolbar" => self.menu_toolbar = value,
+                    "word-wrap" => self.menu_wrap = value,
+                    _ => {}
+                }
+                self.menu_open = false;
+            }
+            Msg::MenuRadio(key) => {
+                self.menu_panel = key;
+                self.menu_open = false;
+            }
+            Msg::SetTab(line, key) => {
+                if line {
+                    self.tabs_line = key;
+                } else {
+                    self.tabs_default = key;
+                }
+            }
+            Msg::SetNav(key) => self.nav_selected = key,
         }
     }
 
@@ -150,6 +214,8 @@ impl Gallery {
                                 Page::Components => self.components_page(ui),
                                 Page::Typography => self.typography_page(ui),
                                 Page::Forms => self.forms_page(ui),
+                                Page::Navigation => self.navigation_page(ui),
+                                Page::Overlays => self.overlays_page(ui),
                                 Page::NativeText => self.native_text_page(ui),
                                 other => self.stub_page(ui, other),
                             },
@@ -969,6 +1035,587 @@ impl Gallery {
                     }
                 });
             }
+            ui.column(Column::new().gap(Space::Sm).align(Align::Start), |ui| {
+                for states in [
+                    [
+                        (
+                            "select.default.placeholder",
+                            None,
+                            false,
+                            false,
+                            false,
+                            ControlSize::Md,
+                        ),
+                        (
+                            "select.default.filled",
+                            Some("Production"),
+                            false,
+                            false,
+                            false,
+                            ControlSize::Md,
+                        ),
+                        (
+                            "select.default.focus-visible",
+                            Some("Production"),
+                            false,
+                            false,
+                            true,
+                            ControlSize::Md,
+                        ),
+                        (
+                            "select.default.disabled",
+                            Some("Production"),
+                            true,
+                            false,
+                            false,
+                            ControlSize::Md,
+                        ),
+                    ],
+                    [
+                        (
+                            "select.default.invalid",
+                            Some("Production"),
+                            false,
+                            true,
+                            false,
+                            ControlSize::Md,
+                        ),
+                        (
+                            "select.default.size-sm",
+                            Some("Production"),
+                            false,
+                            false,
+                            false,
+                            ControlSize::Sm,
+                        ),
+                        ("", None, false, false, false, ControlSize::Md),
+                        ("", None, false, false, false, ControlSize::Md),
+                    ],
+                ] {
+                    ui.row(Row::new().gap(Space::Lg).align(Align::Center), |ui| {
+                        for (id, value, disabled, invalid, focus, size) in states {
+                            if id.is_empty() {
+                                continue;
+                            }
+                            let mut props = Select::new(id);
+                            props.value = value;
+                            props.disabled = disabled;
+                            props.invalid = invalid;
+                            props.size = size;
+                            props.presented = if focus {
+                                Presented::FOCUS_VISIBLE
+                            } else {
+                                Presented::default()
+                            };
+                            ui.select(props, move |_| Msg::Invoke(id), |_| {});
+                        }
+                    });
+                }
+            });
+        });
+    }
+
+    fn navigation_page(&self, ui: &mut Ui<Msg>) {
+        ui.column(Column::new().gap(Space::Lg).align(Align::Start), |ui| {
+            for (line, variant) in [(false, TabsVariant::Default), (true, TabsVariant::Line)] {
+                let prefix = if line { "tabs.line" } else { "tabs.default" };
+                for (state, target, selected, opts) in [
+                    ("active", "account", "account", TabOpts::default()),
+                    ("inactive", "account", "", TabOpts::default()),
+                    (
+                        "hover",
+                        "password",
+                        "account",
+                        TabOpts {
+                            presented: Presented::HOVER,
+                            ..Default::default()
+                        },
+                    ),
+                    (
+                        "focus-visible",
+                        "password",
+                        "account",
+                        TabOpts {
+                            presented: Presented::FOCUS_VISIBLE,
+                            ..Default::default()
+                        },
+                    ),
+                    (
+                        "disabled",
+                        "password",
+                        "account",
+                        TabOpts {
+                            disabled: true,
+                            ..Default::default()
+                        },
+                    ),
+                ] {
+                    let id = format!("{prefix}.{state}");
+                    let selected = if state == "active" {
+                        if line {
+                            self.tabs_line
+                        } else {
+                            self.tabs_default
+                        }
+                    } else {
+                        selected
+                    };
+                    ui.named(&id, |ui| {
+                        ui.tabs(
+                            Tabs { variant, selected },
+                            move |key| Msg::SetTab(line, key),
+                            |tabs| {
+                                for (key, label) in [
+                                    ("account", "Account"),
+                                    ("password", "Password"),
+                                    ("settings", "Settings"),
+                                ] {
+                                    let mut item = if key == target {
+                                        opts
+                                    } else {
+                                        TabOpts::default()
+                                    };
+                                    tabs.tab(key, label, item);
+                                }
+                            },
+                        );
+                    });
+                }
+            }
+
+            ui.row(Row::new().gap(Space::None).align(Align::Start), |ui| {
+                ui.settings_nav(
+                    SettingsNav {
+                        automation_id: "settings-nav.default",
+                        collapsed: self.nav_collapsed,
+                        selected: self.nav_selected,
+                    },
+                    Msg::SetNav,
+                    |nav| {
+                        nav.group("workspace", "Workspace", |items| {
+                            items.item(
+                                "general",
+                                "General",
+                                Icon::Settings,
+                                SettingsNavItemOpts::default(),
+                            );
+                            items.item(
+                                "appearance",
+                                "Appearance",
+                                Icon::Palette,
+                                SettingsNavItemOpts::default(),
+                            );
+                        });
+                        nav.group("assistant", "Assistant", |items| {
+                            items.item("agents", "Agents", Icon::Bot, Default::default());
+                            items.item("voice", "Voice", Icon::Mic, Default::default());
+                        });
+                        nav.group("system", "System", |items| {
+                            items.item(
+                                "integrations",
+                                "Integrations",
+                                Icon::Plug,
+                                Default::default(),
+                            );
+                            items.item(
+                                "advanced",
+                                "Advanced",
+                                Icon::SlidersHorizontal,
+                                Default::default(),
+                            );
+                        });
+                    },
+                );
+                ui.box_(
+                    BoxProps::new()
+                        .width(Length::Fill(1))
+                        .height(Length::Fixed(dp(if self.nav_collapsed {
+                            270.0
+                        } else {
+                            380.0
+                        })))
+                        .style(BoxStyle {
+                            background: Color::Role(ColorRole::Background),
+                            padding: Insets::all(dp(16.0)),
+                            ..Default::default()
+                        }),
+                    |ui| {
+                        ui.column(
+                            Column::new()
+                                .align(Align::Stretch)
+                                .padding(Space::None)
+                                .gap(Space::Xs),
+                            |ui| {
+                                ui.part("header", |ui| {
+                                    ui.column(
+                                        Column::new()
+                                            .padding(Space::None)
+                                            .gap(Space::Xs)
+                                            .align(Align::Start),
+                                        |ui| {
+                                            ui.text("Appearance").style(TextStyle {
+                                                size: TextSize::Exact(dp(16.0)),
+                                                weight: TextWeight::Semibold,
+                                                line_height: Some(dp(24.0)),
+                                                ..Default::default()
+                                            });
+                                            ui.text("Customize how the app looks.").style(
+                                                TextStyle {
+                                                    foreground: Color::Role(
+                                                        ColorRole::MutedForeground,
+                                                    ),
+                                                    ..Default::default()
+                                                },
+                                            );
+                                        },
+                                    );
+                                });
+                                ui.separator(Separator::horizontal());
+                                ui.field(
+                                    Field {
+                                        orientation: FieldOrientation::Horizontal,
+                                        width: Some(dp(640.0)),
+                                    },
+                                    |ui| {
+                                        ui.part("content", |ui| {
+                                            ui.column(
+                                                Column::new()
+                                                    .padding(Space::None)
+                                                    .gap(Space::Xs)
+                                                    .align(Align::Start),
+                                                |ui| {
+                                                    ui.text("Theme")
+                                                        .style(field_label_style(false));
+                                                    ui.text("Select the interface theme.")
+                                                        .style(field_description_style());
+                                                },
+                                            );
+                                        });
+                                        ui.box_(BoxProps::new().width(Length::Fill(1)), |_| {});
+                                        let mut select = Select::new("settings-nav.theme");
+                                        select.content_id = Some("settings-nav.theme.content");
+                                        select.open = self.settings_theme_open;
+                                        select.value = Some(match self.settings_theme {
+                                            "system" => "System",
+                                            "light" => "Light",
+                                            _ => "Dark",
+                                        });
+                                        select.selected = Some(self.settings_theme);
+                                        ui.select(
+                                            select,
+                                            |event| match event {
+                                                SelectChange::Open(open) => {
+                                                    Msg::SelectOpen("settings-nav.theme", open)
+                                                }
+                                                SelectChange::Pick(key) => {
+                                                    Msg::SelectPick("settings-nav.theme", key)
+                                                }
+                                            },
+                                            |items| {
+                                                items.item(
+                                                    "system",
+                                                    "System",
+                                                    SelectItemOpts::default(),
+                                                );
+                                                items.item(
+                                                    "light",
+                                                    "Light",
+                                                    SelectItemOpts::default(),
+                                                );
+                                                items.item(
+                                                    "dark",
+                                                    "Dark",
+                                                    SelectItemOpts::default(),
+                                                );
+                                            },
+                                        );
+                                    },
+                                );
+                                ui.separator(Separator::horizontal());
+                                for (idx, label, desc) in [
+                                    (6, "Animations", "UI transitions and motion."),
+                                    (7, "Compact mode", "Reduce padding."),
+                                ] {
+                                    ui.field(
+                                        Field {
+                                            orientation: FieldOrientation::Horizontal,
+                                            width: Some(dp(640.0)),
+                                        },
+                                        |ui| {
+                                            ui.part("content", |ui| {
+                                                ui.column(
+                                                    Column::new()
+                                                        .padding(Space::None)
+                                                        .gap(Space::Xs)
+                                                        .align(Align::Start),
+                                                    |ui| {
+                                                        ui.text(label)
+                                                            .style(field_label_style(false));
+                                                        ui.text(desc)
+                                                            .style(field_description_style());
+                                                    },
+                                                );
+                                            });
+                                            ui.box_(BoxProps::new().width(Length::Fill(1)), |_| {});
+                                            ui.switch(
+                                                Switch {
+                                                    checked: self.sw[idx],
+                                                    ..Default::default()
+                                                },
+                                                move || Msg::ToggleSw(idx),
+                                            );
+                                        },
+                                    );
+                                    if idx == 6 {
+                                        ui.separator(Separator::horizontal());
+                                    }
+                                }
+                            },
+                        );
+                    },
+                );
+            });
+
+            let states = [
+                ("default", false, false, Presented::default()),
+                ("hover", false, false, Presented::HOVER),
+                ("focus-visible", false, false, Presented::FOCUS_VISIBLE),
+                ("active", true, false, Presented::default()),
+                ("disabled", false, true, Presented::default()),
+            ];
+            for chunk in states.chunks(3) {
+                ui.row(Row::new().gap(Space::Lg).align(Align::Start), |ui| {
+                    for &(state, active, disabled, presented) in chunk {
+                        let id = match state {
+                            "default" => "settings-nav-item.default",
+                            "hover" => "settings-nav-item.default.hover",
+                            "focus-visible" => "settings-nav-item.default.focus-visible",
+                            "active" => "settings-nav-item.default.active",
+                            _ => "settings-nav-item.default.disabled",
+                        };
+                        ui.box_(
+                            BoxProps::new()
+                                .width(Length::Fixed(dp(208.0)))
+                                .style(BoxStyle {
+                                    background: Color::Role(ColorRole::Sidebar),
+                                    padding: Insets::all(dp(8.0)),
+                                    ..Default::default()
+                                }),
+                            |ui| {
+                                ui.settings_nav_item(
+                                    id,
+                                    "Appearance",
+                                    Icon::Palette,
+                                    active,
+                                    SettingsNavItemOpts {
+                                        disabled,
+                                        automation_id: None,
+                                        presented,
+                                    },
+                                    || Msg::SetNav("appearance"),
+                                );
+                            },
+                        );
+                    }
+                });
+            }
+        });
+    }
+
+    fn overlays_page(&self, ui: &mut Ui<Msg>) {
+        ui.column(Column::new().gap(Space::Lg).align(Align::Start), |ui| {
+            ui.named("select.default.open", |ui| {
+                ui.row(Row::new(), |ui| {
+                    let mut select = Select::new("select.default.open.trigger");
+                    select.content_id = Some("select.default.open.content");
+                    select.open = self.select_open;
+                    select.selected = Some(self.env);
+                    select.value = Some(match self.env {
+                        "development" => "Development",
+                        "staging" => "Staging",
+                        "preview" => "Preview",
+                        "deprecated" => "Deprecated",
+                        _ => "Production",
+                    });
+                    ui.select(
+                        select,
+                        |event| match event {
+                            SelectChange::Open(open) => {
+                                Msg::SelectOpen("select.default.open", open)
+                            }
+                            SelectChange::Pick(key) => Msg::SelectPick("select.default.open", key),
+                        },
+                        |items| {
+                            items.group("environment", "Environment", |items| {
+                                for (key, text, disabled, presented) in [
+                                    ("development", "Development", false, Presented::default()),
+                                    ("staging", "Staging", false, Presented::HOVER),
+                                    ("production", "Production", false, Presented::default()),
+                                    ("preview", "Preview", false, Presented::default()),
+                                    ("deprecated", "Deprecated", true, Presented::default()),
+                                ] {
+                                    items.item(
+                                        key,
+                                        text,
+                                        SelectItemOpts {
+                                            disabled,
+                                            automation_id: if key == "staging" {
+                                                Some("select.default.open.item-highlighted")
+                                            } else {
+                                                None
+                                            },
+                                            presented,
+                                        },
+                                    );
+                                }
+                            });
+                            items.separator();
+                            items.group("region", "Region", |items| {
+                                items.item("eu-west", "EU West", SelectItemOpts::default());
+                            });
+                        },
+                    );
+                });
+            });
+            ui.box_(
+                BoxProps::new()
+                    .width(Length::Fixed(dp(1.0)))
+                    .height(Length::Fixed(dp(40.0))),
+                |_| {},
+            );
+            let props = DropdownMenu {
+                automation_id: "dropdown-menu.default.trigger",
+                content_id: Some("dropdown-menu.default.content"),
+                label: "Open menu",
+                open: self.menu_open,
+                width: dp(192.0),
+            };
+            ui.named("dropdown-menu.default", |ui| {
+                ui.row(Row::new(), |ui| {
+                    ui.dropdown_menu(
+                        props,
+                        |event: DropdownMenuChange| -> Msg {
+                            match event {
+                                DropdownMenuChange::Open(open) => Msg::MenuOpen(open),
+                                DropdownMenuChange::Activate(key) => Msg::MenuAction(key),
+                                DropdownMenuChange::Checkbox(key, value) => {
+                                    Msg::MenuCheck(key, value)
+                                }
+                                DropdownMenuChange::Radio(key) => Msg::MenuRadio(key),
+                            }
+                        },
+                        |menu| {
+                            menu.group("account", "My Account", |items| {
+                                items.item(
+                                    "profile",
+                                    "Profile",
+                                    DropdownItemOpts {
+                                        icon: Some(Icon::User),
+                                        shortcut: Some("Ctrl+Shift+P"),
+                                        ..Default::default()
+                                    },
+                                );
+                                items.item(
+                                    "settings",
+                                    "Settings",
+                                    DropdownItemOpts {
+                                        icon: Some(Icon::Settings),
+                                        shortcut: Some("Ctrl+,"),
+                                        ..Default::default()
+                                    },
+                                );
+                                items.item(
+                                    "team-members",
+                                    "Team members",
+                                    DropdownItemOpts {
+                                        icon: Some(Icon::User),
+                                        automation_id: Some(
+                                            "dropdown-menu.default.item-highlighted",
+                                        ),
+                                        presented: Presented::HOVER,
+                                        ..Default::default()
+                                    },
+                                );
+                                items.item(
+                                    "billing",
+                                    "Billing",
+                                    DropdownItemOpts {
+                                        icon: Some(Icon::Settings),
+                                        disabled: true,
+                                        ..Default::default()
+                                    },
+                                );
+                            });
+                            menu.separator();
+                            menu.group("appearance", "Appearance", |items| {
+                                items.item(
+                                    "toolbar",
+                                    "Show toolbar",
+                                    DropdownItemOpts {
+                                        kind: DropdownItemKind::Checkbox {
+                                            checked: self.menu_toolbar,
+                                        },
+                                        ..Default::default()
+                                    },
+                                );
+                                items.item(
+                                    "word-wrap",
+                                    "Word wrap",
+                                    DropdownItemOpts {
+                                        kind: DropdownItemKind::Checkbox {
+                                            checked: self.menu_wrap,
+                                        },
+                                        ..Default::default()
+                                    },
+                                );
+                            });
+                            menu.separator();
+                            menu.group("panel-position", "Panel Position", |items| {
+                                items.item(
+                                    "left",
+                                    "Panel left",
+                                    DropdownItemOpts {
+                                        kind: DropdownItemKind::Radio {
+                                            selected: self.menu_panel == "left",
+                                        },
+                                        ..Default::default()
+                                    },
+                                );
+                                items.item(
+                                    "right",
+                                    "Panel right",
+                                    DropdownItemOpts {
+                                        kind: DropdownItemKind::Radio {
+                                            selected: self.menu_panel == "right",
+                                        },
+                                        ..Default::default()
+                                    },
+                                );
+                            });
+                            menu.separator();
+                            menu.item(
+                                "delete-account",
+                                "Delete account",
+                                DropdownItemOpts {
+                                    kind: DropdownItemKind::Destructive,
+                                    icon: Some(Icon::LogOut),
+                                    ..Default::default()
+                                },
+                            );
+                            menu.item(
+                                "delete-workspace",
+                                "Delete workspace",
+                                DropdownItemOpts {
+                                    kind: DropdownItemKind::Destructive,
+                                    presented: Presented::HOVER,
+                                    icon: Some(Icon::Trash2),
+                                    ..Default::default()
+                                },
+                            );
+                        },
+                    );
+                });
+            });
         });
     }
 
@@ -1305,13 +1952,35 @@ fn main() -> UiResult {
     let texts: Vec<TextValue> = TEXT_SEEDS.iter().map(|s| TextValue::new(*s)).collect();
     let app = App::new(
         Gallery {
-            page: Page::Components,
+            // deterministic page staging for devctl/evidence runs —
+            // boots directly onto a page without pointer navigation
+            page: match std::env::var("RUI_GALLERY_PAGE").as_deref() {
+                Ok("forms") => Page::Forms,
+                Ok("navigation") => Page::Navigation,
+                Ok("typography") => Page::Typography,
+                Ok("overlays") => Page::Overlays,
+                Ok("native-text") => Page::NativeText,
+                _ => Page::Components,
+            },
             theme: ThemeMode::System,
             scroll: 0.0,
             texts,
             cb: [false, true, true, false, true, false, true],
             radio: ["", "option-a", "option-a", "option-a", "option-a"],
             sw: [false, true, true, false, true, false, true, false],
+            env: "production",
+            select_open: true,
+            menu_open: true,
+            menu_toolbar: true,
+            menu_wrap: false,
+            menu_panel: "left",
+            tabs_default: "account",
+            tabs_line: "account",
+            nav_selected: "appearance",
+            nav_collapsed: std::env::var("RUI_SETTINGS_NAV_COLLAPSED")
+                .is_ok_and(|value| value == "1"),
+            settings_theme: "system",
+            settings_theme_open: false,
         },
         Gallery::update,
         Gallery::view,

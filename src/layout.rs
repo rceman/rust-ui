@@ -8,7 +8,7 @@
 //!   authority. Win32's `layout.rs` drives the pass; this file owns the
 //!   arithmetic policy.
 
-use crate::geom::{Dp, Justify, Rect};
+use crate::geom::{Align, Dp, Justify, Point, Rect, Side, Size};
 use crate::node::{NodeData, NodeId};
 use crate::style::{BoxStyle, Insets, TextInputStylePatch};
 
@@ -156,6 +156,82 @@ pub struct Interaction {
     pub dark: bool,
 }
 
+// ---------------------------------------------------------------------------
+// Popup placement — anchored overlay geometry (pure policy; the backend
+// supplies anchor rect, measured natural size, and the client viewport)
+// ---------------------------------------------------------------------------
+
+/// Place `natural` against `anchor` on `side` (the anchor edge the popup
+/// opens from: Bottom = below), aligned on the cross axis per `align`.
+/// `offset.x` shifts along the align axis, `offset.y` along the side axis
+/// for Top/Bottom (swapped for Left/Right — offset is authored in
+/// side/align terms). If the placed rect overflows `viewport` on the side
+/// axis the side flips once; the result is then clamped inside the
+/// viewport on both axes. Never negative extents.
+pub fn resolve_popup_placement(
+    anchor: Rect,
+    side: Side,
+    align: Align,
+    offset: Point,
+    natural: Size,
+    viewport: Rect,
+) -> Rect {
+    let place = |side: Side| -> Rect {
+        let (x, y) = match side {
+            Side::Bottom => (0.0, anchor.y + anchor.height + offset.y),
+            Side::Top => (0.0, anchor.y - natural.height - offset.y),
+            Side::Right => (anchor.x + anchor.width + offset.x, 0.0),
+            Side::Left => (anchor.x - natural.width - offset.x, 0.0),
+        };
+        // cross-axis align: horizontal for top/bottom, vertical for sides
+        let (x, y) = match side {
+            Side::Top | Side::Bottom => (
+                match align {
+                    Align::Start => anchor.x,
+                    Align::End => anchor.x + anchor.width - natural.width,
+                    // Center (and a nonsensical Stretch) centers
+                    _ => anchor.x + (anchor.width - natural.width) / 2.0,
+                } + offset.x,
+                y,
+            ),
+            Side::Left | Side::Right => (
+                x,
+                match align {
+                    Align::Start => anchor.y,
+                    Align::End => anchor.y + anchor.height - natural.height,
+                    _ => anchor.y + (anchor.height - natural.height) / 2.0,
+                } + offset.y,
+            ),
+        };
+        Rect {
+            x,
+            y,
+            width: natural.width,
+            height: natural.height,
+        }
+    };
+    let mut r = place(side);
+    // side-axis overflow → flip once to the opposite edge
+    let overflows = |side: Side, r: &Rect| match side {
+        Side::Bottom => r.y + r.height > viewport.y + viewport.height,
+        Side::Top => r.y < viewport.y,
+        Side::Right => r.x + r.width > viewport.x + viewport.width,
+        Side::Left => r.x < viewport.x,
+    };
+    if overflows(side, &r) {
+        let flipped = place(side.flipped());
+        if !overflows(side.flipped(), &flipped) {
+            r = flipped;
+        }
+    }
+    // clamp inside the viewport — an oversized popup pins to the edge
+    let max_x = (viewport.x + viewport.width - r.width).max(viewport.x);
+    let max_y = (viewport.y + viewport.height - r.height).max(viewport.y);
+    r.x = r.x.clamp(viewport.x, max_x);
+    r.y = r.y.clamp(viewport.y, max_y);
+    r
+}
+
 /// Content insets for a node: painted box containers take padding from the
 /// resolved `BoxStyle` (per-side, patch-aware); actions inset by the live
 /// state's resolved style; layout-only containers keep `Space` padding.
@@ -183,6 +259,26 @@ pub fn node_insets(id: NodeId, n: &crate::node::Node, ix: &Interaction) -> Inset
                     .padding
                     .map(|s| Insets::all(s.dp()))
                     .unwrap_or_default();
+            }
+            i
+        }
+        NodeData::Popup { props, .. } => {
+            // popup chrome resolves like `surface` — padding + border
+            let b = props
+                .resolved_box(crate::node::KIND_POPUP)
+                .unwrap_or_default();
+            let mut i = b.padding;
+            if let Some(side) = b.border.uniform() {
+                let w = side.width.0;
+                i.top.0 += w;
+                i.right.0 += w;
+                i.bottom.0 += w;
+                i.left.0 += w;
+            } else {
+                i.top.0 += b.border.top.width.0;
+                i.right.0 += b.border.right.width.0;
+                i.bottom.0 += b.border.bottom.width.0;
+                i.left.0 += b.border.left.width.0;
             }
             i
         }
@@ -262,13 +358,202 @@ pub fn icon_side_inset(base_pad_x: f32) -> f32 {
 }
 
 /// Icon edge size per size class — `size-3` xs, `size-3.5` sm,
-/// `size-4` default/lg.
+/// `size-4` default/lg. Select-family controls always carry `size-4`
+/// (`[&_svg:not([class*='size-'])]:size-4` — no size class scaling).
 pub fn button_icon_size(size: crate::theme::ControlSize) -> Dp {
     use crate::theme::ControlSize::*;
     Dp(match size {
         Xs => 12.0,
         Sm => 14.0,
         Md | Lg => 16.0,
+    })
+}
+
+/// Resolved icon edge size honoring the variant's frozen rule — the
+/// select family keeps 16px at every size class.
+pub fn button_variant_icon_size(
+    variant: crate::theme::ButtonVariant,
+    size: crate::theme::ControlSize,
+) -> Dp {
+    use crate::theme::ButtonVariant::*;
+    match variant {
+        Select | SelectItem => Dp(16.0),
+        _ => button_icon_size(size),
+    }
+}
+
+/// Distance from the element's border edge to the icon's own edge along
+/// each icon side. Standard buttons apply the frozen `has-data-[icon]`
+/// reduced padding (`icon_side_inset`); select-family controls park the
+/// icon at the recipe's absolute slot — the chevron sits `pr-2` inside
+/// the border and the option check mark parks at `right-2` inside the
+/// 32dp reserved indicator lane.
+pub fn button_variant_icon_edge(
+    variant: crate::theme::ButtonVariant,
+    border_w: f32,
+    pad: f32,
+) -> f32 {
+    use crate::theme::ButtonVariant::*;
+    match variant {
+        Select | SelectItem => border_w + 8.0,
+        _ => border_w + icon_side_inset(pad),
+    }
+}
+
+/// Right-side content reservation when `icon_end` is populated. For
+/// select-family controls the recipe padding IS the indicator slot —
+/// the icon overlays inside it, so no extra reserve exists.
+pub fn button_variant_end_reserve(
+    variant: crate::theme::ButtonVariant,
+    size: crate::theme::ControlSize,
+    border_w: f32,
+    pad: f32,
+) -> f32 {
+    use crate::theme::ButtonVariant::*;
+    match variant {
+        SelectItem => border_w + pad,
+        Select => border_w + pad + button_icon_size(size).0 + button_icon_gap(size).0,
+        _ => border_w + icon_side_inset(pad) + button_icon_size(size).0 + button_icon_gap(size).0,
+    }
+}
+
+/// Line-variant tab `::after` marker — the frozen `bottom-[-5px]` +
+/// `h-0.5` underline: a 2dp `bg-foreground` bar whose bottom edge hangs
+/// 5dp below the tab's bottom edge, full tab width.
+pub fn tab_underline_rect(r: &Rect) -> Rect {
+    Rect {
+        x: r.x,
+        y: r.y + r.height + 3.0,
+        width: r.width,
+        height: 2.0,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Directional group navigation — roving focus inside a semantic group
+// (tablist / listbox options). Shared policy: the backend supplies the
+// paint order + focused node; the group boundary is the nearest ancestor
+// carrying the group's semantic role (or the enclosing popup for options).
+// ---------------------------------------------------------------------------
+
+/// The next directional-nav target for `key` on `focused`, or `None`
+/// when the key isn't a nav key for the focused node's role or no
+/// eligible sibling exists. `Tab` cycles ArrowLeft/Right through
+/// same-role siblings inside the nearest `TabList` ancestor (the
+/// backend also activates the target — Radix automatic activation).
+/// `Option` cycles ArrowUp/Down among same-role descendants of the
+/// enclosing popup. Home/End jump first/last. Disabled/hidden siblings
+/// are skipped (the `interactive` gate); arrows wrap.
+pub fn nav_target(
+    arena: &crate::arena::Arena,
+    order: &[NodeId],
+    focused: NodeId,
+    key: crate::event::Key,
+) -> Option<NodeId> {
+    use crate::event::Key;
+    use crate::node::SemanticRole;
+    let n = arena.get(focused)?;
+    let role = n.role?;
+    // group boundary + accepted keys per role
+    let (group_role, forward, back) = match role {
+        SemanticRole::Tab => (
+            SemanticRole::TabList,
+            matches!(key, Key::ArrowRight | Key::End),
+            matches!(key, Key::ArrowLeft | Key::Home),
+        ),
+        SemanticRole::Option => (
+            SemanticRole::TabList, // sentinel — options bound by the popup
+            matches!(key, Key::ArrowDown | Key::End),
+            matches!(key, Key::ArrowUp | Key::Home),
+        ),
+        SemanticRole::MenuItem
+        | SemanticRole::MenuItemCheckbox
+        | SemanticRole::MenuItemRadio
+        | SemanticRole::MenuItemDestructive => (
+            SemanticRole::TabList, // menu entries are bounded by the popup
+            matches!(key, Key::ArrowDown | Key::End),
+            matches!(key, Key::ArrowUp | Key::Home),
+        ),
+        _ => return None,
+    };
+    if !forward && !back {
+        return None;
+    }
+    // enclosing group: nearest ancestor with the group role; for options
+    // the enclosing popup is the boundary
+    let mut group: Option<u32> = None;
+    let mut cur = n.parent;
+    while let Some(slot) = cur {
+        let pn = arena.slot(slot)?;
+        match role {
+            SemanticRole::Tab if pn.role == Some(group_role) => {
+                group = Some(slot);
+                break;
+            }
+            SemanticRole::Option
+            | SemanticRole::MenuItem
+            | SemanticRole::MenuItemCheckbox
+            | SemanticRole::MenuItemRadio
+            | SemanticRole::MenuItemDestructive
+                if matches!(&pn.data, crate::node::NodeData::Popup { .. }) =>
+            {
+                group = Some(slot);
+                break;
+            }
+            _ => {}
+        }
+        cur = pn.parent;
+    }
+    let group = group?;
+    let inside = |id: NodeId| -> bool {
+        let mut cur = arena.get(id).and_then(|n| n.parent);
+        while let Some(slot) = cur {
+            if slot == group {
+                return true;
+            }
+            cur = arena.slot(slot).and_then(|n| n.parent);
+        }
+        false
+    };
+    // eligible siblings in paint order (the document order), including
+    // the focused node itself — arrows walk this sequence, Home/End
+    // jump to its ends
+    let seq: Vec<NodeId> = order
+        .iter()
+        .copied()
+        .filter(|&id| {
+            inside(id)
+                && arena.get(id).is_some_and(|n| {
+                    (n.role == Some(role)
+                        || matches!(
+                            (role, n.role),
+                            (
+                                SemanticRole::MenuItem
+                                    | SemanticRole::MenuItemCheckbox
+                                    | SemanticRole::MenuItemRadio
+                                    | SemanticRole::MenuItemDestructive,
+                                Some(
+                                    SemanticRole::MenuItem
+                                        | SemanticRole::MenuItemCheckbox
+                                        | SemanticRole::MenuItemRadio
+                                        | SemanticRole::MenuItemDestructive
+                                )
+                            )
+                        ))
+                        && n.interactive()
+                        && n.visibility == crate::geom::Visibility::Visible
+                })
+        })
+        .collect();
+    if seq.len() < 2 {
+        return None;
+    }
+    let pos = seq.iter().position(|&id| id == focused)?;
+    Some(match key {
+        Key::Home => seq[0],
+        Key::End => *seq.last().unwrap(),
+        _ if forward => seq[(pos + 1) % seq.len()],
+        _ => seq[(pos + seq.len() - 1) % seq.len()],
     })
 }
 
@@ -295,6 +580,7 @@ pub fn button_icon_rect(
         icon_end: ie,
         icon_only,
         size,
+        variant,
         ..
     } = node
     else {
@@ -302,7 +588,7 @@ pub fn button_icon_rect(
     };
     let is = *icon_start;
     let ie = *ie;
-    let px = button_icon_size(*size);
+    let px = button_variant_icon_size(*variant, *size);
     let side = if icon_end { ie } else { is };
     if side.is_none() && !icon_only {
         return None;
@@ -319,9 +605,11 @@ pub fn button_icon_rect(
         });
     }
     let x = if icon_end {
-        r.x + r.width - b.border.right.width.0 - icon_side_inset(b.padding.right.0) - px.0
+        r.x + r.width
+            - button_variant_icon_edge(*variant, b.border.right.width.0, b.padding.right.0)
+            - px.0
     } else {
-        r.x + b.border.left.width.0 + icon_side_inset(b.padding.left.0)
+        r.x + button_variant_icon_edge(*variant, b.border.left.width.0, b.padding.left.0)
     };
     let y = r.y + (r.height - px.0) / 2.0;
     Some(crate::geom::Rect {
@@ -428,6 +716,7 @@ pub fn button_content_insets(
         icon_end,
         icon_only,
         size,
+        variant,
         ..
     } = node
     else {
@@ -442,16 +731,24 @@ pub fn button_content_insets(
     if *icon_only {
         return i;
     }
-    // icon edge = border + reduced icon padding + icon + gap to the label
-    let icon_reserve = |icon: &Option<crate::icons::Icon>, border: f32, pad: f32| {
+    // icon edge = border + icon-side pad + icon + gap to the label;
+    // select-family variants reserve the recipe's indicator slot instead
+    let icon_reserve = |icon: &Option<crate::icons::Icon>, border: f32, pad: f32, end: bool| {
         icon.map(|_| {
-            border + icon_side_inset(pad) + button_icon_size(*size).0 + button_icon_gap(*size).0
+            if end {
+                button_variant_end_reserve(*variant, *size, border, pad)
+            } else {
+                border
+                    + icon_side_inset(pad)
+                    + button_variant_icon_size(*variant, *size).0
+                    + button_icon_gap(*size).0
+            }
         })
     };
-    if let Some(l) = icon_reserve(icon_start, b.border.left.width.0, b.padding.left.0) {
+    if let Some(l) = icon_reserve(icon_start, b.border.left.width.0, b.padding.left.0, false) {
         i.left.0 = l;
     }
-    if let Some(r) = icon_reserve(icon_end, b.border.right.width.0, b.padding.right.0) {
+    if let Some(r) = icon_reserve(icon_end, b.border.right.width.0, b.padding.right.0, true) {
         i.right.0 = r;
     }
     i

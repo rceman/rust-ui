@@ -7,12 +7,12 @@ use crate::arena::Arena;
 use crate::event::{EventFactorySet, FrameTime, KeyEvent, PointerEvent, ScrollOffset};
 use crate::geom::{Align, Justify, LayoutSpec, Length, Point, Visibility};
 use crate::key::{ChildKey, ErasedKey, KeyId};
-use crate::node::{ContainerProps, MsgAdapters, NodeData, NodeId, Presented};
+use crate::node::{ContainerProps, MsgAdapters, NodeData, NodeId, Presented, SemanticRole};
 use crate::style::{Action, BoxProps, ButtonStylePatch};
 use crate::text::{TextConflict, TextEdit, TextSelection, TextValue};
 use crate::theme::{
     AlertVariant, Appearance, BadgeVariant, ButtonVariant, ColorRole, ControlSize, MotionToken,
-    SeparatorOrientation, Space, SubmitPolicy, Theme,
+    SeparatorOrientation, Space, SubmitPolicy, TabsVariant, Theme,
 };
 
 /// What a custom view contributes to the tree — an immutable `Rc` snapshot;
@@ -515,6 +515,157 @@ pub struct Field {
     pub width: Option<crate::geom::Dp>,
 }
 
+/// `ui.select` props — the app owns `open` + `selected` (key); `value`
+/// is the trigger's display text (`None` paints `placeholder` in
+/// `data-placeholder` muted-foreground). `automation_id` is REQUIRED —
+/// it names the trigger AND is the popup's anchor identity. `width` is
+/// the popup lane (frozen 208dp baseline); the trigger itself is w-fit.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Select<'a> {
+    pub automation_id: &'a str,
+    /// popup chrome automation id — e.g. `select.default.open.content`
+    pub content_id: Option<&'a str>,
+    pub open: bool,
+    /// key of the selected item — marks `item[key]` with the check
+    /// indicator + `selected` semantics (the open focus lands on it)
+    pub selected: Option<&'static str>,
+    /// display text inside the trigger — `None` paints `placeholder`
+    pub value: Option<&'a str>,
+    pub placeholder: &'a str,
+    pub disabled: bool,
+    pub invalid: bool,
+    pub size: ControlSize,
+    /// popup lane width — `None` = the frozen 208dp baseline
+    pub width: Option<crate::geom::Dp>,
+    /// presentation-only staged visual state (`Presented` docs)
+    pub presented: Presented,
+}
+
+impl<'a> Select<'a> {
+    /// Minimal live select — `Select::new("select.env")`.
+    pub fn new(automation_id: &'a str) -> Self {
+        Select {
+            automation_id,
+            content_id: None,
+            open: false,
+            selected: None,
+            value: None,
+            placeholder: "Choose an option",
+            disabled: false,
+            invalid: false,
+            size: ControlSize::default(),
+            width: None,
+            presented: Presented::default(),
+        }
+    }
+}
+
+/// Select open/selection events delivered through `on_change`.
+pub enum SelectChange {
+    /// open-state request — trigger press (`!open` at stage time, so a
+    /// dismiss+press pair collapses to a close) or popup dismiss (`false`
+    /// on outside-press/Escape)
+    Open(bool),
+    /// an option activated — click or Enter/Space on the live item;
+    /// commit `selected`, close, focus returns to the trigger
+    Pick(&'static str),
+}
+
+/// Per-item options inside `ui.select` content — `disabled` skips nav
+/// and activation; `automation_id` gives the item its own element id
+/// (specimen stages like `select.default.open.item-highlighted`).
+#[derive(Copy, Clone, Debug, Default, PartialEq)]
+pub struct SelectItemOpts {
+    pub disabled: bool,
+    pub automation_id: Option<&'static str>,
+    /// presentation-only staged visual state (`Presented` docs)
+    pub presented: Presented,
+}
+
+/// `ui.tabs` props — `variant` picks the frozen list chrome, `selected`
+/// is the app-owned active tab key.
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub struct Tabs<'a> {
+    pub variant: TabsVariant,
+    pub selected: &'a str,
+}
+
+/// Per-tab options — `disabled` is inert + skipped by directional nav;
+/// `automation_id` gives the trigger its own element id.
+#[derive(Copy, Clone, Debug, Default, PartialEq)]
+pub struct TabOpts {
+    pub disabled: bool,
+    pub automation_id: Option<&'static str>,
+    /// presentation-only staged visual state (`Presented` docs)
+    pub presented: Presented,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub struct DropdownMenu<'a> {
+    pub automation_id: &'a str,
+    pub content_id: Option<&'a str>,
+    pub label: &'a str,
+    pub open: bool,
+    pub width: crate::geom::Dp,
+}
+
+impl<'a> DropdownMenu<'a> {
+    pub fn new(automation_id: &'a str, label: &'a str) -> Self {
+        Self {
+            automation_id,
+            content_id: None,
+            label,
+            open: false,
+            width: crate::geom::dp(192.0),
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum DropdownMenuChange {
+    Open(bool),
+    Activate(&'static str),
+    Checkbox(&'static str, bool),
+    Radio(&'static str),
+}
+
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
+pub enum DropdownItemKind {
+    #[default]
+    Normal,
+    Destructive,
+    Checkbox {
+        checked: bool,
+    },
+    Radio {
+        selected: bool,
+    },
+}
+
+#[derive(Copy, Clone, Debug, Default, PartialEq)]
+pub struct DropdownItemOpts {
+    pub kind: DropdownItemKind,
+    pub disabled: bool,
+    pub icon: Option<crate::icons::Icon>,
+    pub shortcut: Option<&'static str>,
+    pub automation_id: Option<&'static str>,
+    pub presented: Presented,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub struct SettingsNav<'a> {
+    pub automation_id: &'a str,
+    pub collapsed: bool,
+    pub selected: &'static str,
+}
+
+#[derive(Copy, Clone, Debug, Default, PartialEq)]
+pub struct SettingsNavItemOpts {
+    pub disabled: bool,
+    pub automation_id: Option<&'static str>,
+    pub presented: Presented,
+}
+
 // ------------------------- staging internals -------------------------------
 
 /// Flat staged node — children are indices into `Tx.nodes`, so the whole
@@ -525,6 +676,9 @@ pub(crate) struct StagedNode {
     /// `ui.part("header", …)` / `ui.part("line", …)`; devtools emits it
     /// as `owner#part` (with parent part chains resolved)
     pub part_key: Option<Rc<str>>,
+    /// semantic control role — set post-stage like `automation_id` by
+    /// composite builders (combobox/option/tablist/tab)
+    pub role: Option<SemanticRole>,
     pub key: ChildKey,
     pub data: NodeData,
     /// staged presentation-only visual state — builders set it
@@ -545,6 +699,7 @@ impl StagedNode {
         StagedNode {
             automation_id: None,
             part_key: None,
+            role: None,
             key: ChildKey::Static {
                 kind: 0,
                 ordinal: u32::MAX,
@@ -576,6 +731,7 @@ impl StagedNode {
             NodeData::Action { .. } => crate::node::KIND_ACTION,
             NodeData::Icon { .. } => crate::node::KIND_ICON,
             NodeData::Toggle { .. } => crate::node::KIND_TOGGLE,
+            NodeData::Popup { .. } => crate::node::KIND_POPUP,
         }
     }
 
@@ -728,6 +884,7 @@ impl Tx<'_> {
                     | crate::node::KIND_TEXT_INPUT
                     | crate::node::KIND_TEXT_AREA
                     | crate::node::KIND_TOGGLE
+                    | crate::node::KIND_POPUP
             )
         {
             self.diagnostics.push(UiDiagnostic::InvalidComposition);
@@ -749,6 +906,7 @@ impl Tx<'_> {
         self.nodes.push(StagedNode {
             automation_id: None,
             part_key: None,
+            role: None,
             key,
             data,
             presented: Presented::default(),
@@ -789,6 +947,7 @@ impl Tx<'_> {
                     | crate::node::KIND_ACTION
                     | crate::node::KIND_TEXT_INPUT
                     | crate::node::KIND_TEXT_AREA
+                    | crate::node::KIND_POPUP
             )
         {
             self.diagnostics.push(UiDiagnostic::InvalidComposition);
@@ -833,6 +992,7 @@ impl Tx<'_> {
         self.nodes.push(StagedNode {
             automation_id: None,
             part_key: None,
+            role: None,
             key,
             data,
             presented: Presented::default(),
@@ -1254,6 +1414,9 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
             icon_only: false,
             accessible_name: None,
             invalid: false,
+            selected: false,
+            expanded: None,
+            icon_color: None,
             presented: Presented::default(),
             visibility: Visibility::Visible,
             layout: LayoutSpec::default(),
@@ -1387,6 +1550,7 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
         self.tx.nodes.push(StagedNode {
             automation_id: None,
             part_key: None,
+            role: None,
             key,
             data: NodeData::Container {
                 kind: crate::node::KIND_SCOPE,
@@ -1492,11 +1656,59 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
                 label: Rc::from(props.label.as_str()),
                 style: props.style,
                 disabled: props.disabled,
+                checked: None,
             },
         );
         // the staged node is the last pushed (containers append last)
         let staged = (self.tx.nodes.len() > before).then_some(self.tx.nodes.len() as u32 - 1);
         ActionBuilder {
+            tx: self.tx,
+            staged,
+            _m: std::marker::PhantomData,
+        }
+    }
+
+    /// `ui.popover` — the generic anchored overlay layer. Stages a
+    /// KIND_POPUP node inline ONLY when `open`; closed stages nothing.
+    /// Placement is backend-resolved against the `anchor` node's laid-out
+    /// rect each pass (flip-on-overflow + viewport clamp, shared policy in
+    /// `crate::layout::resolve_popup_placement`). `dismiss_light`
+    /// (default on) emits `on_open_change(false)` on an outside press;
+    /// Escape dismisses the topmost open popup; `focus_on_open` (default
+    /// on) moves focus to the first eligible descendant and restores the
+    /// pre-open focus on close. `modal` paints a dim scrim and gates
+    /// hit/focus/scroll to the popup subtree.
+    pub fn popover<'a>(
+        &'a mut self,
+        open: bool,
+        draw: impl FnOnce(&mut Ui<'_, '_, M>),
+    ) -> PopupBuilder<'a, 'ui, M> {
+        let before = self.tx.nodes.len();
+        if open {
+            self.tx.stage_container(
+                crate::node::KIND_POPUP,
+                None,
+                ContainerProps::default(),
+                LayoutSpec::default(),
+                EventFactorySet::default(),
+                Visibility::Visible,
+                draw,
+                false,
+                |props| NodeData::Popup {
+                    anchor: None,
+                    side: crate::geom::Side::default(),
+                    align: Align::Center,
+                    offset: Point::default(),
+                    role: crate::node::PopupRole::default(),
+                    modal: false,
+                    dismiss_light: true,
+                    focus_on_open: true,
+                    props,
+                },
+            );
+        }
+        let staged = (self.tx.nodes.len() > before).then_some(self.tx.nodes.len() as u32 - 1);
+        PopupBuilder {
             tx: self.tx,
             staged,
             _m: std::marker::PhantomData,
@@ -1751,6 +1963,9 @@ pub struct ButtonBuilder<'a, 'ui, M: 'static> {
     icon_only: bool,
     accessible_name: Option<Rc<str>>,
     invalid: bool,
+    selected: bool,
+    expanded: Option<bool>,
+    icon_color: Option<crate::style::Color>,
     presented: Presented,
     visibility: Visibility,
     layout: LayoutSpec,
@@ -1819,6 +2034,25 @@ impl<'a, 'ui, M: 'static> ButtonBuilder<'a, 'ui, M> {
     /// disabled/hover/pressed/focus
     pub fn invalid(mut self, on: bool) -> Self {
         self.invalid = on;
+        self
+    }
+    /// semantic `data-active`/`aria-selected` — the recipe's selected
+    /// overlay (variant-dependent); `focus_on_open` popups prefer a
+    /// `selected` descendant for the open focus
+    pub fn selected(mut self, on: bool) -> Self {
+        self.selected = on;
+        self
+    }
+    /// expanded/collapsed semantics for a popup-owning trigger
+    pub fn expanded(mut self, expanded: Option<bool>) -> Self {
+        self.expanded = expanded;
+        self
+    }
+    /// icon tint override — `None` paints icons in the resolved
+    /// foreground (`currentColor`); the select chevron keeps
+    /// `muted-foreground` against a filled value
+    pub fn icon_color(mut self, c: Option<crate::style::Color>) -> Self {
+        self.icon_color = c;
         self
     }
     /// presentation-only staged visual state — paints/lays out exactly
@@ -1894,6 +2128,9 @@ impl<'a, 'ui, M: 'static> Drop for ButtonBuilder<'a, 'ui, M> {
             icon_only,
             accessible_name,
             invalid,
+            selected,
+            expanded,
+            icon_color,
         ) = (
             self.variant,
             self.style,
@@ -1906,6 +2143,9 @@ impl<'a, 'ui, M: 'static> Drop for ButtonBuilder<'a, 'ui, M> {
             self.icon_only,
             self.accessible_name.clone(),
             self.invalid,
+            self.selected,
+            self.expanded,
+            self.icon_color,
         );
         let presented = self.presented;
         self.tx.stage_leaf(
@@ -1935,6 +2175,9 @@ impl<'a, 'ui, M: 'static> Drop for ButtonBuilder<'a, 'ui, M> {
                     icon_only,
                     accessible_name,
                     invalid,
+                    selected,
+                    expanded,
+                    icon_color,
                 }
             },
         );
@@ -2265,6 +2508,22 @@ impl<'a, 'ui, M: 'static> ActionBuilder<'a, 'ui, M> {
         }
         self
     }
+    pub fn semantic_role(self, role: SemanticRole) -> Self {
+        if let Some(i) = self.staged {
+            self.tx.nodes[i as usize].role = Some(role);
+        }
+        self
+    }
+    pub fn semantic_checked(self, checked: Option<bool>) -> Self {
+        if let Some(i) = self.staged
+            && let NodeData::Action {
+                checked: staged, ..
+            } = &mut self.tx.nodes[i as usize].data
+        {
+            *staged = checked;
+        }
+        self
+    }
     fn set(&mut self, f: impl FnOnce(&mut EventFactorySet)) {
         if let Some(i) = self.staged {
             f(&mut self.tx.nodes[i as usize].factories);
@@ -2294,6 +2553,161 @@ impl<'a, 'ui, M: 'static> ActionBuilder<'a, 'ui, M> {
         self.set(|fac| fac.on_pointer_leave = Some(Box::new(move |e| Box::new(f(e)))));
         self
     }
+}
+
+/// `ui.popover` builder — the popup node stages at `popover()` (children
+/// draw inside it); setters retrofit onto the staged node. When `open` is
+/// false nothing staged and every setter is a no-op.
+pub struct PopupBuilder<'a, 'ui, M: 'static> {
+    tx: &'a mut Tx<'ui>,
+    /// staged node index in `tx.nodes` — None when closed or rejected
+    staged: Option<u32>,
+    _m: std::marker::PhantomData<fn() -> M>,
+}
+
+impl<'a, 'ui, M: 'static> PopupBuilder<'a, 'ui, M> {
+    /// Mutate the staged Popup payload — no-op when nothing staged.
+    fn edit(&mut self, f: impl FnOnce(&mut PopupFields<'_>)) {
+        if let Some(i) = self.staged
+            && let StagedNode {
+                data:
+                    NodeData::Popup {
+                        anchor,
+                        side,
+                        align,
+                        offset,
+                        role,
+                        modal,
+                        dismiss_light,
+                        focus_on_open,
+                        props,
+                    },
+                ..
+            } = &mut self.tx.nodes[i as usize]
+        {
+            f(&mut PopupFields {
+                anchor,
+                side,
+                align,
+                offset,
+                role,
+                modal,
+                dismiss_light,
+                focus_on_open,
+                props,
+            });
+        }
+    }
+
+    /// automation id of the node the popup anchors to (e.g. the trigger)
+    pub fn anchor(mut self, automation_id: &str) -> Self {
+        self.edit(|p| *p.anchor = Some(Rc::from(automation_id)));
+        self
+    }
+    /// anchor edge the popup opens from (default Bottom)
+    pub fn side(mut self, s: crate::geom::Side) -> Self {
+        self.edit(|p| *p.side = s);
+        self
+    }
+    /// cross-axis alignment against the anchor (default Center)
+    pub fn align(mut self, a: Align) -> Self {
+        self.edit(|p| *p.align = a);
+        self
+    }
+    /// gap along the side axis in Dp (Radix `sideOffset`)
+    pub fn side_offset(mut self, d: crate::geom::Dp) -> Self {
+        self.edit(|p| match *p.side {
+            crate::geom::Side::Top | crate::geom::Side::Bottom => p.offset.y = d.0,
+            crate::geom::Side::Left | crate::geom::Side::Right => p.offset.x = d.0,
+        });
+        self
+    }
+    /// shift along the align axis in Dp (Radix `alignOffset`)
+    pub fn align_offset(mut self, d: crate::geom::Dp) -> Self {
+        self.edit(|p| match *p.side {
+            crate::geom::Side::Top | crate::geom::Side::Bottom => p.offset.x = d.0,
+            crate::geom::Side::Left | crate::geom::Side::Right => p.offset.y = d.0,
+        });
+        self
+    }
+    /// semantic overlay role — drives the UIA control type
+    pub fn role(mut self, r: crate::node::PopupRole) -> Self {
+        self.edit(|p| *p.role = r);
+        self
+    }
+    /// modal overlay — scrim + hit/focus/scroll gate to the subtree
+    pub fn modal(mut self, on: bool) -> Self {
+        self.edit(|p| *p.modal = on);
+        self
+    }
+    /// outside-press dismisses via `on_open_change(false)` (default on)
+    pub fn dismiss_light(mut self, on: bool) -> Self {
+        self.edit(|p| *p.dismiss_light = on);
+        self
+    }
+    /// move focus to the first eligible descendant on open, restore on
+    /// close (default on)
+    pub fn focus_on_open(mut self, on: bool) -> Self {
+        self.edit(|p| *p.focus_on_open = on);
+        self
+    }
+    pub fn automation_id(self, id: &str) -> Self {
+        if let Some(i) = self.staged {
+            self.tx.nodes[i as usize].automation_id = Some(Rc::from(id));
+        }
+        self
+    }
+    /// surgical chrome patch over the popup's surface recipe — later
+    /// `.style` calls deep-merge, `None` never erases
+    pub fn style(mut self, p: crate::style::BoxStylePatch) -> Self {
+        let mut patch = self
+            .staged
+            .and_then(|i| match &self.tx.nodes[i as usize].data {
+                NodeData::Popup { props, .. } => Some(props.patch),
+                _ => None,
+            })
+            .unwrap_or_default();
+        patch.merge(&p);
+        self.edit(|f| f.props.patch = patch);
+        self
+    }
+    /// open-state events — `false` on outside-press/Escape dismissals
+    pub fn on_open_change(self, f: impl Fn(bool) -> M + 'static) -> Self {
+        if let Some(i) = self.staged {
+            self.tx.nodes[i as usize].factories.on_open_change =
+                Some(Box::new(move |o| Box::new(f(o))));
+        }
+        self
+    }
+    /// popup width — the natural measure is children-driven; a select
+    /// content pins the frozen 208dp lane
+    pub fn width(self, w: crate::geom::Length) -> Self {
+        if let Some(i) = self.staged {
+            self.tx.nodes[i as usize].layout.width = w;
+        }
+        self
+    }
+    /// popup height override — natural (content-measured) by default
+    pub fn height(self, h: crate::geom::Length) -> Self {
+        if let Some(i) = self.staged {
+            self.tx.nodes[i as usize].layout.height = h;
+        }
+        self
+    }
+}
+
+/// Borrowed field views for `PopupBuilder::edit` — keeps the destructure
+/// out of every setter.
+struct PopupFields<'a> {
+    anchor: &'a mut Option<Rc<str>>,
+    side: &'a mut crate::geom::Side,
+    align: &'a mut Align,
+    offset: &'a mut Point,
+    role: &'a mut crate::node::PopupRole,
+    modal: &'a mut bool,
+    dismiss_light: &'a mut bool,
+    focus_on_open: &'a mut bool,
+    props: &'a mut ContainerProps,
 }
 
 /// `ui.text` — styled text leaf with a full authored `TextStyle`.
@@ -2563,6 +2977,249 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
         draw(&mut rg);
     }
 
+    /// Post-stage role tag on the last child pushed in the current
+    /// frame — used by composite builders (`ui.select`, `ui.tabs`) whose
+    /// children are ordinary kinds carrying richer semantics.
+    fn set_role_last(&mut self, role: SemanticRole) {
+        if let Some(i) = self.tx.frames.last().unwrap().children.last().copied() {
+            self.tx.nodes[i as usize].role = Some(role);
+        }
+    }
+
+    /// `ui.select` — the frozen combobox: a `Select`-variant trigger
+    /// (value text or `data-placeholder`, chevron end icon, combobox
+    /// semantics) plus an anchored `PopupRole::Listbox` popup staged only
+    /// while `open`. Focus model: `focus_on_open` moves focus INTO the
+    /// listbox (the `selected` item when set, else the first enabled);
+    /// arrows/Home/End walk enabled options (`nav_target`), Enter/Space
+    /// activates the live option, Escape/outside-press dismiss via the
+    /// popup foundation; closing restores focus to the trigger.
+    pub fn select<F>(
+        &mut self,
+        props: Select<'_>,
+        on_change: F,
+        draw: impl FnOnce(&mut SelectItems<'_, '_, '_, M>),
+    ) where
+        F: Fn(SelectChange) -> M + 'static,
+    {
+        let on_change = Rc::new(on_change);
+        // trigger — the combobox value button (w-fit natural)
+        let text = props.value.unwrap_or(props.placeholder);
+        let mut b = self
+            .button(text)
+            .variant(ButtonVariant::Select)
+            .size(props.size)
+            .icon_end(crate::icons::Icon::ChevronDown)
+            .icon_color(Some(crate::style::Color::Role(ColorRole::MutedForeground)))
+            .expanded(Some(props.open))
+            .disabled(props.disabled)
+            .invalid(props.invalid)
+            .presented(props.presented)
+            .automation_id(props.automation_id)
+            .on_press({
+                let cb = on_change.clone();
+                let open = props.open;
+                move || cb(SelectChange::Open(!open))
+            });
+        if props.value.is_none() {
+            b = b.style(crate::style::select_placeholder_patch());
+        }
+        drop(b);
+        self.set_role_last(SemanticRole::ComboBox);
+        // listbox popup — chrome + content column
+        let selected = props.selected;
+        let pw = props.width.unwrap_or(crate::geom::dp(208.0));
+        let mut p = self
+            .popover(props.open, |ui| {
+                ui.column(
+                    Column::new().align(Align::Stretch).padding(Space::None),
+                    |ui| {
+                        let mut st = SelectItems {
+                            ui,
+                            selected,
+                            popup_width: pw.0,
+                            on_change: on_change.clone(),
+                        };
+                        draw(&mut st);
+                    },
+                );
+            })
+            .anchor(props.automation_id)
+            .side(crate::geom::Side::Bottom)
+            .align(Align::Center)
+            .side_offset(crate::geom::dp(4.0))
+            .role(crate::node::PopupRole::Listbox)
+            .width(Length::Fixed(pw))
+            .style(crate::style::select_content_patch());
+        if let Some(id) = props.content_id {
+            p = p.automation_id(id);
+        }
+        p.on_open_change(move |o| on_change(SelectChange::Open(o)));
+    }
+
+    /// `ui.tabs` — the frozen tab list: `list` part chrome (muted pill /
+    /// line lane) wrapping a row of keyed `tab[key]` triggers. Press
+    /// delivers `on_select(key)`; directional nav is the shared policy —
+    /// ArrowLeft/Right move focus AND activate the target (Radix
+    /// automatic activation), Home/End jump first/last, disabled tabs
+    /// are skipped.
+    pub fn tabs<F>(
+        &mut self,
+        props: Tabs<'_>,
+        on_select: F,
+        draw: impl FnOnce(&mut TabList<'_, '_, '_, M>),
+    ) where
+        F: Fn(&'static str) -> M + 'static,
+    {
+        let variant = props.variant;
+        let selected = props.selected;
+        let on_select = Rc::new(on_select);
+        self.part("list", |ui| {
+            ui.box_(
+                BoxProps::new()
+                    .style(crate::style::tabs_list_recipe(variant))
+                    .height(Length::Fixed(crate::geom::dp(32.0))),
+                |ui| {
+                    ui.row(
+                        Row::new()
+                            .gap(match variant {
+                                TabsVariant::Line => Space::Xs,
+                                TabsVariant::Default => Space::None,
+                            })
+                            .align(Align::Center),
+                        |ui| {
+                            let mut tl = TabList {
+                                ui,
+                                variant,
+                                selected,
+                                on_select: on_select.clone(),
+                            };
+                            draw(&mut tl);
+                        },
+                    );
+                },
+            );
+            ui.set_role_last(SemanticRole::TabList);
+        });
+    }
+
+    /// Reusable desktop dropdown menu. The application owns `open` and
+    /// every checked/radio value; menu callbacks are typed requests.
+    pub fn dropdown_menu(
+        &mut self,
+        props: DropdownMenu<'_>,
+        on_change: impl Fn(DropdownMenuChange) -> M + 'static,
+        draw: impl FnOnce(&mut DropdownMenuItems<'_, '_, '_, M>),
+    ) {
+        let on_change = Rc::new(on_change);
+        let trigger = self
+            .button(props.label)
+            .automation_id(props.automation_id)
+            .variant(ButtonVariant::Outline)
+            .expanded(Some(props.open))
+            .on_press({
+                let cb = on_change.clone();
+                let open = props.open;
+                move || cb(DropdownMenuChange::Open(!open))
+            });
+        drop(trigger);
+        self.set_role_last(SemanticRole::MenuButton);
+        let mut popup = self
+            .popover(props.open, |ui| {
+                ui.column(
+                    Column::new().align(Align::Stretch).padding(Space::None),
+                    |ui| {
+                        let mut items = DropdownMenuItems {
+                            ui,
+                            on_change: on_change.clone(),
+                            width: props.width.0,
+                        };
+                        draw(&mut items);
+                    },
+                );
+            })
+            .anchor(props.automation_id)
+            .side(crate::geom::Side::Bottom)
+            .align(Align::Start)
+            .side_offset(crate::geom::dp(4.0))
+            .role(crate::node::PopupRole::Menu)
+            .width(Length::Fixed(props.width))
+            .style(crate::style::select_content_patch());
+        if let Some(id) = props.content_id {
+            popup = popup.automation_id(id);
+        }
+        popup.on_open_change(move |open| on_change(DropdownMenuChange::Open(open)));
+    }
+
+    /// Sidebar-13 desktop SettingsNav. This component owns only the
+    /// navigation rail; compose its content pane from ordinary components.
+    pub fn settings_nav(
+        &mut self,
+        props: SettingsNav<'_>,
+        on_select: impl Fn(&'static str) -> M + 'static,
+        draw: impl FnOnce(&mut SettingsNavGroups<'_, '_, '_, M>),
+    ) {
+        let selected = props.selected;
+        let on_select = Rc::new(on_select);
+        let width = crate::geom::dp(if props.collapsed { 48.0 } else { 256.0 });
+        self.named(props.automation_id, |ui| {
+            ui.box_(
+                crate::style::BoxProps::new()
+                    .style(crate::style::settings_nav_surface())
+                    .width(Length::Fixed(width)),
+                |ui| {
+                    ui.column(
+                        Column::new()
+                            .align(Align::Stretch)
+                            .padding(Space::None)
+                            .gap(Space::None),
+                        |ui| {
+                            if !props.collapsed {
+                                ui.part("header", |ui| {
+                                    ui.text("Settings")
+                                        .style(crate::style::settings_nav_header_style())
+                                        .chrome(crate::style::settings_nav_header_box())
+                                        .height(Length::Fixed(crate::geom::dp(44.0)));
+                                });
+                            }
+                            let mut groups = SettingsNavGroups {
+                                ui,
+                                collapsed: props.collapsed,
+                                selected,
+                                on_select: on_select.clone(),
+                            };
+                            draw(&mut groups);
+                        },
+                    );
+                },
+            );
+        });
+    }
+
+    /// Standalone SettingsNavItem state specimen. It uses the same
+    /// recipe and runtime semantics as an item inside `settings_nav`.
+    pub fn settings_nav_item(
+        &mut self,
+        id: &str,
+        label: &'static str,
+        icon: crate::icons::Icon,
+        active: bool,
+        opts: SettingsNavItemOpts,
+        on_press: impl Fn() -> M + 'static,
+    ) {
+        stage_settings_nav_item(
+            self,
+            id,
+            id,
+            label,
+            icon,
+            active,
+            false,
+            opts,
+            Rc::new(on_press),
+        );
+    }
+
     /// `ui.field` — the frozen 288dp field container: `Vertical` stacks
     /// label/control/description at 8dp gaps (Stretch); `Horizontal` is a
     /// `Center`-aligned row at 8dp gap. Compose `ui.part` + the
@@ -2657,6 +3314,464 @@ impl<'a, 'ui, 'tx, M: 'static> RadioGroup<'a, 'ui, 'tx, M> {
             );
         });
     }
+}
+
+/// `ui.select` content stager — passed to the select draw closure. Items
+/// stage inside the listbox column; each `item[key]` carries option
+/// semantics, `label[key]` is a group heading, `separator()` is the
+/// bleeding hairline between groups.
+pub struct SelectItems<'a, 'ui, 'tx, M: 'static> {
+    ui: &'a mut Ui<'ui, 'tx, M>,
+    selected: Option<&'static str>,
+    popup_width: f32,
+    on_change: Rc<dyn Fn(SelectChange) -> M>,
+}
+impl<'a, 'ui, 'tx, M: 'static> SelectItems<'a, 'ui, 'tx, M> {
+    pub fn group(
+        &mut self,
+        key: &'static str,
+        text: &'static str,
+        draw: impl FnOnce(&mut SelectItems<'_, '_, '_, M>),
+    ) {
+        let selected = self.selected;
+        let popup_width = self.popup_width;
+        let on_change = self.on_change.clone();
+        self.ui.part(&format!("group[{key}]"), |ui| {
+            ui.column(
+                Column::new().align(Align::Stretch).padding(Space::None),
+                |ui| {
+                    let mut items = SelectItems {
+                        ui,
+                        selected,
+                        popup_width,
+                        on_change,
+                    };
+                    items.label(key, text);
+                    draw(&mut items);
+                },
+            );
+        });
+        self.ui.set_role_last(SemanticRole::Group);
+    }
+
+    /// `label[key]` part — group heading (`h-6 px-1.5 py-1 text-xs
+    /// muted-foreground`).
+    pub fn label(&mut self, key: &str, text: &str) {
+        self.ui.part(&format!("label[{key}]"), |ui| {
+            ui.text(text)
+                .style(crate::style::select_label_style())
+                .chrome(crate::style::BoxStyle {
+                    padding: crate::style::Insets {
+                        top: crate::geom::dp(4.0),
+                        right: crate::geom::dp(6.0),
+                        bottom: crate::geom::dp(4.0),
+                        left: crate::geom::dp(6.0),
+                    },
+                    ..crate::style::BoxStyle::default()
+                })
+                .height(Length::Fixed(crate::geom::dp(24.0)));
+        });
+    }
+
+    /// `item[key]` part — the option row (h-7, `SelectItem` recipe,
+    /// check indicator when `selected`); Press delivers
+    /// `SelectChange::Pick(key)`.
+    pub fn item(&mut self, key: &'static str, text: &'static str, opts: SelectItemOpts) {
+        let cb = self.on_change.clone();
+        let selected = self.selected == Some(key);
+        self.ui.part(&format!("item[{key}]"), |ui| {
+            let mut b = ui
+                .button(text)
+                .variant(ButtonVariant::SelectItem)
+                .selected(selected)
+                .disabled(opts.disabled)
+                .presented(opts.presented)
+                .width(Length::Fill(1))
+                .height(Length::Fixed(crate::geom::dp(28.0)))
+                .on_press(move || cb(SelectChange::Pick(key)));
+            if selected {
+                b = b.icon_end(crate::icons::Icon::Check);
+            }
+            if let Some(id) = opts.automation_id {
+                b = b.automation_id(id);
+            }
+            drop(b);
+            ui.set_role_last(SemanticRole::Option);
+        });
+    }
+
+    /// `separator` part — the `-mx-1 my-1 h-px` bleeding hairline:
+    /// popup-width + 8dp centered inside a padded wrapper so the line
+    /// reaches 4dp past each side of the content lane.
+    pub fn separator(&mut self) {
+        let w = self.popup_width + 8.0;
+        self.ui.column(
+            Column::new().padding(Space::Sm).align(Align::Center),
+            |ui| {
+                ui.part("separator", |ui| {
+                    ui.box_(
+                        BoxProps::new()
+                            .width(Length::Fixed(crate::geom::dp(w)))
+                            .height(Length::Fixed(crate::geom::dp(1.0)))
+                            .style(crate::style::BoxStyle {
+                                background: crate::style::Color::Role(ColorRole::Border),
+                                ..crate::style::BoxStyle::default()
+                            }),
+                        |_| {},
+                    );
+                });
+            },
+        );
+    }
+}
+
+/// `ui.tabs` trigger stager — passed to the tabs draw closure inside the
+/// list's row.
+pub struct TabList<'a, 'ui, 'tx, M: 'static> {
+    ui: &'a mut Ui<'ui, 'tx, M>,
+    variant: TabsVariant,
+    selected: &'a str,
+    on_select: Rc<dyn Fn(&'static str) -> M>,
+}
+impl<'a, 'ui, 'tx, M: 'static> TabList<'a, 'ui, 'tx, M> {
+    /// One `tab[key]` part — the keyed trigger (h-25px tab semantics);
+    /// `selected` paints the recipe's active chrome (chip + shadow, or
+    /// the line underline marker). Press delivers `on_select(key)`.
+    pub fn tab(&mut self, key: &'static str, label: &'static str, opts: TabOpts) {
+        let cb = self.on_select.clone();
+        let active = self.selected == key;
+        let variant = match self.variant {
+            TabsVariant::Line => ButtonVariant::TabLine,
+            TabsVariant::Default => ButtonVariant::Tab,
+        };
+        self.ui.part(&format!("tab[{key}]"), |ui| {
+            let mut b = ui
+                .button(label)
+                .variant(variant)
+                .selected(active)
+                .disabled(opts.disabled)
+                .presented(opts.presented)
+                .height(Length::Fixed(crate::geom::dp(25.0)))
+                .on_press(move || cb(key));
+            if let Some(id) = opts.automation_id {
+                b = b.automation_id(id);
+            }
+            drop(b);
+            ui.set_role_last(SemanticRole::Tab);
+        });
+    }
+}
+
+pub struct DropdownMenuItems<'a, 'ui, 'tx, M: 'static> {
+    ui: &'a mut Ui<'ui, 'tx, M>,
+    on_change: Rc<dyn Fn(DropdownMenuChange) -> M>,
+    width: f32,
+}
+
+impl<'a, 'ui, 'tx, M: 'static> DropdownMenuItems<'a, 'ui, 'tx, M> {
+    pub fn group(
+        &mut self,
+        key: &'static str,
+        label: &'static str,
+        draw: impl FnOnce(&mut DropdownMenuItems<'_, '_, '_, M>),
+    ) {
+        let cb = self.on_change.clone();
+        let width = self.width;
+        self.ui.part(&format!("group[{key}]"), |ui| {
+            ui.column(
+                Column::new().align(Align::Stretch).padding(Space::None),
+                |ui| {
+                    ui.part(&format!("label[{key}]"), |ui| {
+                        ui.text(label)
+                            .style(crate::style::dropdown_label_style())
+                            .chrome(crate::style::dropdown_label_box())
+                            .height(Length::Fixed(crate::geom::dp(24.0)));
+                    });
+                    draw(&mut DropdownMenuItems {
+                        ui,
+                        on_change: cb,
+                        width,
+                    });
+                },
+            );
+        });
+        self.ui.set_role_last(SemanticRole::Group);
+    }
+
+    pub fn item(&mut self, key: &'static str, label: &'static str, opts: DropdownItemOpts) {
+        let cb = self.on_change.clone();
+        let role = match opts.kind {
+            DropdownItemKind::Normal => SemanticRole::MenuItem,
+            DropdownItemKind::Destructive => SemanticRole::MenuItemDestructive,
+            DropdownItemKind::Checkbox { .. } => SemanticRole::MenuItemCheckbox,
+            DropdownItemKind::Radio { .. } => SemanticRole::MenuItemRadio,
+        };
+        let checked = match opts.kind {
+            DropdownItemKind::Checkbox { checked } => Some(checked),
+            DropdownItemKind::Radio { selected } => Some(selected),
+            _ => None,
+        };
+        let destructive = opts.kind == DropdownItemKind::Destructive;
+        let activation = match opts.kind {
+            DropdownItemKind::Normal | DropdownItemKind::Destructive => {
+                DropdownMenuChange::Activate(key)
+            }
+            DropdownItemKind::Checkbox { checked } => DropdownMenuChange::Checkbox(key, !checked),
+            DropdownItemKind::Radio { .. } => DropdownMenuChange::Radio(key),
+        };
+        self.ui.part(&format!("item[{key}]"), |ui| {
+            let mut action = ui
+                .action(
+                    Action::new()
+                        .label(label)
+                        .style(crate::style::dropdown_item_style(destructive))
+                        .disabled(opts.disabled),
+                    |ui| {
+                        ui.row(
+                            Row::new()
+                                .width(Length::Fill(1))
+                                .height(Length::Fixed(crate::geom::dp(20.0)))
+                                .align(Align::Center)
+                                .padding(Space::None),
+                            |ui| {
+                                ui.row(
+                                    Row::new()
+                                        .align(Align::Center)
+                                        .gap(Space::Xs)
+                                        .padding(Space::None),
+                                    |ui| {
+                                        if let Some(icon) = opts.icon {
+                                            ui.part("icon", |ui| {
+                                                ui.icon(icon)
+                                                    .size(crate::geom::dp(16.0))
+                                                    .color_role(if destructive {
+                                                        ColorRole::Destructive
+                                                    } else {
+                                                        ColorRole::Foreground
+                                                    });
+                                            });
+                                        }
+                                        ui.text(label).style(
+                                            crate::style::dropdown_item_text_style(
+                                                if destructive {
+                                                    ColorRole::Destructive
+                                                } else {
+                                                    ColorRole::Foreground
+                                                },
+                                            ),
+                                        );
+                                    },
+                                );
+                                ui.box_(BoxProps::new().width(Length::Fill(1)), |_| {});
+                                match opts.kind {
+                                    DropdownItemKind::Checkbox { checked }
+                                    | DropdownItemKind::Radio { selected: checked } => {
+                                        ui.part("indicator", |ui| {
+                                            ui.box_(
+                                                BoxProps::new()
+                                                    .width(Length::Fixed(crate::geom::dp(18.0))),
+                                                |ui| {
+                                                    if checked {
+                                                        ui.icon(crate::icons::Icon::Check)
+                                                            .size(crate::geom::dp(16.0));
+                                                    }
+                                                },
+                                            );
+                                        });
+                                    }
+                                    _ => {
+                                        if let Some(shortcut) = opts.shortcut {
+                                            ui.part("shortcut", |ui| {
+                                                ui.text(shortcut)
+                                                    .style(crate::style::dropdown_shortcut_style());
+                                            });
+                                        }
+                                    }
+                                }
+                            },
+                        );
+                    },
+                )
+                .semantic_role(role)
+                .semantic_checked(checked)
+                .presented(opts.presented)
+                .on_press(move || cb(activation));
+            if let Some(id) = opts.automation_id {
+                action = action.automation_id(id);
+            }
+            drop(action);
+        });
+    }
+
+    pub fn separator(&mut self) {
+        let width = self.width;
+        self.ui.part("separator", |ui| {
+            ui.column(
+                Column::new().padding(Space::Xs).align(Align::Center),
+                |ui| {
+                    ui.box_(
+                        BoxProps::new()
+                            .width(Length::Fixed(crate::geom::dp(width)))
+                            .height(Length::Fixed(crate::geom::dp(1.0)))
+                            .style(crate::style::BoxStyle {
+                                background: crate::style::Color::Role(ColorRole::Border),
+                                ..Default::default()
+                            }),
+                        |_| {},
+                    );
+                },
+            );
+        });
+    }
+}
+
+pub struct SettingsNavGroups<'a, 'ui, 'tx, M: 'static> {
+    ui: &'a mut Ui<'ui, 'tx, M>,
+    collapsed: bool,
+    selected: &'static str,
+    on_select: Rc<dyn Fn(&'static str) -> M>,
+}
+
+impl<'a, 'ui, 'tx, M: 'static> SettingsNavGroups<'a, 'ui, 'tx, M> {
+    pub fn group(
+        &mut self,
+        key: &'static str,
+        label: &'static str,
+        draw: impl FnOnce(&mut SettingsNavItems<'_, '_, '_, M>),
+    ) {
+        let collapsed = self.collapsed;
+        let selected = self.selected;
+        let on_select = self.on_select.clone();
+        self.ui.part(&format!("group[{key}]"), |ui| {
+            ui.column(
+                Column::new()
+                    .align(Align::Stretch)
+                    .padding(Space::Sm)
+                    .gap(Space::None),
+                |ui| {
+                    if !collapsed {
+                        ui.part("group-label", |ui| {
+                            ui.text(label)
+                                .style(crate::style::settings_nav_group_style())
+                                .chrome(crate::style::settings_nav_group_box())
+                                .height(Length::Fixed(crate::geom::dp(32.0)));
+                        });
+                    }
+                    draw(&mut SettingsNavItems {
+                        ui,
+                        collapsed,
+                        selected,
+                        on_select,
+                    });
+                },
+            );
+        });
+        self.ui.set_role_last(SemanticRole::Group);
+    }
+}
+
+pub struct SettingsNavItems<'a, 'ui, 'tx, M: 'static> {
+    ui: &'a mut Ui<'ui, 'tx, M>,
+    collapsed: bool,
+    selected: &'static str,
+    on_select: Rc<dyn Fn(&'static str) -> M>,
+}
+
+impl<'a, 'ui, 'tx, M: 'static> SettingsNavItems<'a, 'ui, 'tx, M> {
+    pub fn item(
+        &mut self,
+        key: &'static str,
+        label: &'static str,
+        icon: crate::icons::Icon,
+        opts: SettingsNavItemOpts,
+    ) {
+        let id = opts.automation_id.unwrap_or_else(|| settings_nav_id(key));
+        let cb = self.on_select.clone();
+        stage_settings_nav_item(
+            self.ui,
+            id,
+            key,
+            label,
+            icon,
+            self.selected == key,
+            self.collapsed,
+            opts,
+            Rc::new(move || cb(key)),
+        );
+    }
+}
+
+fn settings_nav_id(key: &'static str) -> &'static str {
+    match key {
+        "general" => "settings-nav.general",
+        "appearance" => "settings-nav.appearance",
+        "agents" => "settings-nav.agents",
+        "voice" => "settings-nav.voice",
+        "integrations" => "settings-nav.integrations",
+        "advanced" => "settings-nav.advanced",
+        _ => key,
+    }
+}
+
+fn stage_settings_nav_item<'ui, 'tx, M: 'static>(
+    ui: &mut Ui<'ui, 'tx, M>,
+    id: &str,
+    part_key: &str,
+    label: &'static str,
+    icon: crate::icons::Icon,
+    active: bool,
+    collapsed: bool,
+    opts: SettingsNavItemOpts,
+    on_press: Rc<dyn Fn() -> M>,
+) {
+    let item_id = id.to_string();
+    ui.part(&format!("item[{part_key}]"), |ui| {
+        let mut action = ui
+            .action(
+                Action::new()
+                    .label(label)
+                    .style(crate::style::settings_nav_item_style(active))
+                    .disabled(opts.disabled),
+                |ui| {
+                    ui.row(
+                        Row::new()
+                            .width(Length::Fill(1))
+                            .height(Length::Fixed(crate::geom::dp(32.0)))
+                            .align(Align::Center)
+                            .justify(if collapsed {
+                                Justify::Center
+                            } else {
+                                Justify::Start
+                            })
+                            .gap(if collapsed { Space::None } else { Space::Sm })
+                            .padding(if collapsed { Space::None } else { Space::Sm }),
+                        |ui| {
+                            ui.icon(icon)
+                                .size(crate::geom::dp(16.0))
+                                .color_role(if active {
+                                    ColorRole::SidebarAccentForeground
+                                } else {
+                                    ColorRole::SidebarForeground
+                                });
+                            if !collapsed {
+                                let style = crate::style::settings_nav_item_text_style(active);
+                                ui.text(label).style(style);
+                            }
+                        },
+                    );
+                },
+            )
+            .semantic_role(SemanticRole::SettingsNavItem)
+            .semantic_checked(Some(active))
+            .presented(opts.presented)
+            .on_press(move || on_press());
+        if let Some(id) = opts.automation_id {
+            action = action.automation_id(id);
+        } else {
+            action = action.automation_id(&item_id);
+        }
+        drop(action);
+    });
 }
 
 /// `ui.input`/`ui.textarea` builder — same surface as `TextInputBuilder`;

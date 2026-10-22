@@ -29,17 +29,16 @@ name = "rust-ui-devctl"
 path = "src/bin/rust-ui-devctl.rs"
 required-features = ["devtools"]
 
-# Internal devctl protocol test fixture — deterministic test
-# infrastructure for tests/devctl_windows.rs only. NOT a product/UI
-# example, NOT a visual authority, NOT the acceptance app (that is
-# examples/gallery.rs). Cargo supplies the executable path to the test
-# through CARGO_BIN_EXE_; nothing should launch or inspect it manually.
-# No required-features: the source self-gates on `all(windows,
-# feature = "devtools")` so Cargo always builds the target and the
-# CARGO_BIN_EXE_ path reaches tests/devctl_windows.rs deterministically.
+# Native devctl E2E launch target for tests/devctl_windows.rs. This IS
+# the real Gallery application — src/bin/rust-ui-gallery.rs compiles
+# examples/gallery.rs verbatim via include!, so the acceptance app and
+# the test's launch target are one authoritative source, not a
+# synthetic fixture. Cargo supplies the executable path through
+# CARGO_BIN_EXE_; the devctl server self-enables under `--features
+# devtools` inside the shared platform backend.
 [[bin]]
-name = "rust-ui-devctl-test-fixture"
-path = "tests/support/devctl_fixture.rs"
+name = "rust-ui-gallery"
+path = "src/bin/rust-ui-gallery.rs"
 
 [dependencies]
 serde = { version = "1", features = ["derive"], optional = true }

@@ -13,7 +13,7 @@ On native Windows, from the repository root:
 cargo build --locked --features devtools --all-targets
 $ctl = '.\target\debug\rust-ui-devctl.exe'
 New-Item -ItemType Directory -Force .devctl | Out-Null
-& $ctl launch --exe .\target\debug\rust-ui-devctl-test-fixture.exe --session .devctl\session.json --json
+& $ctl launch --exe .\target\debug\rust-ui-gallery.exe --session .devctl\session.json --json
 ```
 
 `devtools` enables the CLI, protocol/comparison helpers and Windows instrumentation.
@@ -24,12 +24,12 @@ has one pipe worker, blocking on overlapped connection/I/O; no polling at idle.
 The existing mailbox event wakes the existing guarded UI turn.
 
 Automation IDs are ordinary optional node/accessibility metadata. Leaf builders
-and actions accept `.automation_id("probe.button")`. Containers use:
+and actions accept `.automation_id("button.default")`. Containers use:
 
 ```rust
-ui.named("probe.surface", |ui| {
+ui.named("card.default", |ui| {
     ui.surface(Surface::new(), |ui| {
-        ui.button("Count").automation_id("probe.button").on_press(|| Msg::Click);
+        ui.button("Default").automation_id("button.default").on_press(|| Msg::Invoke);
     });
 });
 ```
@@ -45,21 +45,21 @@ tree inspection, comparisons and Windows UIA AutomationId; devctl does not crawl
 ```powershell
 & $ctl wait-idle --session .devctl\session.json --json
 & $ctl tree --session .devctl\session.json --json
-& $ctl rect probe.button --session .devctl\session.json --json
-& $ctl hover probe.button --session .devctl\session.json --json
+& $ctl rect button.default --session .devctl\session.json --json
+& $ctl hover button.default --session .devctl\session.json --json
 & $ctl wait-idle --session .devctl\session.json --json
-& $ctl screenshot --id probe.button --session .devctl\session.json --out .devctl\hover.png --json
-& $ctl press probe.button --session .devctl\session.json --json
-& $ctl screenshot --id probe.button --session .devctl\session.json --out .devctl\pressed.png --json
-& $ctl release probe.button --session .devctl\session.json --json
-& $ctl click probe.button --session .devctl\session.json --json
-& $ctl focus probe.button --modality keyboard --session .devctl\session.json --json
+& $ctl screenshot --id button.default --session .devctl\session.json --out .devctl\hover.png --json
+& $ctl press button.default --session .devctl\session.json --json
+& $ctl screenshot --id button.default --session .devctl\session.json --out .devctl\pressed.png --json
+& $ctl release button.default --session .devctl\session.json --json
+& $ctl click button.default --session .devctl\session.json --json
+& $ctl focus button.default --modality keyboard --session .devctl\session.json --json
 & $ctl key Enter --session .devctl\session.json --json
 & $ctl snapshot-layout --session .devctl\session.json --out .devctl\native.json --json
 & $ctl screenshot --session .devctl\session.json --out .devctl\client.png --json
 & $ctl compare-layout --reference .devctl\native.json --snapshot .devctl\native.json --json
 & $ctl compare-image --reference-image .devctl\client.png --native-image .devctl\client.png --diff .devctl\self-diff.png --json
-& $ctl compare-element --reference .devctl\native.json --snapshot .devctl\native.json --id probe.button --reference-image .devctl\client.png --native-image .devctl\client.png --out-dir .devctl\button --json
+& $ctl compare-element --reference .devctl\native.json --snapshot .devctl\native.json --id button.default --reference-image .devctl\client.png --native-image .devctl\client.png --out-dir .devctl\button --json
 & $ctl shutdown --session .devctl\session.json --json
 ```
 
@@ -83,9 +83,9 @@ Supported keys: `Enter Space Tab Escape Left Up Right Down Backspace Delete Home
 End`. Key down/up use the backend keyboard route, including native text handling.
 OS modifier state applies, as it does to real input; release physical modifiers
 for deterministic unmodified actions. Character typing, modifier chords, IME
-synthesis, scroll-into-view and hidden targets are outside v0.1. Unsupported keys
+synthesis and hidden targets are outside v0.1. Unsupported keys
 fail explicitly. Input editing remains native RichEdit, with the application's
-normal TextEdit acknowledgement. The fixture's input label in a snapshot is the
+normal TextEdit acknowledgement. An editor's label in a snapshot is the
 retained committed TextValue, not an independent native read.
 
 ## Idle and presentation
@@ -170,11 +170,11 @@ Comparators run offline, including on Linux without a Linux UI backend:
 
 ```powershell
 & $ctl compare-layout --reference reference\shadcn-gallery-v0.1\contract.json --capture components/default --snapshot .devctl\native.json --id button.default --mode size-only --tolerance 0.25 --json
-& $ctl compare-element --reference reference\shadcn-gallery-v0.1\contract.json --capture components/default --id button.default --native-id probe.button --snapshot .devctl\native.json --reference-image reference\shadcn-gallery-v0.1\screenshots\light\components.png --native-image .devctl\client.png --mode size-only --tolerance 0.25 --channel-tolerance 2 --out-dir .devctl\button --json
+& $ctl compare-element --reference reference\shadcn-gallery-v0.1\contract.json --capture components/default --id button.default --native-id button.default --snapshot .devctl\native.json --reference-image reference\shadcn-gallery-v0.1\screenshots\light\components.png --native-image .devctl\client.png --mode size-only --tolerance 0.25 --channel-tolerance 2 --out-dir .devctl\button --json
 ```
 
-Use native IDs that match the frozen reference when implementing components.
-The internal test fixture deliberately has generic probe IDs and no Shadcn styling.
+Use native IDs that match the frozen reference when implementing components;
+Gallery specimens intentionally carry the contract's automation ids.
 The read-only adapter consumes `contract/0.2` capture keys (`page/state`) directly;
 there is no manually duplicated contract. Geometry is theme independent; choose
 Light/Dark with the reference-image path. Full-document reference images need no
@@ -290,11 +290,13 @@ cargo test --locked --features devtools --test devctl_windows -- --nocapture
 ```
 
 The Windows integration test uses the actual CLI, owned process, pipe, runtime and
-WGC. It tests semantic effects, pressed/hover crops, committed native keyboard
-edit, deterministic snapshots, comparator negative controls, authentication,
-stale receipt cleanup, target handle counts and three complete shutdown cycles.
-The internal `rust-ui-devctl-test-fixture` binary target builds automatically and
-reaches the test through `CARGO_BIN_EXE_`; no manual example build is needed.
+WGC against `examples/gallery` — rust-ui's real native UI acceptance application,
+reached through the `rust-ui-gallery` [[bin]] alias (the same compilation unit;
+`CARGO_BIN_EXE_` covers bin targets only). It tests semantic effects, pressed/hover
+crops, committed native keyboard edit, deterministic snapshots, comparator
+negative controls, authentication, stale receipt cleanup, target handle counts
+and three complete shutdown cycles. No synthetic devctl UI exists; the launch
+target builds automatically and reaches the test through `CARGO_BIN_EXE_`.
 Portable helpers and semantic-ID tests
 also run with `cargo test --locked --features devtools --lib` on Linux.
 

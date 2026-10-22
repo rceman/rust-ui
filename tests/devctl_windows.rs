@@ -1,10 +1,10 @@
 #![cfg(all(windows, feature = "devtools"))]
-//! Real CLI + pipe + retained runtime + WGC protocol integration. The
-//! internal `rust-ui-devctl-test-fixture` binary is built by Cargo
-//! automatically — its path arrives through CARGO_BIN_EXE_ (no manual
-//! build step). The real Shadcn acceptance application is
-//! `examples/gallery`; this synthetic fixture exists only because the
-//! protocol test needs a deterministic executable.
+//! Real CLI + pipe + retained runtime + WGC protocol integration — run
+//! end-to-end against `examples/gallery`, rust-ui's single real native
+//! UI acceptance application (launched through the `rust-ui-gallery`
+//! [[bin]] alias, the same compilation unit, so `CARGO_BIN_EXE_`
+//! resolves deterministically). There is no synthetic devctl UI
+//! fixture: every assertion below exercises durable Gallery semantics.
 use rust_ui::devtools::{self as d, Image, Snapshot};
 use serde_json::{Value, json};
 use std::{
@@ -46,6 +46,9 @@ fn action(session: &str, command: &str, more: &[&str]) -> Value {
     args.extend_from_slice(more);
     good(&args)
 }
+fn snap(v: &Value) -> Snapshot {
+    serde_json::from_value(v.clone()).unwrap()
+}
 fn cpu_ticks(pid: u32) -> u64 {
     use windows::Win32::{
         Foundation::{CloseHandle, FILETIME},
@@ -75,10 +78,6 @@ fn handles(pid: u32) -> u32 {
         count
     }
 }
-fn count(s: &Value) -> String {
-    let snapshot: Snapshot = serde_json::from_value(s.clone()).unwrap();
-    snapshot.index().unwrap()["probe.label"].0.label.clone()
-}
 #[test]
 fn native_agent_workflow_and_bounded_repetition() {
     let root = std::env::temp_dir().join(format!(
@@ -86,11 +85,11 @@ fn native_agent_workflow_and_bounded_repetition() {
         d::client::nonce().unwrap()
     ));
     std::fs::create_dir(&root).unwrap();
-    let exe = Path::new(env!("CARGO_BIN_EXE_rust-ui-devctl-test-fixture")).to_path_buf();
-    assert!(
-        exe.exists(),
-        "internal devctl test fixture binary must exist"
-    );
+    // the real Gallery application — `rust-ui-gallery` compiles
+    // examples/gallery.rs verbatim; Cargo-managed exe discovery, no
+    // filesystem guessing
+    let exe = Path::new(env!("CARGO_BIN_EXE_rust-ui-gallery")).to_path_buf();
+    assert!(exe.exists(), "Gallery launch target must exist");
     for cycle in 0..3 {
         let file = root.join(format!("session-{cycle}.json"));
         let owner = Session { file: file.clone() };
@@ -107,11 +106,20 @@ fn native_agent_workflow_and_bounded_repetition() {
         let scale = launch["window"]["scale_factor"].as_f64().unwrap();
         assert!(scale > 0.);
         action(session, "wait-idle", &[]);
+        // Gallery boots on the Components page — stable, deterministic
+        // initial state; the semantic index must expose durable IDs and
+        // must NOT expose other pages' specimens
         let initial = action(session, "tree", &[]);
-        assert_eq!(count(&initial), "Clicks: 0");
-        let snap: Snapshot = serde_json::from_value(initial).unwrap();
-        assert_eq!(snap.index().unwrap().len(), 5);
-        let rect = action(session, "rect", &["probe.button"]);
+        let initial_snap = snap(&initial);
+        let index = initial_snap.index().unwrap();
+        for id in ["shell.root", "shell.nav.forms", "button.default"] {
+            assert!(index.contains_key(id), "{id} must be in the tree");
+        }
+        assert!(
+            !index.contains_key("input.default.filled"),
+            "Forms specimens are not mounted on the Components page"
+        );
+        let rect = action(session, "rect", &["button.default"]);
         let r = rect["rect_dp"].clone();
         assert_eq!(
             rect["rect_px"]["x"].as_f64().unwrap(),
@@ -130,88 +138,67 @@ fn native_agent_workflow_and_bounded_repetition() {
                 .code,
             "PROTOCOL_MISMATCH"
         );
-        action(session, "hover", &["probe.input"]);
+        // runtime pointer proof — button.default carries no Presented
+        // override, so hover/press visuals and the `hovered` field are
+        // REAL runtime state
         let baseline = root.join(format!("normal-{cycle}.png"));
         action(
             session,
             "screenshot",
-            &["--id", "probe.button", "--out", baseline.to_str().unwrap()],
+            &[
+                "--id",
+                "button.default",
+                "--out",
+                baseline.to_str().unwrap(),
+            ],
         );
-        action(session, "hover", &["probe.button"]);
+        action(session, "hover", &["button.default"]);
         action(session, "wait-idle", &[]);
+        let hovered: Snapshot = snap(&action(session, "tree", &[]));
+        assert_eq!(
+            hovered.index().unwrap()["button.default"].0.hovered,
+            true,
+            "hover must report runtime hot"
+        );
         let hover = root.join(format!("hover-{cycle}.png"));
         action(
             session,
             "screenshot",
-            &["--id", "probe.button", "--out", hover.to_str().unwrap()],
+            &["--id", "button.default", "--out", hover.to_str().unwrap()],
         );
         let before_handles = handles(launch["pid"].as_u64().unwrap() as u32);
         let normal = Image::load(&baseline).unwrap();
-        let hovered = Image::load(&hover).unwrap();
+        let hovered_img = Image::load(&hover).unwrap();
         assert_eq!(
-            d::compare_image(&normal, &hovered, 0).unwrap().0["pass"],
+            d::compare_image(&normal, &hovered_img, 0).unwrap().0["pass"],
             false,
-            "hover visual must differ"
+            "runtime hover visual must differ"
         );
-        action(session, "press", &["probe.button"]);
+        action(session, "press", &["button.default"]);
         action(session, "wait-idle", &[]);
         let pressed = root.join(format!("pressed-{cycle}.png"));
         action(
             session,
             "screenshot",
-            &["--id", "probe.button", "--out", pressed.to_str().unwrap()],
-        );
-        assert_eq!(
-            count(&action(session, "tree", &[])),
-            "Clicks: 0",
-            "press alone cannot invoke"
+            &["--id", "button.default", "--out", pressed.to_str().unwrap()],
         );
         let p = Image::load(&pressed).unwrap();
         assert_eq!(
-            d::compare_image(&hovered, &p, 0).unwrap().0["pass"],
+            d::compare_image(&hovered_img, &p, 0).unwrap().0["pass"],
             false,
-            "pressed visual must differ"
+            "runtime pressed visual must differ"
         );
-        action(session, "release", &["probe.button"]);
-        assert_eq!(count(&action(session, "tree", &[])), "Clicks: 1");
-        // hover/leave lifecycle: hot tracks the pointer across the real
-        // command path — hover sets it, `leave` clears it
-        action(session, "hover", &["probe.button"]);
-        action(session, "wait-idle", &[]);
-        let hovered: Snapshot = serde_json::from_value(action(session, "tree", &[])).unwrap();
-        assert_eq!(
-            hovered.index().unwrap()["probe.button"].0.hovered,
-            true,
-            "hover must report hot"
-        );
+        action(session, "release", &["button.default"]);
+        action(session, "hover", &["button.default"]);
         action(session, "leave", &[]);
         action(session, "wait-idle", &[]);
-        let cleared: Snapshot = serde_json::from_value(action(session, "tree", &[])).unwrap();
+        let cleared: Snapshot = snap(&action(session, "tree", &[]));
         assert_eq!(
-            cleared.index().unwrap()["probe.button"].0.hovered,
+            cleared.index().unwrap()["button.default"].0.hovered,
             false,
-            "leave must clear hot"
+            "leave must clear runtime hot"
         );
-        action(session, "click", &["probe.button"]);
-        assert_eq!(count(&action(session, "tree", &[])), "Clicks: 2");
-        action(
-            session,
-            "focus",
-            &["probe.button", "--modality", "keyboard"],
-        );
-        action(session, "key", &["Enter"]);
-        assert_eq!(count(&action(session, "tree", &[])), "Clicks: 3");
-        action(session, "focus", &["probe.input"]);
-        action(session, "key", &["End"]);
-        action(session, "key", &["Backspace"]);
-        let edited: Snapshot = serde_json::from_value(action(session, "tree", &[])).unwrap();
-        assert_eq!(
-            edited.index().unwrap()["probe.input"].0.label,
-            "Fixture tex",
-            "basic native key must reach committed application TextValue"
-        );
-        action(session, "focus", &["probe.button"]);
-        action(session, "wait-idle", &[]);
+        // snapshot determinism for unchanged application state
         let snapshot = root.join(format!("snapshot-{cycle}.json"));
         let v = action(
             session,
@@ -252,7 +239,7 @@ fn native_agent_workflow_and_bounded_repetition() {
         assert_eq!(changed.root.rect_dp, changed.client_dp);
         assert_eq!(changed.root.rect_px, changed.client_px);
         fn bump(n: &mut d::Node) -> bool {
-            if n.automation_id.as_deref() == Some("probe.button") {
+            if n.automation_id.as_deref() == Some("button.default") {
                 n.rect_dp.x += 1.;
                 return true;
             }
@@ -268,7 +255,7 @@ fn native_agent_workflow_and_bounded_repetition() {
             "--snapshot",
             mutation.to_str().unwrap(),
             "--id",
-            "probe.button",
+            "button.default",
         ]);
         assert_eq!(code, 6);
         assert_eq!(result["result"]["comparisons"][0]["delta"]["x"], 1.);
@@ -312,18 +299,17 @@ fn native_agent_workflow_and_bounded_repetition() {
             "--native-image",
             img,
             "--id",
-            "probe.button",
+            "button.default",
             "--out-dir",
             crops.to_str().unwrap(),
         ]);
         assert_eq!(comparison["pass"], true);
         assert!(crops.join("diff.png").exists());
         // Cross-authority: the FROZEN shadcn contract's button.default vs
-        // the live probe's probe.button — real reference-vs-native raster
-        // evidence at the actual host scale. The probe's own styling
-        // differs from shadcn, so exit 6 / pass:false is the honest
-        // expected outcome; what must hold is the raster/normalization
-        // model, not visual equality.
+        // the live Gallery specimen of the SAME semantic id — the real
+        // reference-vs-native raster pipeline. The verdict is not pinned
+        // (font/native raster deltas are documented); the contract is
+        // the schema, artifacts, and normalization model.
         let reference_dir =
             Path::new(env!("CARGO_MANIFEST_DIR")).join("reference/shadcn-gallery-v0.1");
         let cross = root.join(format!("cross-{cycle}"));
@@ -336,7 +322,7 @@ fn native_agent_workflow_and_bounded_repetition() {
             "--id",
             "button.default",
             "--native-id",
-            "probe.button",
+            "button.default",
             "--reference-image",
             reference_dir
                 .join("screenshots/light/components.png")
@@ -349,10 +335,13 @@ fn native_agent_workflow_and_bounded_repetition() {
             "--out-dir",
             cross.to_str().unwrap(),
         ]);
-        assert_eq!(code, 6, "{cmp}");
+        assert!(code == 0 || code == 6, "{cmp}");
         let cmp = &cmp["result"];
-        assert_eq!(cmp["pass"], false);
         assert_eq!(cmp["schema"], "rust-ui.devctl.compare-element/0.2");
+        println!(
+            "cycle {cycle} frozen-vs-native button.default pass={}",
+            cmp["pass"]
+        );
         for f in [
             "reference.png",
             "native-raw.png",
@@ -364,10 +353,8 @@ fn native_agent_workflow_and_bounded_repetition() {
         }
         // reference evidence stays on the contract's 1.0 lattice
         assert_eq!(cmp["raster"]["reference"]["dimensions"], json!([70, 32]));
-        let probe_snap: Snapshot = serde_json::from_value(v.clone()).unwrap();
-        let button = &probe_snap.index().unwrap()["probe.button"].0;
-        // raw native evidence is in PHYSICAL px at the host scale — its
-        // dims are exactly the snapshot's rect_px, not canonical numbers
+        let v_snap = snap(&v);
+        let button = &v_snap.index().unwrap()["button.default"].0;
         let raw_dims: Vec<i64> = cmp["raster"]["native_raw"]["dimensions"]
             .as_array()
             .unwrap()
@@ -385,7 +372,6 @@ fn native_agent_workflow_and_bounded_repetition() {
             vec![button.rect_px.width as i64, button.rect_px.height as i64],
             "native-raw dims must equal the physical rect_px when scale != 1"
         );
-        // the canonical lattice is the native logical rect snapped at 1.0
         let canonical_w = (button.rect_dp.x + button.rect_dp.width).round() as i64
             - button.rect_dp.x.round() as i64;
         let canonical_h = (button.rect_dp.y + button.rect_dp.height).round() as i64
@@ -414,9 +400,6 @@ fn native_agent_workflow_and_bounded_repetition() {
                 "cross-scale raw diff is not meaningful"
             );
         }
-        // the honesty check: missing pixels come from the LOGICAL size
-        // difference only — union canvas minus the aligned intersection —
-        // never a scale artifact; 0 when canonical dims are equal
         let (rw, rh) = (70i64, 32i64);
         let (nw, nh) = (canonical_dims[0], canonical_dims[1]);
         let expected_missing = rw.max(nw) * rh.max(nh) - rw.min(nw) * rh.min(nh);
@@ -425,12 +408,94 @@ fn native_agent_workflow_and_bounded_repetition() {
             expected_missing,
             "missing pixels must equal union-intersection of canonical dims"
         );
+        // real application-state transition: devctl click → Press →
+        // Msg::SetPage → retained tree swap — Forms specimens appear
+        action(session, "click", &["shell.nav.forms"]);
+        action(session, "wait-idle", &[]);
+        let forms = action(session, "tree", &[]);
+        let forms_snap = snap(&forms);
+        let forms_index = forms_snap.index().unwrap();
+        for id in [
+            "input.default.filled",
+            "checkbox.default.unchecked",
+            "shell.nav.forms",
+        ] {
+            assert!(
+                forms_index.contains_key(id),
+                "{id} must exist after SetPage(Forms)"
+            );
+        }
+        // invoke boundary: pointer-down alone must not toggle — the app
+        // model only changes on release; Toggle state is now observable
+        // through the snapshot `checked` field
+        action(session, "scroll-into-view", &["checkbox.default.unchecked"]);
+        let before = snap(&action(session, "tree", &[]));
+        assert_eq!(
+            before.index().unwrap()["checkbox.default.unchecked"]
+                .0
+                .checked,
+            Some(false)
+        );
+        action(session, "press", &["checkbox.default.unchecked"]);
+        action(session, "wait-idle", &[]);
+        let mid = snap(&action(session, "tree", &[]));
+        assert_eq!(
+            mid.index().unwrap()["checkbox.default.unchecked"].0.checked,
+            Some(false),
+            "pointer-down alone cannot invoke the toggle"
+        );
+        action(session, "release", &["checkbox.default.unchecked"]);
+        action(session, "wait-idle", &[]);
+        let toggled = snap(&action(session, "tree", &[]));
+        assert_eq!(
+            toggled.index().unwrap()["checkbox.default.unchecked"]
+                .0
+                .checked,
+            Some(true),
+            "release must invoke: app model checked=true"
+        );
+        // keyboard activation — focus + Space toggles it back off
+        action(
+            session,
+            "focus",
+            &["checkbox.default.unchecked", "--modality", "keyboard"],
+        );
+        action(session, "key", &["Space"]);
+        let untoggled = snap(&action(session, "tree", &[]));
+        assert_eq!(
+            untoggled.index().unwrap()["checkbox.default.unchecked"]
+                .0
+                .checked,
+            Some(false),
+            "Space on a focused toggle must invoke"
+        );
+        // native editing proof — real editor focus, raw keys to
+        // msftedit, committed TextValue reaches the snapshot label
+        action(session, "scroll-into-view", &["input.default.filled"]);
+        let seeded = snap(&action(session, "tree", &[]));
+        assert_eq!(
+            seeded.index().unwrap()["input.default.filled"].0.label,
+            "Filled value"
+        );
+        action(
+            session,
+            "focus",
+            &["input.default.filled", "--modality", "keyboard"],
+        );
+        action(session, "key", &["End"]);
+        action(session, "key", &["Backspace"]);
+        let edited: Snapshot = snap(&action(session, "tree", &[]));
+        assert_eq!(
+            edited.index().unwrap()["input.default.filled"].0.label,
+            "Filled valu",
+            "basic native key must reach committed application TextValue"
+        );
+        // resource boundedness — same invariants as before: capture
+        // growth is bounded after warmup, idle is silent
         let after_handles = handles(launch["pid"].as_u64().unwrap() as u32);
         println!(
             "cycle {cycle}: scale={scale}, target handles before={before_handles} after={after_handles}"
         );
-        // Focus/editing warms native resources. Measure capture growth only
-        // after that warmup, with unchanged state and six fresh CLI captures.
         let steady = after_handles;
         for i in 0..6 {
             action(session, "screenshot", &["--out", repeat.to_str().unwrap()]);
@@ -473,7 +538,7 @@ fn native_agent_workflow_and_bounded_repetition() {
         drop(owner);
     }
     println!(
-        "native devctl workflow PASS; 3 complete launch/capture/shutdown cycles; outputs: {}",
+        "native devctl workflow PASS; 3 complete launch/capture/shutdown cycles on examples/gallery; outputs: {}",
         root.display()
     );
     // Evidence can be retained explicitly; default test cleans all temporary state.

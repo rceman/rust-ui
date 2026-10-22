@@ -471,6 +471,14 @@ pub(crate) const WM_PUMP: u32 = WM_APP + 7;
 pub(crate) const WM_UIA_PRESS: u32 = WM_APP + 8;
 pub(crate) const WM_UIA_FOCUS: u32 = WM_APP + 9;
 
+/// One live popup's bookkeeping — the pre-open focus owner so a close
+/// restores focus truthfully.
+struct PopupBook {
+    id: NodeId,
+    focus_return: Option<NodeId>,
+    focus_pending: bool,
+}
+
 /// Interaction state snapshot for transition classification.
 #[derive(Copy, Clone, PartialEq)]
 struct InteractState {
@@ -606,6 +614,10 @@ where
     /// against a fresh resolution every turn: descriptor-equal
     /// GetSysColor drift still refreshes.
     applied_palette: std::cell::RefCell<Option<Vec<(NodeId, ([f32; 4], [f32; 4], [f32; 4]))>>>,
+    /// live popup bookkeeping — slot -> focus to restore when the popup
+    /// unmounts. Populated/cleared in turn_body between dirty drain and
+    /// focus sanitize.
+    open_popups: HashMap<u32, PopupBook>,
     #[cfg(feature = "devtools")]
     devtools: Option<crate::devtools::client::Server>,
     #[cfg(feature = "devtools")]
@@ -665,6 +677,7 @@ where
             damage: std::cell::Cell::new(None),
             committed_ink: std::cell::RefCell::new(HashMap::new()),
             applied_palette: std::cell::RefCell::new(None),
+            open_popups: HashMap::new(),
         })
     }
 }
@@ -972,6 +985,78 @@ where
         }
         // dirty classification -> layout / paint work
         let dirty = self.rt.drain_dirty();
+        // popup lifecycle bookkeeping: a NEW popup records the pre-open
+        // focus and optionally focuses its first eligible descendant; a
+        // VANISHED popup restores its saved focus BEFORE sanitize_focus
+        // revalidates the focus owner
+        {
+            let live: HashMap<u32, (NodeId, bool)> = (0..self.rt.arena.slot_len() as u32)
+                .filter_map(|slot| {
+                    let n = self.rt.arena.slot(slot)?;
+                    if !matches!(&n.data, NodeData::Popup { .. }) {
+                        return None;
+                    }
+                    let f = matches!(&n.data, NodeData::Popup { focus_on_open: f, .. } if *f);
+                    Some((
+                        slot,
+                        (
+                            NodeId {
+                                slot,
+                                generation: self.rt.arena.generation_of(slot),
+                            },
+                            f,
+                        ),
+                    ))
+                })
+                .collect();
+            let replaced: Vec<u32> = live
+                .iter()
+                .filter_map(|(slot, (id, _))| {
+                    self.open_popups
+                        .get(slot)
+                        .is_some_and(|book| book.id != *id)
+                        .then_some(*slot)
+                })
+                .collect();
+            for slot in replaced {
+                self.open_popups.remove(&slot);
+            }
+            for (slot, (id, focus_on_open)) in &live {
+                if let std::collections::hash_map::Entry::Vacant(e) = self.open_popups.entry(*slot)
+                {
+                    e.insert(PopupBook {
+                        id: *id,
+                        focus_return: self.focus,
+                        focus_pending: *focus_on_open,
+                    });
+                }
+            }
+            let vanished: Vec<u32> = self
+                .open_popups
+                .keys()
+                .filter(|s| !live.contains_key(s))
+                .copied()
+                .collect();
+            for slot in vanished {
+                let Some(book) = self.open_popups.remove(&slot) else {
+                    continue;
+                };
+                // restore only when focus died with the popup or sits
+                // inside the vanished subtree — a live outside focus wins
+                let inside_dead = self
+                    .focus
+                    .is_none_or(|f| !self.rt.arena.is_live(f) || self.inside_subtree(book.id, f));
+                if inside_dead {
+                    let ret = book.focus_return.filter(|f| {
+                        self.rt
+                            .arena
+                            .get(*f)
+                            .is_some_and(|n| n.interactive() && n.visibility == Visibility::Visible)
+                    });
+                    self.set_focus(ret)?;
+                }
+            }
+        }
         // commit boundary: a removed/disabled focus or capture owner must
         // be resolved BEFORE layout/paint use stale state
         self.sanitize_focus()?;
@@ -1004,6 +1089,9 @@ where
                     let sh = match self.rt.arena.get(id).map(|n| &n.data) {
                         Some(crate::node::NodeData::Container { kind, props }) => props
                             .resolved_box(*kind)
+                            .and_then(|b| b.shadow.map(|s| (b, s))),
+                        Some(crate::node::NodeData::Popup { props, .. }) => props
+                            .resolved_box(crate::node::KIND_POPUP)
                             .and_then(|b| b.shadow.map(|s| (b, s))),
                         Some(crate::node::NodeData::Action {
                             style, disabled, ..
@@ -1047,6 +1135,29 @@ where
         if needs_layout {
             self.relayout()?;
             needs_paint = true;
+            needs_uia = true;
+        }
+        let pending_focus: Vec<(u32, NodeId)> = self
+            .open_popups
+            .iter()
+            .filter_map(|(slot, book)| book.focus_pending.then_some((*slot, book.id)))
+            .collect();
+        for (slot, popup) in pending_focus {
+            if let Some(first) = self.first_focusable(popup) {
+                self.set_focus(Some(first))?;
+            }
+            if let Some(book) = self.open_popups.get_mut(&slot) {
+                book.focus_pending = false;
+            }
+        }
+        if !self.state_dirty.get().eq(&0) {
+            let state = self.state_dirty.replace(0);
+            if state & 0b01 != 0 {
+                self.relayout()?;
+            }
+            if state & 0b11 != 0 {
+                needs_paint = true;
+            }
             needs_uia = true;
         }
         // live UIA state follows the committed tree — external clients see
@@ -1201,7 +1312,13 @@ where
     /// viewport under the point, not focus — depth-first `order` means
     /// a later (deeper/more nested) viewport wins in rev iteration.
     fn scroll_viewport_at(&self, pos: Point) -> Option<NodeId> {
+        let modal = self.modal_popup();
         for &id in self.order.iter().rev() {
+            if let Some(m) = modal
+                && !self.inside_subtree(m, id)
+            {
+                continue;
+            }
             let Some(n) = self.rt.arena.get(id) else {
                 continue;
             };
@@ -1741,6 +1858,9 @@ where
                         Some(crate::node::NodeData::Container { kind, props }) => {
                             props.resolved_box(*kind).and_then(|b| b.shadow)
                         }
+                        Some(crate::node::NodeData::Popup { props, .. }) => props
+                            .resolved_box(crate::node::KIND_POPUP)
+                            .and_then(|b| b.shadow),
                         _ => None,
                     }
                 });
@@ -1869,9 +1989,77 @@ where
         false
     }
 
+    /// Is `id` inside `root`'s subtree (inclusive of root)? Ancestor
+    /// slot-walk — same indexing contract as `inside_action`.
+    fn inside_subtree(&self, root: NodeId, id: NodeId) -> bool {
+        if id == root {
+            return true;
+        }
+        let mut cur = self.rt.arena.get(id).and_then(|n| n.parent);
+        while let Some(slot) = cur {
+            match self.rt.arena.slot(slot) {
+                Some(pn) => {
+                    if slot == root.slot {
+                        return true;
+                    }
+                    cur = pn.parent;
+                }
+                None => return false,
+            }
+        }
+        false
+    }
+
+    /// The topmost live MODAL popup (last in paint order) — the hit,
+    /// focus-step and scroll gates all read this one authority.
+    fn modal_popup(&self) -> Option<NodeId> {
+        self.order.iter().rev().copied().find(|&id| {
+            self.rt
+                .arena
+                .get(id)
+                .is_some_and(|n| matches!(&n.data, NodeData::Popup { modal: true, .. }))
+        })
+    }
+
+    fn topmost_popup(&self) -> Option<NodeId> {
+        self.order
+            .iter()
+            .rev()
+            .copied()
+            .find(|id| {
+                self.rt
+                    .arena
+                    .get(*id)
+                    .is_some_and(|n| matches!(n.data, NodeData::Popup { .. }))
+            })
+            .or_else(|| {
+                self.open_popups
+                    .values()
+                    .map(|book| book.id)
+                    .max_by_key(|id| id.slot)
+            })
+    }
+
     /// Hit-test a DIP point: topmost visible interactive node wins; nodes
     /// inside an Action defer to it (Action owns the semantic target).
+    /// A live modal popup gates the result — a hit outside its subtree
+    /// resolves to the popup backdrop itself (the press lands, the
+    /// underlying UI never sees it).
     pub(crate) fn hit_test(&self, p: Point) -> Option<NodeId> {
+        let hit = self.hit_test_inner(p);
+        // modal gate: a live modal popup owns the whole client — a press
+        // outside its subtree resolves to the popup backdrop
+        if let Some(m) = self.modal_popup()
+            && !hit.is_some_and(|h| self.inside_subtree(m, h))
+        {
+            return Some(m);
+        }
+        hit
+    }
+
+    /// The ungated topmost-hit walk — hit_test's body before the modal
+    /// gate consumes it (kept private; callers want the gated result).
+    fn hit_test_inner(&self, p: Point) -> Option<NodeId> {
         for &id in self.order.iter().rev() {
             let Some(n) = self.rt.arena.get(id) else {
                 continue;
@@ -1883,16 +2071,12 @@ where
                 continue;
             };
             if r.contains(p) {
-                // a scroll clip that excludes the point un-hits the node
-                // even though its (translated) rect contains it
                 if let Some(c) = self.clips.get(&id)
                     && !c.contains(p)
                 {
                     continue;
                 }
                 match &n.data {
-                    // disabled/non-interactive nodes are inert chrome — no
-                    // hover, pressed, focus, or activation state attaches
                     NodeData::Button { .. }
                     | NodeData::Editor { .. }
                     | NodeData::Action { .. }
@@ -1901,9 +2085,13 @@ where
                     {
                         return Some(id);
                     }
-                    // CustomRender owns its own hit geometry — the rect is
-                    // only the bounding box; an actionable custom shape can
-                    // refuse a hit inside its bounds
+                    NodeData::Popup {
+                        dismiss_light,
+                        modal,
+                        ..
+                    } if *dismiss_light || *modal => {
+                        return Some(id);
+                    }
                     NodeData::Custom { render, .. } if n.interactive() => {
                         let local = Point {
                             x: p.x - r.x,
@@ -1939,6 +2127,30 @@ where
         } else {
             self.hit_test(pos)
         };
+        // outside-press dismissal (Radix light-dismiss): a Down outside a
+        // dismiss_light popup's subtree emits OpenChange(false) BEFORE the
+        // press routes — the press still lands on its real target
+        if phase == crate::node::PointerPhase::Down {
+            let dismiss: Vec<NodeId> = self
+                .open_popups
+                .values()
+                .map(|book| book.id)
+                .filter(|&id| {
+                    self.rt.arena.get(id).is_some_and(|n| {
+                        matches!(
+                            &n.data,
+                            NodeData::Popup {
+                                dismiss_light: true,
+                                ..
+                            }
+                        )
+                    }) && !hit.is_some_and(|hit_id| self.inside_subtree(id, hit_id))
+                })
+                .collect();
+            for id in dismiss {
+                self.push_input(id, NodeEvent::OpenChange(false))?;
+            }
+        }
         self.mouse = pos;
         match phase {
             crate::node::PointerPhase::Enter => {}
@@ -2010,7 +2222,13 @@ where
                 self.service_peer_events()?;
                 return self.turn();
             }
-            if phase == crate::node::PointerPhase::Down && button == Some(PointerButton::Primary) {
+            if phase == crate::node::PointerPhase::Down
+                && button == Some(PointerButton::Primary)
+                && !matches!(
+                    self.rt.arena.get(id).map(|n| &n.data),
+                    Some(NodeData::Popup { .. })
+                )
+            {
                 self.set_focus(Some(id))?;
                 // KILLFOCUS on a peer old-owner queues host events —
                 // drain before this boundary's turn, same as the peer
@@ -2113,8 +2331,18 @@ where
             k if k == VK_RIGHT.0 as u32 => Key::ArrowRight,
             k if k == VK_UP.0 as u32 => Key::ArrowUp,
             k if k == VK_DOWN.0 as u32 => Key::ArrowDown,
+            k if k == windows::Win32::UI::Input::KeyboardAndMouse::VK_HOME.0 as u32 => Key::Home,
+            k if k == windows::Win32::UI::Input::KeyboardAndMouse::VK_END.0 as u32 => Key::End,
             other => Key::Other(other),
         };
+        // Escape dismisses the topmost open popup before peer routing —
+        // a focused editor inside it must not swallow the dismissal
+        if msg == WM_KEYDOWN && ev == Key::Escape {
+            if let Some(id) = self.topmost_popup() {
+                self.push_input(id, NodeEvent::OpenChange(false))?;
+                return self.turn();
+            }
+        }
         // Tab traversal — focus moves through eligible nodes
         if msg == WM_KEYDOWN && key == VK_TAB.0 as u32 {
             self.focus_step(unsafe { GetKeyState(VK_SHIFT.0 as i32) } < 0)?;
@@ -2165,6 +2393,33 @@ where
         }
         if msg != WM_KEYDOWN {
             return Ok(());
+        }
+        // directional group navigation — roving focus inside a semantic
+        // group (tablist arrows move focus AND activate the target;
+        // listbox options move focus only). Shared policy lives in
+        // `crate::layout::nav_target`.
+        if let Some(focus) = self.focused_target()
+            && let Some(n) = self.rt.arena.get(focus)
+            && matches!(
+                n.role,
+                Some(
+                    crate::node::SemanticRole::Tab
+                        | crate::node::SemanticRole::Option
+                        | crate::node::SemanticRole::MenuItem
+                        | crate::node::SemanticRole::MenuItemCheckbox
+                        | crate::node::SemanticRole::MenuItemRadio
+                        | crate::node::SemanticRole::MenuItemDestructive
+                )
+            )
+            && let Some(target) = crate::layout::nav_target(&self.rt.arena, &self.order, focus, ev)
+            && target != focus
+        {
+            let activate = matches!(n.role, Some(crate::node::SemanticRole::Tab));
+            self.set_focus(Some(target))?;
+            if activate {
+                self.push_input(target, NodeEvent::Press)?;
+            }
+            return self.turn();
         }
         // semantic focus: Space/Enter on a button is Press — a deferred
         // replay delivers to the ARRIVAL-captured owner: an explicitly
@@ -2234,11 +2489,18 @@ where
     }
     /// Focus next/previous eligible node (Tab/Shift-Tab traversal).
     pub(crate) fn focus_step(&mut self, back: bool) -> UiResult {
+        let modal = self.modal_popup();
         let eligible: Vec<NodeId> = self
             .order
             .iter()
             .copied()
             .filter(|&id| {
+                // a live modal popup traps traversal in its subtree
+                if let Some(m) = modal
+                    && !self.inside_subtree(m, id)
+                {
+                    return false;
+                }
                 let Some(n) = self.rt.arena.get(id) else {
                     return false;
                 };
@@ -2284,6 +2546,40 @@ where
         self.set_focus(Some(eligible[next]))?;
         // route the focus send's host events before the caller's turn
         self.service_peer_events()
+    }
+
+    /// First focusable descendant of `root` in paint order — used by
+    /// popups' `focus_on_open`. Same eligibility as `focus_step`; a
+    /// `selected` descendant wins so a listbox opens with the selected
+    /// option live.
+    fn first_focusable(&self, root: NodeId) -> Option<NodeId> {
+        let eligible = |id: NodeId| -> Option<NodeId> {
+            (id != root
+                && self.inside_subtree(root, id)
+                && self.rt.arena.get(id).is_some_and(|n| {
+                    n.visibility == Visibility::Visible
+                        && n.interactive()
+                        && matches!(
+                            n.data,
+                            NodeData::Button { .. }
+                                | NodeData::Editor { .. }
+                                | NodeData::Action { .. }
+                                | NodeData::Toggle { .. }
+                        )
+                }))
+            .then_some(id)
+        };
+        self.order
+            .iter()
+            .copied()
+            .find(|&id| {
+                eligible(id).is_some()
+                    && matches!(
+                        self.rt.arena.get(id).map(|n| &n.data),
+                        Some(NodeData::Button { selected: true, .. })
+                    )
+            })
+            .or_else(|| self.order.iter().copied().find_map(eligible))
     }
 
     /// Focus a node — blur the old (still routed even when it just hid),
@@ -2381,11 +2677,12 @@ where
                 style,
                 disabled,
                 invalid,
+                selected,
                 ..
             } => {
                 let state = crate::style::StyleState::classify(*disabled, st.pressed, st.hot);
                 let mut v = crate::style::resolve_button(
-                    *variant, *size, style, state, st.focus, dark, *invalid,
+                    *variant, *size, style, state, st.focus, dark, *selected, *invalid,
                 );
                 crate::style::os_enforce_visual(&mut v, forced);
                 Some(v)
@@ -2688,6 +2985,19 @@ where
                     };
                     (s.label, ct, loc)
                 }
+                NodeData::Popup { role, .. } => (
+                    n.automation_id.as_deref().unwrap_or("popup").to_string(),
+                    match role {
+                        crate::node::PopupRole::Popup => UIA_PaneControlTypeId,
+                        crate::node::PopupRole::Menu => UIA_MenuControlTypeId,
+                        crate::node::PopupRole::Listbox => UIA_ListControlTypeId,
+                    },
+                    match role {
+                        crate::node::PopupRole::Popup => "Pane",
+                        crate::node::PopupRole::Menu => "Menu",
+                        crate::node::PopupRole::Listbox => "List",
+                    },
+                ),
                 // semantic action — Button when actionable (Invoke), else a
                 // named group; children are decorative
                 NodeData::Action { label, .. } => {
@@ -2697,7 +3007,22 @@ where
                         (label.to_string(), UIA_GroupControlTypeId, "Group")
                     }
                 }
-                _ => continue,
+                // role-only semantics on a generic container (the tablist
+                // chrome box) still emit a control node
+                _ => match n.role {
+                    Some(role) => (
+                        n.automation_id.as_deref().unwrap_or("group").to_string(),
+                        semantic_uia_ct(role).0,
+                        semantic_uia_ct(role).1,
+                    ),
+                    None => continue,
+                },
+            };
+            // a semantic role refines the kind's control type — combobox
+            // trigger / option / tab / tablist
+            let (name, ct, loc) = match n.role {
+                Some(role) => (name, semantic_uia_ct(role).0, semantic_uia_ct(role).1),
+                None => (name, ct, loc),
             };
             kids.push(uia::ChildBuild {
                 automation_id: n.automation_id.as_deref().unwrap_or("").to_string(),
@@ -2709,6 +3034,41 @@ where
                 actionable: n.factories.on_press.is_some(),
                 enabled: n.interactive(),
                 offscreen,
+                selected: match (&n.data, n.role) {
+                    (
+                        NodeData::Button { selected, .. },
+                        Some(
+                            crate::node::SemanticRole::Option
+                            | crate::node::SemanticRole::Tab
+                            | crate::node::SemanticRole::SettingsNavItem,
+                        ),
+                    ) => Some(*selected),
+                    (
+                        NodeData::Action { checked, .. },
+                        Some(crate::node::SemanticRole::SettingsNavItem),
+                    ) => *checked,
+                    _ => None,
+                },
+                checked: match (&n.data, n.role) {
+                    (
+                        NodeData::Action { checked, .. },
+                        Some(
+                            crate::node::SemanticRole::MenuItemCheckbox
+                            | crate::node::SemanticRole::MenuItemRadio,
+                        ),
+                    ) => *checked,
+                    _ => None,
+                },
+                expanded: match (&n.data, n.role) {
+                    (
+                        NodeData::Button { expanded, .. },
+                        Some(
+                            crate::node::SemanticRole::ComboBox
+                            | crate::node::SemanticRole::MenuButton,
+                        ),
+                    ) => *expanded,
+                    _ => None,
+                },
                 peer_node: matches!(n.data, NodeData::Editor { .. }),
                 native: None,
             });
@@ -3373,6 +3733,7 @@ where
         damage: std::cell::Cell::new(None),
         committed_ink: std::cell::RefCell::new(HashMap::new()),
         applied_palette: std::cell::RefCell::new(None),
+        open_popups: HashMap::new(),
     });
     backend.rt.theme = theme;
 
@@ -3564,6 +3925,32 @@ where
 }
 
 /// OS appearance: HKCU Themes\Personalize\AppsUseLightTheme (DWORD).
+/// Semantic-role → UIA control-type mapping — a node's painted kind
+/// supplies the name/geometry, the role refines the control identity
+/// (combobox trigger / option / tablist / tab).
+fn semantic_uia_ct(
+    role: crate::node::SemanticRole,
+) -> (
+    windows::Win32::UI::Accessibility::UIA_CONTROLTYPE_ID,
+    &'static str,
+) {
+    use crate::node::SemanticRole;
+    use windows::Win32::UI::Accessibility::*;
+    match role {
+        SemanticRole::ComboBox => (UIA_ComboBoxControlTypeId, "ComboBox"),
+        SemanticRole::Option => (UIA_ListItemControlTypeId, "ListItem"),
+        SemanticRole::TabList => (UIA_TabControlTypeId, "Tab"),
+        SemanticRole::Tab => (UIA_TabItemControlTypeId, "TabItem"),
+        SemanticRole::MenuItem
+        | SemanticRole::MenuItemCheckbox
+        | SemanticRole::MenuItemRadio
+        | SemanticRole::MenuItemDestructive => (UIA_MenuItemControlTypeId, "MenuItem"),
+        SemanticRole::MenuButton => (UIA_ButtonControlTypeId, "Button"),
+        SemanticRole::SettingsNavItem => (UIA_ButtonControlTypeId, "Button"),
+        SemanticRole::Group => (UIA_GroupControlTypeId, "Group"),
+    }
+}
+
 fn os_appearance() -> Appearance {
     use windows::Win32::System::Registry::*;
     use windows::Win32::UI::Accessibility::{HCF_HIGHCONTRASTON, HIGHCONTRASTW};

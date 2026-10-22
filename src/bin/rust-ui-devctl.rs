@@ -45,6 +45,7 @@ impl Args {
             "wait-idle" | "leave" => &["session", "timeout"],
             "rect" | "hover" | "press" | "release" | "click" => &["session", "timeout", "id"],
             "focus" => &["session", "timeout", "id", "modality"],
+            "press-at" => &["session", "timeout", "x", "y"],
             "key" => &["session", "timeout", "key"],
             "resize" => &["session", "timeout", "width", "height"],
             "scroll" => &["session", "timeout", "id", "dy"],
@@ -284,43 +285,72 @@ fn native(a: &Args) -> Result<Value> {
     }
     let timeout = a.number("timeout", 5000u32)?;
     if a.command == "screenshot" {
-        c::request(&session, "wait-idle", Value::Null, timeout)?;
-        let state = c::request(&session, "handshake", Value::Null, timeout)?;
-        let hwnd = state["hwnd"]
-            .as_u64()
-            .ok_or_else(|| Error::new("PROTOCOL_ERROR", "handshake HWND"))?;
-        let scene = c::request(&session, "snapshot-layout", Value::Null, timeout)?;
-        let rect = if let Some(id) = a.id() {
-            let snapshot: Snapshot = serde_json::from_value(scene.clone()).map_err(d::ioerr)?;
-            let index = snapshot.index()?;
-            let n = index
-                .get(id)
-                .ok_or_else(|| Error::new("TARGET_NOT_FOUND", id))?
-                .0;
-            Some(json!({"visible":n.visible,"rect_px":n.rect_px}))
-        } else {
-            None
+        // bounded settle-retry — documented CAPTURE_FAILED flake: a stray
+        // OS pointer message can flip retained state (`hot`) mid-capture
+        // and trip the stability guard. Re-wait and re-capture a small
+        // number of times; a genuinely mutating scene keeps mismatching,
+        // so the guard stays fail-closed after the retry budget.
+        let mut captured = None;
+        let mut last_fail = None;
+        for _ in 0..3 {
+            let attempt = (|| -> Result<(Value, Option<Value>, Image, Value)> {
+                c::request(&session, "wait-idle", Value::Null, timeout)?;
+                let state = c::request(&session, "handshake", Value::Null, timeout)?;
+                let hwnd = state["hwnd"]
+                    .as_u64()
+                    .ok_or_else(|| Error::new("PROTOCOL_ERROR", "handshake HWND"))?;
+                let scene = c::request(&session, "snapshot-layout", Value::Null, timeout)?;
+                let rect = if let Some(id) = a.id() {
+                    let snapshot: Snapshot =
+                        serde_json::from_value(scene.clone()).map_err(d::ioerr)?;
+                    let index = snapshot.index()?;
+                    let n = index
+                        .get(id)
+                        .ok_or_else(|| Error::new("TARGET_NOT_FOUND", id))?
+                        .0;
+                    Some(json!({"visible":n.visible,"rect_px":n.rect_px}))
+                } else {
+                    None
+                };
+                let (image, meta) = c::capture_client(hwnd as usize)?;
+                if scene != c::request(&session, "snapshot-layout", Value::Null, timeout)? {
+                    return Err(Error::new(
+                        "CAPTURE_FAILED",
+                        "retained semantic geometry/state changed during WGC capture; wait idle and retry",
+                    ));
+                }
+                let after = c::request(&session, "handshake", Value::Null, timeout)?;
+                let before_epoch = state["paint_epoch"]
+                    .as_u64()
+                    .ok_or_else(|| Error::new("PROTOCOL_ERROR", "missing paint epoch"))?;
+                let after_epoch = after["paint_epoch"]
+                    .as_u64()
+                    .ok_or_else(|| Error::new("PROTOCOL_ERROR", "missing paint epoch"))?;
+                if before_epoch != after_epoch {
+                    return Err(Error::new(
+                        "CAPTURE_FAILED",
+                        "a native frame was painted during WGC acquisition; wait idle and retry",
+                    ));
+                }
+                Ok((state, rect, image, meta))
+            })();
+            match attempt {
+                Ok(ok) => {
+                    captured = Some(ok);
+                    break;
+                }
+                Err(e) => {
+                    let transient = e.code == "CAPTURE_FAILED";
+                    last_fail = Some(e);
+                    if !transient {
+                        break;
+                    }
+                }
+            }
+        }
+        let Some((state, rect, mut image, mut meta)) = captured else {
+            return Err(last_fail.expect("screenshot loop runs at least once"));
         };
-        let (mut image, mut meta) = c::capture_client(hwnd as usize)?;
-        if scene != c::request(&session, "snapshot-layout", Value::Null, timeout)? {
-            return Err(Error::new(
-                "CAPTURE_FAILED",
-                "retained semantic geometry/state changed during WGC capture; wait idle and retry",
-            ));
-        }
-        let after = c::request(&session, "handshake", Value::Null, timeout)?;
-        let before_epoch = state["paint_epoch"]
-            .as_u64()
-            .ok_or_else(|| Error::new("PROTOCOL_ERROR", "missing paint epoch"))?;
-        let after_epoch = after["paint_epoch"]
-            .as_u64()
-            .ok_or_else(|| Error::new("PROTOCOL_ERROR", "missing paint epoch"))?;
-        if before_epoch != after_epoch {
-            return Err(Error::new(
-                "CAPTURE_FAILED",
-                "a native frame was painted during WGC acquisition; wait idle and retry",
-            ));
-        }
         meta["stable_retained_scene"] = json!(true);
         if let Some(r) = rect {
             if r["visible"] != true {
@@ -351,7 +381,7 @@ fn native(a: &Args) -> Result<Value> {
         d::write_json(&path.with_extension("capture.json"), &meta)?;
         return Ok(meta);
     }
-    let args = json!({"id":a.id(),"key":a.get("key").or_else(||a.position.first().map(String::as_str)),"modality":a.get("modality"),"width":a.get("width"),"height":a.get("height"),"dy":a.get("dy")});
+    let args = json!({"id":a.id(),"key":a.get("key").or_else(||a.position.first().map(String::as_str)),"modality":a.get("modality"),"width":a.get("width"),"height":a.get("height"),"dy":a.get("dy"),"x":a.get("x"),"y":a.get("y")});
     let v = c::request(&session, &a.command, args, timeout)?;
     if let Some(out) = a.get("out") {
         d::write_json(Path::new(out), &v)?
