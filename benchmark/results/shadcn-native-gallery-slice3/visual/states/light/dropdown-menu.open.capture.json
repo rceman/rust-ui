@@ -21,15 +21,15 @@
   },
   "coordinate_space": "client-physical-pixels",
   "element_crop": {
-    "bottom": 1024,
+    "bottom": 1004,
     "left": 40,
-    "right": 355,
-    "top": 501
+    "right": 924,
+    "top": 540
   },
   "frame_height": 1593,
   "frame_width": 966,
-  "height": 523,
+  "height": 464,
   "scale_factor": 1.0,
   "stable_retained_scene": true,
-  "width": 315
+  "width": 884
 }
