@@ -219,6 +219,10 @@ pub(crate) fn deferrable_arrival(msg: u32) -> bool {
             | WM_SETFOCUS
             | WM_KILLFOCUS
             | WM_MOUSEWHEEL
+            // NOTE: WM_SIZE is listed for completeness — the explicit
+            // live-dispatch arm in reentrant() MUST precede the
+            // deferrable_arrival guard or the queued-WM_SIZE drag bug
+            // silently returns
             | WM_SIZE
             | WM_MOVE
             | WM_SETTINGCHANGE
@@ -374,16 +378,37 @@ pub(crate) mod wndproc {
                     // loop — run the normal dispatch now by dropping the
                     // guard and re-entering the trampoline (same juggling
                     // drain_reentrant uses around each item).
+                    // LOAD-BEARING INVARIANT: any call that can deliver a
+                    // message synchronously (DefWindowProcW, SetWindowPos,
+                    // DestroyWindow, TrackPopupMenu, host callbacks) must
+                    // never be made while a RefCell borrow is held or while
+                    // a caller reads a non-Cell Backend field cached across
+                    // the call — that is what keeps this sibling-&mut legal.
                     let outer = (*ptr).in_dispatch.replace(false);
                     let r = trampoline::<S, M, U, V>(hwnd, msg, wparam, lparam);
                     (*ptr).in_dispatch.set(outer);
                     r
                 }
+                WM_ERASEBKGND => {
+                    // same contract as the dispatch arm — we paint the
+                    // entire client in one frame; a GDI erase would only
+                    // flicker. Symmetric so a mid-drag delivery can't
+                    // flash class color under the pending frame.
+                    LRESULT(1)
+                }
                 WM_PAINT => {
-                    if (*ptr).size_pending.get() {
-                        // a pending resize frame must run LIVE during the
-                        // sizing session — deferring paints stale geometry
-                        // into the grown target while the button is held
+                    // a resize frame must run LIVE during the sizing
+                    // session — pending from a live WM_SIZE, or stale
+                    // because a size change somehow reached the client
+                    // without arming pending (defensive: same check the
+                    // dispatch arm runs)
+                    let scale = (&(*ptr).peer_ctx).scale.get();
+                    let stale = super::super::layout::client_dip(hwnd, scale)
+                        .map(|sz| sz != (*ptr).laid_client.get())
+                        .unwrap_or(false);
+                    if (*ptr).size_pending.get() || stale {
+                        // run the frame now — deferring paints stale
+                        // geometry into the grown target while held
                         let outer = (*ptr).in_dispatch.replace(false);
                         let r = trampoline::<S, M, U, V>(hwnd, msg, wparam, lparam);
                         (*ptr).in_dispatch.set(outer);
@@ -703,10 +728,10 @@ pub(crate) mod wndproc {
                         SWP_NOZORDER | SWP_NOACTIVATE,
                     );
                 }
-                // SetWindowPos's nested WM_SIZE was QUEUED (the reentrant
-                // route defers it to the post-dispatch drain) — drain it
-                // NOW so its renderer.resize() lands before this frame's
-                // paint and its size_pending arm is consumed below.
+                // SetWindowPos's nested WM_SIZE was delivered LIVE (the
+                // reentrant route re-dispatches it through the trampoline)
+                // — drain any other queued items NOW so pending work lands
+                // before this frame's paint and size_pending settles.
                 // drain_reentrant clears in_dispatch around each item, so
                 // the outer dispatch's ownership guard is restored after.
                 let outer = be.in_dispatch.replace(true);
