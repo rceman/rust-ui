@@ -3933,12 +3933,24 @@ where
     }
     // reveal only now — the first themed frame is already presented, so
     // the window appears fully painted (never the unthemed OS-white
-    // flash a create-time ShowWindow produced)
+    // flash a create-time ShowWindow produced). The open-transition
+    // animation is disabled too — it can composite the still-unfilled
+    // client for a frame before DWM picks up our presented frame (the
+    // residual ~1/5 white flash the user reported), and DwmFlush forces
+    // the composed themed frame on-screen before returning.
     unsafe {
+        let transitions_off: windows_core::BOOL = windows_core::BOOL(1);
+        let _ = DwmSetWindowAttribute(
+            hwnd,
+            DWMWINDOWATTRIBUTE(3), // DWMWA_TRANSITIONS_FORCEDISABLED
+            &transitions_off as *const _ as *const std::ffi::c_void,
+            std::mem::size_of_val(&transitions_off) as u32,
+        );
         let _ = windows::Win32::UI::WindowsAndMessaging::ShowWindow(
             hwnd,
             windows::Win32::UI::WindowsAndMessaging::SW_SHOW,
         );
+        let _ = windows::Win32::Graphics::Dwm::DwmFlush();
     }
 
     #[cfg(feature = "devtools")]
