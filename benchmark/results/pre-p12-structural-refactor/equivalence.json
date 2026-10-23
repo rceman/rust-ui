@@ -1,0 +1,10 @@
+{
+  "test_identity": {"linux": {"before": 123, "after": 123, "diff": "IDENTICAL"}, "windows": {"before": 195, "after": 195, "diff": "IDENTICAL"}},
+  "public_api": {"lib_rs_pub_items": "IDENTICAL", "prelude_pub_use": "IDENTICAL (11 items)", "new_public_api": 0, "removed_public_api": 0, "consumer_path_changes": 0},
+  "layout_equivalence": {"method": "devctl_windows native_agent_workflow — real Gallery E2E via CARGO_BIN_EXE_rust-ui-gallery: snapshot-layout + bounds + P9 held-resize convergence", "result": "green (1/1)"},
+  "raster_equivalence": {"method": "WGC screenshot capture inside devctl workflow; same-engine/same-state", "result": "green — deterministic captures byte-stable"},
+  "p9": {"method": "native_resize test + held-resize workflow — laid_client converges, live paint during modal sizing, no release-only catch-up", "result": "green"},
+  "p10": {"method": "DPI convergence + coalesced move semantics — preserved in moved window.rs code", "result": "green (single-display env; cross-monitor code path moved verbatim)"},
+  "cloak_reveal": {"method": "DWMWA_CLOAK + post-show paint + DwmFlush — moved verbatim in window.rs/mod.rs children", "result": "green (code moved unchanged, launch E2E green)"},
+  "launcher": {"method": "CREATE_NO_WINDOW native launcher + stamped fast path + dirty rebuild", "result": "green (launcher code untouched; CARGO_BIN_EXE works)"}
+}

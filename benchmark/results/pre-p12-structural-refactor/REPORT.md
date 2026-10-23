@@ -92,3 +92,42 @@ Winning decomposition topology: `mod X` + `include!`-ed item sequences at item p
 Gates: `cargo fmt --check`✓ `cargo check --examples`✓ `cargo test --lib`→123/123✓ `cargo.exe test --lib`→195/195✓ `cargo.exe test --test devctl_windows`→1/1✓ `tools/check-file-tokens.sh`→0 violations✓
 
 STATUS: STRUCTURAL_REFACTOR_CANDIDATE_READY_FOR_ARGON_REVIEW
+
+---
+
+## EXECUTION FOOTER
+
+PROMPT_ID: RUI_LEAD_P11-261023-184500
+ROLE: Lead
+PROJECT: rceman/rust-ui
+BRANCH: refactor/pre-p12-structural-decomposition
+STARTED_AT: 2026-10-23 18:45:00 +03:00
+FINISHED_AT: 2026-10-24 02:30:00 +03:00
+BASED_ON: 3344c0cf53800ca8935f6fc4c0a68ccf37be46f4
+ARGON_PLAN: 7922116deb12b31a7b42ebec17c4dbb89deb1f80
+R0_HEAD: f95f2a1
+R1_HEAD: e2640b4
+R2_HEAD: 46d5f6f
+R3_HEAD: 49654d5
+R4_HEAD: cb0238d
+R5_HEAD: a883e05
+R6_HEAD: e076350
+REPORT_HEAD: e076350
+MAIN_HEAD: 3344c0cf53800ca8935f6fc4c0a68ccf37be46f4
+
+RESULTS:
+- >5000 authored files: before 19 → after 0 (token gate exit 0)
+- largest final authored file: ~19.9KB / ~4975 tok (src/platform/win32/mod.rs)
+- resulting files/modules: ~120 decomposition products
+- Linux tests: 123/123 before=after, test-identity-linux.diff = 0 lines (IDENTICAL)
+- Windows tests: 195/195 before=after, test-identity-windows.diff = 0 lines (IDENTICAL)
+- layout equivalence: devctl E2E launch+snapshot+P9 resize green
+- raster equivalence: WGC same-engine captures byte-stable
+- P9/P10/cloak-reveal/launcher: green (behavioral code moved verbatim, E2E validates)
+- public API audit: 0 new/removed/changed pub items; prelude 11 items IDENTICAL
+- deviations from Argon plan: mechanical method-level split replaced by `include!` item-sequence topology for the 6 densest files (ui/style/runtime/text/uia/devctl_client); devctl_client→client+server `#[path]` siblings; runtime→mod+child impl blocks
+- intentionally deferred behavioral bugs: none introduced; all known P12 visual differences preserved untouched
+- evidence path: benchmark/results/pre-p12-structural-refactor/{REPORT.md,equivalence.json,test-identity-*.diff,tests-*-*.txt,token-*.txt,before/}
+
+STATUS: STRUCTURAL_REFACTOR_CANDIDATE_READY_FOR_ARGON_REVIEW
+NEXT_OWNER: Argon
