@@ -311,3 +311,12 @@ pub(crate) unsafe fn paint_ring_color_width(
     }
     Ok(())
 }
+
+pub(crate) fn role_color(role: crate::theme::ColorRole, dark: bool) -> D2D1_COLOR_F {
+    let [r, g, b, a] = crate::style::role_color(role, dark);
+    D2D1_COLOR_F { r, g, b, a }
+}
+
+// ---------------------------------------------------------------------------
+// DirectWrite label measure — also feeds layout's natural sizes
+// ---------------------------------------------------------------------------

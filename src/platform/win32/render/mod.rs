@@ -1,5 +1,4 @@
 //! Direct2D/DirectWrite presenter: one HWND render target (software-
-//! compatible, opaque), theme chrome for labels/buttons/surfaces, windowless
 //! RichEdit content via `TxDrawD2D`, a `Canvas` impl for custom nodes, and
 //! the tooltip overlay as a real nonactivating top-level HWND.
 //!
@@ -33,15 +32,6 @@ const FONT: &str = "Segoe UI";
 /// The renderer's `ColorRole -> D2D color` step delegates to the shared
 /// resolver — there is ONE palette authority (`crate::style::role_color`);
 /// a renderer may adapt format, never re-author semantic values.
-pub(crate) fn role_color(role: crate::theme::ColorRole, dark: bool) -> D2D1_COLOR_F {
-    let [r, g, b, a] = crate::style::role_color(role, dark);
-    D2D1_COLOR_F { r, g, b, a }
-}
-
-// ---------------------------------------------------------------------------
-// DirectWrite label measure — also feeds layout's natural sizes
-// ---------------------------------------------------------------------------
-
 struct Dwrite {
     factory: IDWriteFactory,
     formats: [Option<IDWriteTextFormat>; 3],
@@ -534,7 +524,7 @@ mod shadow;
 mod tooltip;
 
 pub(crate) use brush::{
-    paint_box, paint_focus_ring, paint_ring_color, paint_ring_color_width, shrink_radii,
+    paint_box, paint_focus_ring, paint_ring_color, paint_ring_color_width, role_color, shrink_radii,
 };
 pub(crate) use guards::{ClipGuard, D2dCanvas, LayerGuard};
 pub(crate) use icons::{

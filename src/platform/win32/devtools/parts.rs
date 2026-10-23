@@ -11,7 +11,6 @@ where
     U: Fn(&mut S, M, &mut UpdateCtx<'_, M>),
     V: Fn(&S, &mut crate::Ui<'_, '_, M>),
 {
-    /// Depth-first part walk under an automation owner — `ui.part`
     /// chains compose `a.b[0]` keys; a nested automation_id bounds its
     /// own part scope and is not descended into.
     pub(super) fn collect_parts(
