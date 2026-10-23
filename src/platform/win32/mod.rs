@@ -588,6 +588,11 @@ where
     /// modal sizing loop) so one frame's work runs per paint delivery,
     /// never per mouse-move step
     size_pending: std::cell::Cell<bool>,
+    /// client DIP size the last relayout actually laid out — WM_PAINT
+    /// re-verifies the live client against it so any resize whose
+    /// WM_SIZE/coalesce path never reached a relayout still converges
+    /// instead of leaving the retained tree at a stale width
+    laid_client: std::cell::Cell<(f32, f32)>,
     /// replay-owner discriminator: `None` = live dispatch (resolve current
     /// focus); `Some(c)` = replaying — `c` is the captured arrival owner,
     /// `None` inside means EXPLICITLY no owner (never fall through)
@@ -679,6 +684,7 @@ where
             deferred_native: std::collections::VecDeque::new(),
             state_dirty: std::cell::Cell::new(0),
             size_pending: std::cell::Cell::new(false),
+            laid_client: std::cell::Cell::new((0.0, 0.0)),
             damage: std::cell::Cell::new(None),
             committed_ink: std::cell::RefCell::new(HashMap::new()),
             applied_palette: std::cell::RefCell::new(None),
@@ -1830,6 +1836,12 @@ where
         self.peer_ctx.focus.set(self.focus);
         let mut layout = LayoutCache::new(self.peer_ctx.scale.get());
         let (rects, order, clips) = layout.run(&mut self.rt, &self.peer_ctx)?;
+        // record the client this layout actually solved — only after a
+        // successful run, so a failed relayout can't mark a stale layout
+        // as current for the WM_PAINT stale check
+        if let Ok(sz) = layout::client_dip(self.peer_ctx.hwnd.get(), self.peer_ctx.scale.get()) {
+            self.laid_client.set(sz);
+        }
         // prune stale ids — backend cache holds live NodeIds only
         self.rects = rects;
         self.order = order;
@@ -3763,6 +3775,7 @@ where
         deferred_native: std::collections::VecDeque::new(),
         state_dirty: std::cell::Cell::new(0),
         size_pending: std::cell::Cell::new(false),
+        laid_client: std::cell::Cell::new((0.0, 0.0)),
         damage: std::cell::Cell::new(None),
         committed_ink: std::cell::RefCell::new(HashMap::new()),
         applied_palette: std::cell::RefCell::new(None),

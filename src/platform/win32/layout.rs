@@ -915,7 +915,10 @@ fn cross_v(align: Align, len: Length, inner: LogicalRect, natural_h: f32) -> (f3
 }
 
 /// Window client size in DIP — GetClientRect returns physical px.
-fn client_dip(hwnd: windows::Win32::Foundation::HWND, scale: ScaleFactor) -> UiResult<(f32, f32)> {
+pub(crate) fn client_dip(
+    hwnd: windows::Win32::Foundation::HWND,
+    scale: ScaleFactor,
+) -> UiResult<(f32, f32)> {
     unsafe {
         let mut rc = RECT::default();
         windows::Win32::UI::WindowsAndMessaging::GetClientRect(hwnd, &mut rc)

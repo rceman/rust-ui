@@ -436,7 +436,16 @@ pub(crate) mod wndproc {
                 // during a drag so this runs per DELIVERED paint, not per
                 // WM_SIZE arrival
                 let t = Instant::now();
-                if be.size_pending.replace(false) {
+                // re-verify the live client against what was actually laid
+                // out — a WM_SIZE/coalesce path that never reached a relayout
+                // must still converge rather than leave the retained tree at
+                // a stale width; renderer.resize() retries here too so a
+                // swallowed target-resize failure can't persist
+                be.renderer.borrow_mut().resize();
+                let stale = super::super::layout::client_dip(hwnd, be.peer_ctx.scale.get())
+                    .map(|sz| sz != be.laid_client.get())
+                    .unwrap_or(false);
+                if be.size_pending.replace(false) || stale {
                     be.relayout()?;
                     be.uia_refresh()?;
                 }
