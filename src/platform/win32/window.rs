@@ -412,11 +412,15 @@ pub(crate) mod wndproc {
                     r
                 }
                 WM_ERASEBKGND => {
-                    // same contract as the dispatch arm — we paint the
-                    // entire client in one frame; a GDI erase would only
-                    // flicker. Symmetric so a mid-drag delivery can't
-                    // flash class color under the pending frame.
-                    LRESULT(1)
+                    // before the first D2D frame commits, let DefWindowProcW
+                    // fill the surface-matched class brush (0x18181B dark /
+                    // 0xFAFAFA light); once committed, suppress GDI erase so
+                    // resize/repaint never flickers
+                    if (*ptr).committed_ink.borrow().is_empty() {
+                        DefWindowProcW(hwnd, msg, wparam, lparam)
+                    } else {
+                        LRESULT(1)
+                    }
                 }
                 WM_PAINT => {
                     // a resize frame must run LIVE during the sizing
@@ -722,9 +726,14 @@ pub(crate) mod wndproc {
                 LRESULT(0)
             }
             WM_ERASEBKGND => {
-                // we paint the entire client in one frame — the GDI erase
-                // would only flicker
-                LRESULT(1)
+                // before the first D2D frame commits, let DefWindowProcW fill
+                // the surface-matched class brush; afterwards suppress GDI
+                // erase so resize/repaint never flickers
+                if be.committed_ink.borrow().is_empty() {
+                    unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
+                } else {
+                    LRESULT(1)
+                }
             }
             WM_MOVE => {
                 // client-space geometry is unchanged but SCREEN rects move —

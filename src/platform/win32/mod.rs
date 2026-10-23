@@ -3931,25 +3931,67 @@ where
     if let Err(e) = backend.guarded_turn() {
         return bail(&mut backend, e);
     }
-    // reveal only now — the first themed frame is already presented, so
-    // the window appears fully painted (never the unthemed OS-white
-    // flash a create-time ShowWindow produced). The open-transition
-    // animation is disabled too — it can composite the still-unfilled
-    // client for a frame before DWM picks up our presented frame (the
-    // residual ~1/5 white flash the user reported), and DwmFlush forces
-    // the composed themed frame on-screen before returning.
+    // Atomic DWM reveal:
+    // 1. Presenting to ID2D1HwndRenderTarget (software/GDI target) while
+    //    !WS_VISIBLE is clipped to an empty visrgn, and ShowWindow(SW_SHOW)
+    //    does not synchronously dispatch WM_PAINT — so calling DwmFlush()
+    //    immediately after ShowWindow without a post-show paint exposed an
+    //    unpainted redirection surface for ~1 VBlank (~1/5 launches).
+    // 2. Cloaking (DWMWA_CLOAK = 13) before ShowWindow makes WS_VISIBLE
+    //    true (valid visrgn + live DWM surface) while keeping the window
+    //    invisible to the compositor until the post-show D2D paint lands.
+    // The hidden paint inside guarded_turn() was clipped to an empty
+    // visrgn; clear committed_ink so ShowWindow's synchronous WM_ERASEBKGND
+    // fills the surface-matched class brush (0x18181B dark / 0xFAFAFA light)
+    // before the post-show D2D paint commits.
+    backend.committed_ink.borrow_mut().clear();
     unsafe {
-        let transitions_off: windows_core::BOOL = windows_core::BOOL(1);
+        const DWMWA_TRANSITIONS_FORCEDISABLED: DWMWINDOWATTRIBUTE = DWMWINDOWATTRIBUTE(3);
+        const DWMWA_CLOAK: DWMWINDOWATTRIBUTE = DWMWINDOWATTRIBUTE(13);
+        let on: windows_core::BOOL = windows_core::BOOL(1);
         let _ = DwmSetWindowAttribute(
             hwnd,
-            DWMWINDOWATTRIBUTE(3), // DWMWA_TRANSITIONS_FORCEDISABLED
-            &transitions_off as *const _ as *const std::ffi::c_void,
-            std::mem::size_of_val(&transitions_off) as u32,
+            DWMWA_TRANSITIONS_FORCEDISABLED,
+            &on as *const _ as *const std::ffi::c_void,
+            std::mem::size_of_val(&on) as u32,
+        );
+        let _ = DwmSetWindowAttribute(
+            hwnd,
+            DWMWA_CLOAK,
+            &on as *const _ as *const std::ffi::c_void,
+            std::mem::size_of_val(&on) as u32,
         );
         let _ = windows::Win32::UI::WindowsAndMessaging::ShowWindow(
             hwnd,
             windows::Win32::UI::WindowsAndMessaging::SW_SHOW,
         );
+    }
+    // Re-assert non-client dark caption/border and present the first D2D
+    // frame into the now-visible (WS_VISIBLE) HWND both before and
+    // immediately after uncloaking (text layouts and shadow rasters are
+    // already cached, so the post-uncloak present is a ~1ms blit).
+    backend.dark_caption.set(None);
+    backend.sync_dark_caption(backend.rt.theme.dark);
+    backend.in_dispatch.set(true);
+    backend.renderer.borrow_mut().resize();
+    let reveal_paint = backend.paint();
+    unsafe {
+        const DWMWA_CLOAK: DWMWINDOWATTRIBUTE = DWMWINDOWATTRIBUTE(13);
+        let off: windows_core::BOOL = windows_core::BOOL(0);
+        let _ = DwmSetWindowAttribute(
+            hwnd,
+            DWMWA_CLOAK,
+            &off as *const _ as *const std::ffi::c_void,
+            std::mem::size_of_val(&off) as u32,
+        );
+    }
+    let reveal_paint = reveal_paint.and_then(|()| backend.paint());
+    backend.in_dispatch.set(false);
+    if let Err(e) = reveal_paint.and_then(|()| backend.drain_reentrant()) {
+        return bail(&mut backend, e);
+    }
+    unsafe {
+        let _ = windows::Win32::Graphics::Gdi::ValidateRect(Some(hwnd), None);
         let _ = windows::Win32::Graphics::Dwm::DwmFlush();
     }
 
