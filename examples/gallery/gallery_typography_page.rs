@@ -1,5 +1,4 @@
-    }
-
+impl Gallery {
     /// The frozen `typography` slice — the CORE display recipes, on the
     /// frozen 720dp content column so wrapped headings measure right.
     fn typography_page(&self, ui: &mut Ui<Msg>) {
@@ -66,3 +65,5 @@
                 );
             });
         });
+}
+}

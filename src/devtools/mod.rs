@@ -105,17 +105,17 @@ pub fn ioerr(e: impl ToString) -> Error {
     Error::new("IO_ERROR", e)
 }
 
-pub(crate) mod compare;
-pub(crate) mod contract;
-pub(crate) mod geom;
-pub(crate) mod image;
-pub(crate) mod model;
+pub mod compare;
+pub mod contract;
+pub mod geom;
+pub mod image;
+pub mod model;
 
-pub(crate) use compare::*;
-pub(crate) use contract::*;
-pub(crate) use geom::*;
-pub(crate) use image::*;
-pub(crate) use model::*;
+pub use compare::*;
+pub use contract::*;
+pub use geom::*;
+pub use image::*;
+pub use model::*;
 
 #[cfg(windows)]
 #[path = "../platform/win32/devctl_client.rs"]

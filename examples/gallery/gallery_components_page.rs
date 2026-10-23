@@ -1,5 +1,4 @@
-    }
-
+impl Gallery {
     /// The frozen `components` slice — Button variants x states, sizes,
     /// inline icons, IconButton grid, Card specimens. Interaction cells
     /// (hover/pressed/focus-visible) are presentation-staged specimens
@@ -339,3 +338,5 @@
                 });
             });
         });
+}
+}

@@ -1,5 +1,4 @@
-    }
-
+impl Gallery {
     /// Gallery chrome — the navbar (page tabs) + theme toggle. The
     /// frozen shell is the reference layout; the tabs drive the page.
     fn header(&self, ui: &mut Ui<Msg>) {
@@ -61,3 +60,5 @@
                 });
             });
         });
+}
+}

@@ -1,6 +1,5 @@
-    }
-
-    fn view(&self, ui: &mut Ui<Msg>) {
+impl Gallery {
+    pub fn view(&self, ui: &mut Ui<Msg>) {
         ui.theme(Theme::resolve(self.theme, ui.appearance()));
         ui.named("shell.root", |ui| {
             ui.column(
@@ -41,3 +40,5 @@
                 },
             );
         });
+}
+}

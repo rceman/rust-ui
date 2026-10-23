@@ -1,5 +1,4 @@
-    }
-
+impl Gallery {
     /// Frozen `.overlay-stage` panel chrome — `rounded-xl` (r14)
     /// `bg-muted/40` panel with a 1dp `foreground/10` ring and fixed
     /// demo height; the popup itself escapes into the deferred overlay
@@ -25,3 +24,5 @@
                 .height(Length::Fixed(dp(height))),
             draw,
         );
+}
+}

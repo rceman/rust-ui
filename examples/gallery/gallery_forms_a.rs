@@ -1,5 +1,4 @@
 {
-            // label — frozen `label.default` (214×54 block): part `label`
             // ("Label") stacked over a sibling input whose recorded hint
             // is "With a label" (frozen flex-col gap-2 = 8dp)
             ui.named("label.default", |ui| {

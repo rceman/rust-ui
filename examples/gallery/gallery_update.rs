@@ -1,5 +1,5 @@
 impl Gallery {
-    fn update(&mut self, msg: Msg, _cx: &mut UpdateCtx<Msg>) {
+    pub fn update(&mut self, msg: Msg, _cx: &mut UpdateCtx<Msg>) {
         match msg {
             Msg::SetPage(p) => {
                 self.page = p;
@@ -54,3 +54,5 @@ impl Gallery {
             }
             Msg::SetNav(key) => self.nav_selected = key,
         }
+    }
+}

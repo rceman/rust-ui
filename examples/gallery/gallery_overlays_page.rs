@@ -1,5 +1,4 @@
-    }
-
+impl Gallery {
     fn overlays_page(&self, ui: &mut Ui<Msg>) {
         ui.column(Column::new().gap(Space::Lg).align(Align::Stretch), |ui| {
             ui.named("select.default.open", |ui| {
@@ -236,3 +235,5 @@
                 );
             });
         });
+}
+}

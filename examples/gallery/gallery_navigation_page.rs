@@ -1,5 +1,4 @@
-    }
-
+impl Gallery {
     fn navigation_page(&self, ui: &mut Ui<Msg>) {
         ui.column(Column::new().gap(Space::Lg).align(Align::Start), |ui| {
             for (line, variant) in [(false, TabsVariant::Default), (true, TabsVariant::Line)] {
@@ -305,3 +304,5 @@
                 });
             }
         });
+}
+}

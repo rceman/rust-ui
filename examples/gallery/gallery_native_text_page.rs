@@ -1,5 +1,4 @@
-    }
-
+impl Gallery {
     /// The frozen `native-text` slice — single-line and multiline editors
     /// under the same input/textarea stack chrome.
     fn native_text_page(&self, ui: &mut Ui<Msg>) {
@@ -163,3 +162,5 @@
                     .on_conflict(move |c| Msg::Conflict(idx, c));
             }
         });
+}
+}
