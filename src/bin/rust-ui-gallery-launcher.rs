@@ -21,7 +21,7 @@ use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-use windows::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONERROR, MB_OK};
+use windows::Win32::UI::WindowsAndMessaging::{MB_ICONERROR, MB_OK, MessageBoxW};
 
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 const REPO_WSL: &str = "/home/therceman/git/rust-ui";
@@ -85,15 +85,25 @@ fn main() {
     };
     let repo_win = wslpath_out.lines().next().unwrap_or("").trim().to_string();
     if repo_win.is_empty() || !Path::new(&repo_win).join("Cargo.toml").exists() {
-        fail(&format!("authoritative repo not reachable - wslpath returned '{repo_win}'"));
+        fail(&format!(
+            "authoritative repo not reachable - wslpath returned '{repo_win}'"
+        ));
     }
 
-    let head = run("wsl.exe", &["-e", "git", "-C", REPO_WSL, "rev-parse", "HEAD"], TARGET_DIR)
-        .map(|(_, o)| o.trim().to_string())
-        .unwrap_or_default();
-    let dirty = run("wsl.exe", &["-e", "git", "-C", REPO_WSL, "status", "--porcelain"], TARGET_DIR)
-        .map(|(_, o)| !o.trim().is_empty())
-        .unwrap_or(true);
+    let head = run(
+        "wsl.exe",
+        &["-e", "git", "-C", REPO_WSL, "rev-parse", "HEAD"],
+        TARGET_DIR,
+    )
+    .map(|(_, o)| o.trim().to_string())
+    .unwrap_or_default();
+    let dirty = run(
+        "wsl.exe",
+        &["-e", "git", "-C", REPO_WSL, "status", "--porcelain"],
+        TARGET_DIR,
+    )
+    .map(|(_, o)| !o.trim().is_empty())
+    .unwrap_or(true);
 
     // fast path: clean tree + matching HEAD + pinned binary identity
     let s = read_stamp();
@@ -110,7 +120,8 @@ fn main() {
             .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
             .map(|d| d.as_millis() as u64)
             .unwrap_or(0);
-        if ok && s.get("bin_mtime").and_then(|v| v.parse::<u64>().ok()) == Some(mt) && launch(&bin) {
+        if ok && s.get("bin_mtime").and_then(|v| v.parse::<u64>().ok()) == Some(mt) && launch(&bin)
+        {
             return;
         }
     }
@@ -118,8 +129,14 @@ fn main() {
     // headless cargo build via --manifest-path (UNC cwd is not allowed)
     let manifest = format!("{repo_win}\\Cargo.toml");
     let args = [
-        "build", "--locked", "--features", "devtools", "--bin", "rust-ui-gallery",
-        "--manifest-path", &manifest,
+        "build",
+        "--locked",
+        "--features",
+        "devtools",
+        "--bin",
+        "rust-ui-gallery",
+        "--manifest-path",
+        &manifest,
     ];
     let mut cmd = Command::new("cargo.exe");
     cmd.args(&args)

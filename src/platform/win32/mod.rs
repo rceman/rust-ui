@@ -4049,7 +4049,7 @@ fn semantic_uia_ct(
     }
 }
 
-fn os_appearance() -> Appearance {
+pub(crate) fn os_appearance() -> Appearance {
     use windows::Win32::System::Registry::*;
     use windows::Win32::UI::Accessibility::{HCF_HIGHCONTRASTON, HIGHCONTRASTW};
     use windows::Win32::UI::WindowsAndMessaging::{SPI_GETHIGHCONTRAST, SystemParametersInfoW};

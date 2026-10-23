@@ -845,6 +845,16 @@ where
             lpszClassName: w!("RustUiWindow"),
             style: CS_DBLCLKS,
             hCursor: LoadCursorW(None, IDC_ARROW).unwrap_or_default(),
+            // surface-matched class brush — the unfilled client shows the
+            // resolved surface until the first D2D frame lands instead of
+            // flashing OS-white (the user's launch-flash report)
+            hbrBackground: unsafe {
+                CreateSolidBrush(COLORREF(if super::os_appearance().dark {
+                    0x001B1818
+                } else {
+                    0x00FAFAFA
+                }))
+            },
             ..Default::default()
         };
         RegisterClassW(&wc);
