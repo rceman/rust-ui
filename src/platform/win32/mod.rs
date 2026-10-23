@@ -588,6 +588,12 @@ where
     /// modal sizing loop) so one frame's work runs per paint delivery,
     /// never per mouse-move step
     size_pending: std::cell::Cell<bool>,
+    /// sizing-session trace sink — RUI_RESIZE_TRACE=<path> enables a
+    /// generation log (SIZE/PAINT sequence vs client/target/laid sizes)
+    /// used to pin live-drag generation loss; None in normal runs
+    resize_trace_path: Option<std::path::PathBuf>,
+    /// WM_SIZE arrival ordinal during a sizing session — trace only
+    size_seq: std::cell::Cell<u64>,
     /// client DIP size the last relayout actually laid out — WM_PAINT
     /// re-verifies the live client against it so any resize whose
     /// WM_SIZE/coalesce path never reached a relayout still converges
@@ -685,6 +691,8 @@ where
             state_dirty: std::cell::Cell::new(0),
             size_pending: std::cell::Cell::new(false),
             laid_client: std::cell::Cell::new((0.0, 0.0)),
+            resize_trace_path: std::env::var_os("RUI_RESIZE_TRACE").map(std::path::PathBuf::from),
+            size_seq: std::cell::Cell::new(0),
             damage: std::cell::Cell::new(None),
             committed_ink: std::cell::RefCell::new(HashMap::new()),
             applied_palette: std::cell::RefCell::new(None),
@@ -1813,6 +1821,21 @@ where
     /// HWND-gated: a synchronous WM_SIZE inside CreateWindowExW arrives
     /// before the peer ctx has a window — layout defers to the first real
     /// turn rather than failing on a null HWND.
+    /// append one line to the sizing-session trace when RUI_RESIZE_TRACE
+    /// is set — append-open per line keeps the sink cheap at drag rates
+    pub(crate) fn resize_trace(&self, line: String) {
+        if let Some(p) = &self.resize_trace_path {
+            if let Ok(mut f) = std::fs::OpenOptions::new()
+                .append(true)
+                .create(true)
+                .open(p)
+            {
+                use std::io::Write;
+                let _ = writeln!(f, "{line}");
+            }
+        }
+    }
+
     pub(crate) fn relayout(&mut self) -> UiResult {
         let t = std::time::Instant::now();
         let r = self.relayout_inner();
@@ -3776,6 +3799,8 @@ where
         state_dirty: std::cell::Cell::new(0),
         size_pending: std::cell::Cell::new(false),
         laid_client: std::cell::Cell::new((0.0, 0.0)),
+        resize_trace_path: std::env::var_os("RUI_RESIZE_TRACE").map(std::path::PathBuf::from),
+        size_seq: std::cell::Cell::new(0),
         damage: std::cell::Cell::new(None),
         committed_ink: std::cell::RefCell::new(HashMap::new()),
         applied_palette: std::cell::RefCell::new(None),

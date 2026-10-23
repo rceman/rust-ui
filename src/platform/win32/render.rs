@@ -419,6 +419,18 @@ impl Renderer {
         self.shadow_cache.borrow_mut().clear();
     }
 
+    /// current framebuffer size in physical px — resize-generation probe
+    /// for the sizing-session trace
+    pub(crate) fn target_px(&self) -> (u32, u32) {
+        self.target
+            .as_ref()
+            .map(|t| {
+                let s = unsafe { t.GetPixelSize() };
+                (s.width, s.height)
+            })
+            .unwrap_or((0, 0))
+    }
+
     pub(crate) fn resize(&mut self) {
         let t0 = std::time::Instant::now();
         if self.hwnd.is_invalid() {

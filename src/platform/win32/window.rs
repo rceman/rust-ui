@@ -350,17 +350,49 @@ pub(crate) mod wndproc {
                     });
                     DefWindowProcW(hwnd, msg, wparam, lparam)
                 }
-                WM_PAINT => {
-                    // coalescible — the in-flight frame covers it. BUT a
-                    // deferred WM_SIZE may have armed size_pending + the
-                    // invalid region: validating here would discard the
-                    // pending resize work (no real WM_PAINT would ever
-                    // arrive to run the coalesced layout+paint). Leave
-                    // the region invalid so the delivery still comes.
-                    if !(*ptr).size_pending.get() {
-                        let _ = ValidateRect(Some(hwnd), None);
+                WM_ENTERSIZEMOVE | WM_EXITSIZEMOVE => {
+                    // sizing-session trace markers only — default behavior
+                    if (*ptr).resize_trace_path.is_some() {
+                        let tag = if msg == WM_ENTERSIZEMOVE {
+                            "ENTER"
+                        } else {
+                            "EXIT"
+                        };
+                        (*ptr).size_seq.set(0);
+                        (*ptr).resize_trace(format!("{tag}SIZEMOVE seq-reset"));
                     }
-                    LRESULT(0)
+                    DefWindowProcW(hwnd, msg, wparam, lparam)
+                }
+                WM_SIZE => {
+                    // CANNOT defer: the modal sizing loop nests inside our
+                    // WM_NCLBUTTONDOWN dispatch, so EVERY arrival during a
+                    // live border-drag is reentrant — a queued WM_SIZE only
+                    // drains after button release, leaving the grown client
+                    // painted with the pre-drag layout (the user's stale
+                    // narrow-content report). Payload is scalars and the
+                    // outer borrow is dormant inside DefWindowProcW's modal
+                    // loop — run the normal dispatch now by dropping the
+                    // guard and re-entering the trampoline (same juggling
+                    // drain_reentrant uses around each item).
+                    let outer = (*ptr).in_dispatch.replace(false);
+                    let r = trampoline::<S, M, U, V>(hwnd, msg, wparam, lparam);
+                    (*ptr).in_dispatch.set(outer);
+                    r
+                }
+                WM_PAINT => {
+                    if (*ptr).size_pending.get() {
+                        // a pending resize frame must run LIVE during the
+                        // sizing session — deferring paints stale geometry
+                        // into the grown target while the button is held
+                        let outer = (*ptr).in_dispatch.replace(false);
+                        let r = trampoline::<S, M, U, V>(hwnd, msg, wparam, lparam);
+                        (*ptr).in_dispatch.set(outer);
+                        r
+                    } else {
+                        // coalescible — the in-flight frame covers it
+                        let _ = ValidateRect(Some(hwnd), None);
+                        LRESULT(0)
+                    }
                 }
                 WM_DPICHANGED => {
                     // OWNED payload — the borrowed `const RECT*` is copied;
@@ -445,9 +477,36 @@ pub(crate) mod wndproc {
                 let stale = super::super::layout::client_dip(hwnd, be.peer_ctx.scale.get())
                     .map(|sz| sz != be.laid_client.get())
                     .unwrap_or(false);
-                if be.size_pending.replace(false) || stale {
+                let pending = be.size_pending.replace(false);
+                if pending || stale {
                     be.relayout()?;
                     be.uia_refresh()?;
+                }
+                if be.resize_trace_path.is_some() {
+                    let mut rc = RECT::default();
+                    unsafe {
+                        let _ = GetClientRect(hwnd, &mut rc);
+                    }
+                    let (tw, th) = be.renderer.borrow().target_px();
+                    let root = be.rt.root;
+                    let rr = be.rects.get(&root).copied().unwrap_or_default();
+                    let laid = be.laid_client.get();
+                    let edge = be
+                        .rects
+                        .values()
+                        .map(|r| r.x + r.width)
+                        .fold(0.0f32, f32::max);
+                    be.resize_trace(format!(
+                        "PAINT client={}x{} target={tw}x{th} pending={pending} stale={stale} relaid={} laid={}x{} root={}x{} edge={edge} epoch={}",
+                        rc.right - rc.left,
+                        rc.bottom - rc.top,
+                        pending || stale,
+                        laid.0,
+                        laid.1,
+                        rr.width,
+                        rr.height,
+                        be.paint_epoch.get(),
+                    ));
                 }
                 let layout_us = t.elapsed().as_micros() as u64;
                 let t = Instant::now();
@@ -561,6 +620,18 @@ pub(crate) mod wndproc {
                 be.wheel(msg, wparam.0, lparam.0)?;
                 LRESULT(0)
             }
+            WM_ENTERSIZEMOVE | WM_EXITSIZEMOVE => {
+                if be.resize_trace_path.is_some() {
+                    let tag = if msg == WM_ENTERSIZEMOVE {
+                        "ENTER"
+                    } else {
+                        "EXIT"
+                    };
+                    be.size_seq.set(0);
+                    be.resize_trace(format!("{tag}SIZEMOVE seq-reset"));
+                }
+                unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
+            }
             WM_SIZE => {
                 // the frame target tracks the client size — resize before
                 // layout so paint never draws into a stale surface. Layout+
@@ -569,6 +640,23 @@ pub(crate) mod wndproc {
                 // step was the measured stall.
                 let t0 = Instant::now();
                 let t = Instant::now();
+                if be.resize_trace_path.is_some() {
+                    let seq = be.size_seq.get() + 1;
+                    be.size_seq.set(seq);
+                    let mut rc = RECT::default();
+                    unsafe {
+                        let _ = GetClientRect(hwnd, &mut rc);
+                    }
+                    let (tw, th) = be.renderer.borrow().target_px();
+                    be.resize_trace(format!(
+                        "SIZE {seq} lparam={}x{} client={}x{} target={tw}x{th} pending={}->true",
+                        (lparam.0 & 0xffff) as u16 as i16,
+                        ((lparam.0 >> 16) & 0xffff) as u16 as i16,
+                        rc.right - rc.left,
+                        rc.bottom - rc.top,
+                        be.size_pending.get(),
+                    ));
+                }
                 be.renderer.borrow_mut().resize();
                 let resize_us = t.elapsed().as_micros() as u64;
                 be.size_pending.set(true);
