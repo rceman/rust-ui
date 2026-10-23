@@ -647,7 +647,8 @@ where
     popup_seq: u64,
     #[cfg(feature = "devtools")]
     devtools: Option<crate::devtools::client::Server>,
-    #[cfg(feature = "devtools")]
+    /// frame counter — monotonic per committed paint; kept unconditional so
+    /// the env-gated sizing-session trace compiles in every feature set
     paint_epoch: std::cell::Cell<u64>,
 }
 
@@ -669,7 +670,6 @@ where
         Ok(Backend {
             #[cfg(feature = "devtools")]
             devtools: None,
-            #[cfg(feature = "devtools")]
             paint_epoch: std::cell::Cell::new(0),
             rt,
             hwnd: HWND::default(),
@@ -3791,7 +3791,6 @@ where
     let mut backend = Box::new(Backend {
         #[cfg(feature = "devtools")]
         devtools: None,
-        #[cfg(feature = "devtools")]
         paint_epoch: std::cell::Cell::new(0),
         rt,
         hwnd: HWND::default(),

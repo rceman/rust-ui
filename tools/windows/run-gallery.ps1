@@ -56,6 +56,26 @@ function Invoke-Headless($file, $argline, $workdir) {
     return @{ code = $p.ExitCode; out = $outTask.Result; err = $errTask.Result }
 }
 
+# Start the Gallery without a console window. rust-ui-gallery.exe is a
+# console-subsystem binary and Start-Process under Windows PowerShell 5.1
+# uses ShellExecuteEx, which would open a persistent Terminal/conhost
+# window. CreateNoWindow + UseShellExecute=$false suppresses it.
+function Start-Gallery {
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $bin
+    $psi.WorkingDirectory = $targetDir
+    $psi.UseShellExecute = $false
+    $psi.CreateNoWindow = $true
+    [System.Diagnostics.Process]::Start($psi) | Out-Null
+}
+
+# Read the build stamp; a missing OR corrupt stamp simply means "build".
+function Read-Stamp {
+    if (-not (Test-Path $stamp)) { return $null }
+    try { return Get-Content $stamp -Raw | ConvertFrom-Json }
+    catch { return $null }
+}
+
 try {
     # Resolve /home/therceman/git/rust-ui -> \\wsl.localhost\<distro>\...
     $r = Invoke-Headless 'wsl.exe' "wslpath -w $repoWsl" $targetDir
@@ -68,13 +88,13 @@ try {
     $head  = (Invoke-Headless 'wsl.exe' "-e git -C $repoWsl rev-parse HEAD" $targetDir).out.Trim()
     $dirty = ((Invoke-Headless 'wsl.exe' "-e git -C $repoWsl status --porcelain" $targetDir).out.Trim() -ne '')
 
-    # fast path: stamp + clean worktree + HEAD match + binary present
-    if ((Test-Path $bin) -and (Test-Path $stamp)) {
-        $s = Get-Content $stamp -Raw | ConvertFrom-Json
-        if (-not $dirty -and $head -and $s.head -eq $head -and $s.profile -eq $profileId) {
-            Start-Process $bin -WorkingDirectory $targetDir
-            exit 0
-        }
+    # fast path: stamp + clean worktree + HEAD match + binary identity
+    if ((Test-Path $bin) -and ($s = Read-Stamp) -and $s.head -eq $head -and
+        $s.profile -eq $profileId -and -not $dirty -and $head -and
+        $s.bin_mtime -eq (Get-Item $bin).LastWriteTimeUtc.Ticks -and
+        $s.bin_size -eq (Get-Item $bin).Length) {
+        Start-Gallery
+        exit 0
     }
 
     # build -- headless cargo; UNC source is referenced via --manifest-path
@@ -87,16 +107,20 @@ try {
         throw "cargo build failed (exit $($r.code))`n`n$tail"
     }
 
-    # stamp only a clean-tree build -- a dirty worktree must always rebuild
+    # stamp only a clean-tree build -- a dirty worktree must always rebuild;
+    # the stamp pins the built binary's identity so an out-of-band exe
+    # replacement can't false-fast-path
     if (-not $dirty -and $head) {
-        @{ head = $head; profile = $profileId; built = [DateTime]::UtcNow.ToString('o') } |
+        $b = Get-Item $bin
+        @{ head = $head; profile = $profileId; bin_mtime = $b.LastWriteTimeUtc.Ticks;
+           bin_size = $b.Length; built = [DateTime]::UtcNow.ToString('o') } |
             ConvertTo-Json | Set-Content -Encoding ASCII $stamp
     } else {
         Remove-Item $stamp -Force -ErrorAction SilentlyContinue
     }
 
     if (-not (Test-Path $bin)) { throw "build succeeded but $bin is missing" }
-    Start-Process $bin -WorkingDirectory $targetDir
+    Start-Gallery
     exit 0
 } catch {
     Show-LaunchError $_.Exception.Message

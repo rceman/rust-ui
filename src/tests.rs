@@ -6464,7 +6464,6 @@ mod native_contract_tests {
         );
     }
 
-    /// F01 — drain-TIME arrival: the reproduced blocker. One ordinary
     /// Held title-bar move semantics: the modal move loop delivers every
     /// arrival reentrantly, so WM_MOVE must coalesce into a single pending
     /// flag (bounded memory, no per-pixel position history) and the
@@ -6530,6 +6529,7 @@ mod native_contract_tests {
         );
     }
 
+    /// F01 — drain-TIME arrival: the reproduced blocker. One ordinary
     /// queued item whose dispatch itself produces the reentrant
     /// WM_NCDESTROY arrival (closed + mailbox close + owned queue push —
     /// the same atomic leg the trampoline's `reentrant` performs) —
