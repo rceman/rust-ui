@@ -355,17 +355,39 @@ pub(crate) mod wndproc {
                     DefWindowProcW(hwnd, msg, wparam, lparam)
                 }
                 WM_ENTERSIZEMOVE | WM_EXITSIZEMOVE => {
-                    // sizing-session trace markers only — default behavior
+                    // modal sizing/move loop marker — arms the session flag
+                    // that keeps reentrant WM_PAINT live for the whole
+                    // gesture (a move can expose off-screen client pixels
+                    // with size unchanged), and runs session-end work once
+                    let enter = msg == WM_ENTERSIZEMOVE;
+                    (*ptr).sizing_session.set(enter);
                     if (*ptr).resize_trace_path.is_some() {
-                        let tag = if msg == WM_ENTERSIZEMOVE {
-                            "ENTER"
-                        } else {
-                            "EXIT"
-                        };
                         (*ptr).size_seq.set(0);
-                        (*ptr).resize_trace(format!("{tag}SIZEMOVE seq-reset"));
+                        (*ptr).resize_trace(format!(
+                            "{}SIZEMOVE session={enter}",
+                            if enter { "ENTER" } else { "EXIT" }
+                        ));
                     }
-                    DefWindowProcW(hwnd, msg, wparam, lparam)
+                    if !enter {
+                        // consume the coalesced move work through the
+                        // dispatch arm — its DefWindowProcW call doubles as
+                        // this message's default handling
+                        let outer = (*ptr).in_dispatch.replace(false);
+                        let r = trampoline::<S, M, U, V>(hwnd, msg, wparam, lparam);
+                        (*ptr).in_dispatch.set(outer);
+                        r
+                    } else {
+                        DefWindowProcW(hwnd, msg, wparam, lparam)
+                    }
+                }
+                WM_MOVE => {
+                    // bounded coalescing — during a held title-bar drag the
+                    // OS emits a move per pixel; the latest position is the
+                    // only one that matters for UIA screen bounds, so arm a
+                    // pending flag consumed once at session end instead of
+                    // queueing every intermediate position
+                    (*ptr).move_pending.set(true);
+                    LRESULT(0)
                 }
                 WM_SIZE => {
                     // CANNOT defer: the modal sizing loop nests inside our
@@ -406,7 +428,7 @@ pub(crate) mod wndproc {
                     let stale = super::super::layout::client_dip(hwnd, scale)
                         .map(|sz| sz != (*ptr).laid_client.get())
                         .unwrap_or(false);
-                    if (*ptr).size_pending.get() || stale {
+                    if (*ptr).size_pending.get() || stale || (*ptr).sizing_session.get() {
                         // run the frame now — deferring paints stale
                         // geometry into the grown target while held
                         let outer = (*ptr).in_dispatch.replace(false);
@@ -420,22 +442,16 @@ pub(crate) mod wndproc {
                     }
                 }
                 WM_DPICHANGED => {
-                    // OWNED payload — the borrowed `const RECT*` is copied;
-                    // reposting it would dereference a dead stack frame
-                    let rc = unsafe { *(lparam.0 as *const RECT) };
-                    let mut q = (*ptr).reentrant_queue.borrow_mut();
-                    if q.len() < REENTRANT_QUEUE_CAP {
-                        q.push_back(QueuedMsg {
-                            msg,
-                            wparam: wparam.0,
-                            lparam: 0,
-                            rect: Some(rc),
-                            arrival_focus: None,
-                        });
-                    } else {
-                        (*ptr).queue_overflowed.set(true);
-                    }
-                    LRESULT(0)
+                    // CANNOT defer: a held cross-monitor drag can cross a
+                    // DPI boundary mid-gesture — scale, target DPI, layout
+                    // and peers must converge while the button is held, not
+                    // after release. The lparam RECT is borrowed but valid
+                    // for this synchronous call; the dispatch arm reads it
+                    // immediately — safe to run live via the trampoline.
+                    let outer = (*ptr).in_dispatch.replace(false);
+                    let r = trampoline::<S, M, U, V>(hwnd, msg, wparam, lparam);
+                    (*ptr).in_dispatch.set(outer);
+                    r
                 }
                 m if deferrable_arrival(m) => {
                     // scalar/copyable payload + arrival-time focus snapshot
@@ -646,14 +662,19 @@ pub(crate) mod wndproc {
                 LRESULT(0)
             }
             WM_ENTERSIZEMOVE | WM_EXITSIZEMOVE => {
+                let enter = msg == WM_ENTERSIZEMOVE;
+                be.sizing_session.set(enter);
                 if be.resize_trace_path.is_some() {
-                    let tag = if msg == WM_ENTERSIZEMOVE {
-                        "ENTER"
-                    } else {
-                        "EXIT"
-                    };
                     be.size_seq.set(0);
-                    be.resize_trace(format!("{tag}SIZEMOVE seq-reset"));
+                    be.resize_trace(format!(
+                        "{}SIZEMOVE session={enter}",
+                        if enter { "ENTER" } else { "EXIT" }
+                    ));
+                }
+                if !enter && be.move_pending.replace(false) {
+                    // one converged UIA screen-bounds refresh for the whole
+                    // move gesture — never a replay of queued positions
+                    be.uia_refresh()?;
                 }
                 unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
             }

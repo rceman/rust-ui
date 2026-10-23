@@ -32,7 +32,9 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use windows::Win32::Foundation::*;
-use windows::Win32::Graphics::Dwm::{DWMWA_USE_IMMERSIVE_DARK_MODE, DwmSetWindowAttribute};
+use windows::Win32::Graphics::Dwm::{
+    DWMWA_USE_IMMERSIVE_DARK_MODE, DWMWINDOWATTRIBUTE, DwmSetWindowAttribute,
+};
 use windows::Win32::System::Threading::{
     CREATE_EVENT, CreateEventExW, EVENT_ALL_ACCESS, INFINITE, SetEvent,
 };
@@ -599,6 +601,15 @@ where
     /// WM_SIZE/coalesce path never reached a relayout still converges
     /// instead of leaving the retained tree at a stale width
     laid_client: std::cell::Cell<(f32, f32)>,
+    /// inside a WM_ENTERSIZEMOVE..WM_EXITSIZEMOVE modal loop (border-drag
+    /// OR title-bar move) — reentrant WM_PAINT must run live for the whole
+    /// session: a move can expose previously off-screen client pixels even
+    /// though size/layout are unchanged
+    sizing_session: std::cell::Cell<bool>,
+    /// coalesced WM_MOVE pending — during a held title-bar drag every move
+    /// is reentrant; the latest position wins, a single UIA refresh runs
+    /// at session end rather than replaying the full move history
+    move_pending: std::cell::Cell<bool>,
     /// replay-owner discriminator: `None` = live dispatch (resolve current
     /// focus); `Some(c)` = replaying — `c` is the captured arrival owner,
     /// `None` inside means EXPLICITLY no owner (never fall through)
@@ -693,6 +704,8 @@ where
             laid_client: std::cell::Cell::new((0.0, 0.0)),
             resize_trace_path: std::env::var_os("RUI_RESIZE_TRACE").map(std::path::PathBuf::from),
             size_seq: std::cell::Cell::new(0),
+            sizing_session: std::cell::Cell::new(false),
+            move_pending: std::cell::Cell::new(false),
             damage: std::cell::Cell::new(None),
             committed_ink: std::cell::RefCell::new(HashMap::new()),
             applied_palette: std::cell::RefCell::new(None),
@@ -893,6 +906,18 @@ where
                 DWMWA_USE_IMMERSIVE_DARK_MODE,
                 &val as *const _ as *const c_void,
                 std::mem::size_of::<BOOL>() as u32,
+            );
+            // the ~7px DWM-owned resize frame edge reads as a black strip
+            // around left/right/bottom — synchronize it with the resolved
+            // window surface (Shadcn zinc dark 0x18181B / light 0xFAFAFA,
+            // COLORREF is 0x00BBGGRR). Older Windows ignores the attribute.
+            const DWMWA_BORDER_COLOR: DWMWINDOWATTRIBUTE = DWMWINDOWATTRIBUTE(34);
+            let border: u32 = if dark { 0x001B1818 } else { 0x00FAFAFA };
+            let _ = DwmSetWindowAttribute(
+                self.hwnd,
+                DWMWA_BORDER_COLOR,
+                &border as *const _ as *const c_void,
+                std::mem::size_of::<u32>() as u32,
             );
         }
         self.dark_caption.set(Some(dark));
@@ -3801,6 +3826,8 @@ where
         laid_client: std::cell::Cell::new((0.0, 0.0)),
         resize_trace_path: std::env::var_os("RUI_RESIZE_TRACE").map(std::path::PathBuf::from),
         size_seq: std::cell::Cell::new(0),
+        sizing_session: std::cell::Cell::new(false),
+        move_pending: std::cell::Cell::new(false),
         damage: std::cell::Cell::new(None),
         committed_ink: std::cell::RefCell::new(HashMap::new()),
         applied_palette: std::cell::RefCell::new(None),

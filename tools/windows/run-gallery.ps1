@@ -1,22 +1,26 @@
 # run-gallery.ps1 -- one-click native Gallery launcher.
-# Builds the current rust-ui-gallery from the AUTHORITATIVE WSL checkout
-# (/home/therceman/git/rust-ui) via the native Windows cargo toolchain and
-# launches the resulting exe.
 #
-# The authoritative Linux path is resolved to its Windows-accessible UNC at
-# runtime via `wsl.exe wslpath` -- no distro name is hard-coded.
+# Launches W:\devin_folder\rust-ui-gallery-target\debug\rust-ui-gallery.exe
+# built from the AUTHORITATIVE WSL checkout /home/therceman/git/rust-ui.
 #
-# UX contract:
-#   success -> hidden PowerShell exits, Gallery opens (no terminal left)
-#   failure -> visible native message box with the cargo error tail;
-#              nothing launches, no invisible keyboard wait
+# Fast path: when a build stamp in the target dir proves the current
+# binary already matches HEAD on a clean worktree, the Gallery launches
+# immediately -- no cargo invocation.
+#
+# Otherwise cargo builds HEADLESSLY (CreateNoWindow + redirected output)
+# so no terminal/conhost window ever appears. A failed build shows a
+# visible message box with the cargo error tail; nothing launches.
+#
+# The Linux path resolves via `wsl.exe wslpath` -- no distro name assumed.
 #
 # Desktop shortcut target:
 #   powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "<resolved repo UNC>\tools\windows\run-gallery.ps1"
 $ErrorActionPreference = 'Stop'
-$repoWsl   = '/home/therceman/git/rust-ui'          # authoritative source
+$repoWsl   = '/home/therceman/git/rust-ui'
 $targetDir = 'W:\devin_folder\rust-ui-gallery-target'
 $bin       = "$targetDir\debug\rust-ui-gallery.exe"
+$stamp     = "$targetDir\.rust-ui-gallery-build.json"
+$profileId = 'debug-devtools'
 
 function Show-LaunchError($msg) {
     try {
@@ -27,42 +31,74 @@ function Show-LaunchError($msg) {
             [System.Windows.Forms.MessageBoxButtons]::OK,
             [System.Windows.Forms.MessageBoxIcon]::Error) | Out-Null
     } catch {
-        # MessageBox unavailable (headless) -- last-resort console output.
         Write-Host $msg -ForegroundColor Red
     }
 }
 
+# Run a console child with NO window: detached console creation plus
+# redirected output. This is what keeps cargo/wsl children from surfacing
+# a Windows Terminal or conhost window under the hidden launcher.
+function Invoke-Headless($file, $argline, $workdir) {
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $file
+    $psi.Arguments = $argline
+    $psi.WorkingDirectory = $workdir
+    $psi.UseShellExecute = $false
+    $psi.CreateNoWindow = $true
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $p = [System.Diagnostics.Process]::Start($psi)
+    # async reads on BOTH streams — sequential ReadToEnd deadlocks when the
+    # child fills one pipe buffer while we wait on the other
+    $outTask = $p.StandardOutput.ReadToEndAsync()
+    $errTask = $p.StandardError.ReadToEndAsync()
+    $p.WaitForExit()
+    return @{ code = $p.ExitCode; out = $outTask.Result; err = $errTask.Result }
+}
+
 try {
-    # Resolve /home/therceman/git/rust-ui -> \\wsl.localhost\<distro>\... at
-    # runtime via the WSL tooling itself; no distro name is assumed.
-    $repoWin = (& wsl.exe wslpath -w $repoWsl 2>$null | Select-Object -First 1)
-    if ($repoWin) { $repoWin = $repoWin.Trim() }
+    # Resolve /home/therceman/git/rust-ui -> \\wsl.localhost\<distro>\...
+    $r = Invoke-Headless 'wsl.exe' "wslpath -w $repoWsl" $targetDir
+    $repoWin = ($r.out -split "`n" | Select-Object -First 1).Trim()
     if (-not $repoWin -or -not (Test-Path (Join-Path $repoWin 'Cargo.toml'))) {
         throw "authoritative repo not reachable - 'wsl wslpath -w $repoWsl' returned '$repoWin'"
     }
 
-    $env:CARGO_TARGET_DIR = $targetDir
-    $env:CARGO_INCREMENTAL = '0'
-    Push-Location $repoWin
-    # cargo writes progress to stderr; under 'Stop' that throws before the
-    # exit-code check -- capture with Continue and gate on $LASTEXITCODE.
-    $prev = $ErrorActionPreference
-    $ErrorActionPreference = 'Continue'
-    $out = & cargo.exe build --locked --features devtools --bin rust-ui-gallery 2>&1
-    $code = $LASTEXITCODE
-    $ErrorActionPreference = $prev
-    Pop-Location
-    if ($code -ne 0) {
-        $tail = ($out | Select-Object -Last 12) -join "`n"
-        throw "cargo build failed (exit $code)`n`n$tail"
-    }
-    if (-not (Test-Path $bin)) { throw "build succeeded but $bin missing" }
+    # worktree identity for the fast-path decision
+    $head  = (Invoke-Headless 'wsl.exe' "-e git -C $repoWsl rev-parse HEAD" $targetDir).out.Trim()
+    $dirty = ((Invoke-Headless 'wsl.exe' "-e git -C $repoWsl status --porcelain" $targetDir).out.Trim() -ne '')
 
-    # Start-Process rejects UNC working directories -- use the local
-    # target dir as the process cwd instead.
+    # fast path: stamp + clean worktree + HEAD match + binary present
+    if ((Test-Path $bin) -and (Test-Path $stamp)) {
+        $s = Get-Content $stamp -Raw | ConvertFrom-Json
+        if (-not $dirty -and $head -and $s.head -eq $head -and $s.profile -eq $profileId) {
+            Start-Process $bin -WorkingDirectory $targetDir
+            exit 0
+        }
+    }
+
+    # build -- headless cargo; UNC source is referenced via --manifest-path
+    # because Windows process APIs reject UNC working directories.
+    # CARGO_TARGET_DIR is inherited by the child environment.
+    $env:CARGO_TARGET_DIR = $targetDir
+    $r = Invoke-Headless 'cargo.exe' "build --locked --features devtools --bin rust-ui-gallery --manifest-path `"$repoWin\Cargo.toml`"" $targetDir
+    if ($r.code -ne 0) {
+        $tail = (($r.out + "`n" + $r.err) -split "`n" | Select-Object -Last 12) -join "`n"
+        throw "cargo build failed (exit $($r.code))`n`n$tail"
+    }
+
+    # stamp only a clean-tree build -- a dirty worktree must always rebuild
+    if (-not $dirty -and $head) {
+        @{ head = $head; profile = $profileId; built = [DateTime]::UtcNow.ToString('o') } |
+            ConvertTo-Json | Set-Content -Encoding ASCII $stamp
+    } else {
+        Remove-Item $stamp -Force -ErrorAction SilentlyContinue
+    }
+
+    if (-not (Test-Path $bin)) { throw "build succeeded but $bin is missing" }
     Start-Process $bin -WorkingDirectory $targetDir
     exit 0
 } catch {
-    Show-LaunchError "rust-ui Gallery could not start.`n`n$_"
+    Show-LaunchError $_.Exception.Message
     exit 1
 }
