@@ -78,7 +78,4 @@ fn handles(pid: u32) -> u32 {
         count
     }
 }
-#[test]
-fn native_agent_workflow_and_bounded_repetition() {
-    include!("devctl_windows/workflow.rs");
-}
+include!("devctl_windows/workflow.rs");

@@ -221,9 +221,6 @@ impl Drop for Server {
         }
     }
 }
-#[path = "devctl_capture.rs"]
-mod capture;
-pub use capture::{CaptureRuntime, capture_client};
 
 #[cfg(test)]
 mod tests {

@@ -520,3 +520,7 @@ pub fn shutdown(s: &Session, file: &Path) -> Result<Value> {
     std::fs::remove_file(file).map_err(err)?;
     Ok(reply)
 }
+
+#[path = "devctl_capture.rs"]
+pub(crate) mod capture;
+pub use capture::{CaptureRuntime, capture_client};

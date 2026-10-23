@@ -77,3 +77,18 @@ Correct hand-crafted strategy: cohesive item-group boundaries keeping each `impl
 
 Evidence: benchmark/results/pre-p12-structural-refactor/{baseline-head.txt,final-head.txt,token-after.txt,REPORT.md}
 STATUS: STRUCTURAL_REFACTOR_CANDIDATE — 15/19 files decomposed green; 4 remainders documented for hand-crafted decomposition. Independent Argon review required.
+
+## FINAL — ALL 19 god-files decomposed (token gate GREEN, 0 files >=5000 tok)
+
+Winning decomposition topology: `mod X` + `include!`-ed item sequences at item position → `crate::X::*` stays flat (no `use super::*` cascade, no `pub use` chain). `#[implement]` COM items splice fine. For `#[path]`-mounted modules: `crate::devtools::client`/`server` `#[path]` siblings with absolute `crate::devtools::client::*` import.
+
+- style.rs→mod+include!(patches,action,recipes1/2/3,validate)
+- ui.rs→mod+include!(types_a/b/c,impl_a/b/c,builders/b2/b3,groups/groups2,input)
+- text.rs→mod+include!(host,com,hostbox,peer_a/b/c)
+- uia.rs→mod+include!(site,fragments,editor,fenced,provider,root,uia_root)
+- devctl_client.rs→client+server `#[path]` siblings
+- runtime.rs→mod+impl_a/b/c/d child impl blocks
+
+Gates: `cargo fmt --check`✓ `cargo check --examples`✓ `cargo test --lib`→123/123✓ `cargo.exe test --lib`→195/195✓ `cargo.exe test --test devctl_windows`→1/1✓ `tools/check-file-tokens.sh`→0 violations✓
+
+STATUS: STRUCTURAL_REFACTOR_CANDIDATE_READY_FOR_ARGON_REVIEW

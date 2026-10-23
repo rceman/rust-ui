@@ -1,3 +1,5 @@
+#[test]
+fn native_agent_workflow_and_bounded_repetition() {
     let root = std::env::temp_dir().join(format!(
         "rust-ui-devctl-proof-{}",
         d::client::nonce().unwrap()
@@ -481,8 +483,5 @@
         }
     }
     std::fs::remove_dir_all(root).unwrap();
-}
 
-/// Interactive-resize regression (P9): every delivered size must converge
-/// the retained layout — the root rect and the deepest content edge must
-/// track the client, never latch an earlier narrow width.
+}

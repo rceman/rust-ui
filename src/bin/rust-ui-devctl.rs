@@ -415,7 +415,7 @@ fn main() {
         Ok(None)
     };
     #[cfg(windows)]
-    let outcome = match &_capture_runtime {
+    let outcome: Result<Value> = match &_capture_runtime {
         Ok(_) => run(),
         Err(e) => Err(e.clone()),
     };
