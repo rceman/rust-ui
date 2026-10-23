@@ -51,3 +51,14 @@ The mechanical method/item-level `impl`/item split succeeded for 13+ files (test
 
 Evidence: baseline-head.txt, final-head.txt, token-after.txt, REPORT.md.
 STATUS: STRUCTURAL_REFACTOR_CANDIDATE — 13/19 files decomposed green; 6 remainders documented for hand-crafted decomposition. Argon review required.
+
+## Final status — 15 commits pushed (5f75cb3..c6dc1ad)
+
+R6 remainders resolved: devctl_client.rs (client/server #[path] split), runtime.rs (mod + impl_a/b/c/d child impl blocks). Still over ceiling: ui.rs(36411), style.rs(22587), text.rs(19029), uia.rs(16862).
+
+Correct hand-crafted strategy for the 4 remainders (documented):
+- ui.rs: `impl Ui` (~1400L) + builders + containers — needs cohesive item-group boundaries, `impl Ui` split at method-group boundaries with `where` clause + explicit `use super::{specific}` for cross-impl private methods + `pub(crate)` on shared helpers only.
+- style.rs: data types + recipe fns — needs `pub(super)` on private helpers + explicit per-child `use` for cross-child type refs (not `use super::*` which creates circular `crate::style::*` chains).
+- text.rs/uia.rs: COM `#[implement]` macro binds `_Impl` types to module — must stay with generated impl types; split at complete `#[implement]`-block boundaries or single-file policy exceptions.
+
+Evidence: benchmark/results/pre-p12-structural-refactor/{baseline-head.txt,final-head.txt,token-after.txt,REPORT.md}
