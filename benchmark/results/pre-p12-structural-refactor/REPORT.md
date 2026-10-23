@@ -42,3 +42,12 @@ BASED_ON: 3344c0cf53800ca8935f6fc4c0a68ccf37be46f4 | ARGON_PLAN: 7922116deb12b31
 
 STATUS: STRUCTURAL_REFACTOR_CANDIDATE — partial completion; 6 remainders documented for hand-crafted decomposition. Independent Argon review required before main.
 NEXT_OWNER: Argon (review) + Devin (R6 remainder decomposition + final equivalence).
+
+## R6 remainders — final status
+The mechanical method/item-level `impl`/item split succeeded for 13+ files (tests, win32 mod/window/layout/devtools, render, node, tasks, devtools, gallery, probe, devctl_windows, layout, render/mod, parts) but fails on the 6 densest files:
+- src/ui.rs 36411, src/style.rs 22587, src/platform/win32/text.rs 19029, src/platform/win32/uia.rs 16862, src/runtime.rs 14351, src/platform/win32/devctl_client.rs 7273 tokens.
+- Failure mode: `use super::*`/`use super::sibling::*` propagation gaps + `pub(crate)` trait methods (E0449) + `Rc`/`Weak`/`RefCell` inference (E0282/E0614) + `#[implement]` COM `_Impl` binding + dense sibling-type cross-references. 5 attempts on style.rs each produced 200-300 error cascades.
+- Correct next strategy (hand-crafted): split at cohesive item-group boundaries keeping each `impl` block WHOLE with its `where` clause; explicit per-child `use` sets matching actual references (not regex-generated); COM `#[implement]` items stay with their generated `_Impl` types (text/uia → single-file policy exceptions or complete-impl-block splits only).
+
+Evidence: baseline-head.txt, final-head.txt, token-after.txt, REPORT.md.
+STATUS: STRUCTURAL_REFACTOR_CANDIDATE — 13/19 files decomposed green; 6 remainders documented for hand-crafted decomposition. Argon review required.
