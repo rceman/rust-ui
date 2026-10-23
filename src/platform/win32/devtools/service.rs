@@ -34,8 +34,8 @@ where
             };
             let allowed = {
                 let mut permit = e.admission.lock().unwrap();
-                if *permit == d::client::Admission::Ready {
-                    *permit = d::client::Admission::Executing;
+                if *permit == d::server::Admission::Ready {
+                    *permit = d::server::Admission::Executing;
                     true
                 } else {
                     false

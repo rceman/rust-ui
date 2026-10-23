@@ -416,7 +416,7 @@ where
     /// next popup open sequence — books restore deepest-layer-first
     popup_seq: u64,
     #[cfg(feature = "devtools")]
-    devtools: Option<crate::devtools::client::Server>,
+    devtools: Option<crate::devtools::server::Server>,
     /// frame counter — monotonic per committed paint; kept unconditional so
     /// the env-gated sizing-session trace compiles in every feature set
     paint_epoch: std::cell::Cell<u64>,

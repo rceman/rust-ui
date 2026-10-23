@@ -295,7 +295,7 @@ where
 
     #[cfg(feature = "devtools")]
     {
-        backend.devtools = match crate::devtools::client::Server::start(
+        backend.devtools = match crate::devtools::server::Server::start(
             backend.rt.mailbox.clone(),
             backend.hwnd.0 as usize,
         ) {

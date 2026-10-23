@@ -121,6 +121,10 @@ pub use model::*;
 #[path = "../platform/win32/devctl_client.rs"]
 pub mod client;
 
+#[cfg(windows)]
+#[path = "../platform/win32/devctl_server.rs"]
+pub(crate) mod server;
+
 #[cfg(test)]
 mod tests {
     include!("tests_1.rs");
