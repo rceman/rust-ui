@@ -1,0 +1,13 @@
+--- limit 5000 tok/file (tokens=bytes/4) ---
+FAIL   36411 tok  ./src/ui.rs
+FAIL   22587 tok  ./src/style.rs
+FAIL   19029 tok  ./src/platform/win32/text.rs
+FAIL   16862 tok  ./src/platform/win32/uia.rs
+FAIL   14351 tok  ./src/runtime.rs
+FAIL    7273 tok  ./src/platform/win32/devctl_client.rs
+
+6 R6 remainders — dense impl/COM-bound files requiring hand-crafted
+selective-import decomposition at cohesive item-group boundaries
+(mechanical method/item-level split produces 60-300 error cascades
+from  propagation gaps,  trait methods,
+Rc/Weak inference, and  COM macro coupling).
