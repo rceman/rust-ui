@@ -879,7 +879,8 @@ where
             Some(route as *const std::ffi::c_void),
         )
         .map_err(|e| crate::UiError::Platform(format!("CreateWindowExW: {e}")))?;
-        let _ = ShowWindow(hwnd, SW_SHOW);
+        // stays hidden — run() shows it only AFTER the first guarded_turn
+        // painted the themed frame, so no OS-white client ever flashes
         Ok(hwnd)
     }
 }

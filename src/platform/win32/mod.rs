@@ -3931,6 +3931,15 @@ where
     if let Err(e) = backend.guarded_turn() {
         return bail(&mut backend, e);
     }
+    // reveal only now — the first themed frame is already presented, so
+    // the window appears fully painted (never the unthemed OS-white
+    // flash a create-time ShowWindow produced)
+    unsafe {
+        let _ = windows::Win32::UI::WindowsAndMessaging::ShowWindow(
+            hwnd,
+            windows::Win32::UI::WindowsAndMessaging::SW_SHOW,
+        );
+    }
 
     #[cfg(feature = "devtools")]
     {
