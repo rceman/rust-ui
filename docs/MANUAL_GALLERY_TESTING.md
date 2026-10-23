@@ -2,7 +2,10 @@
 
 The native Shadcn Gallery launches via a one-click Windows Desktop shortcut:
 
-- **Shortcut:** `rust-ui Gallery.lnk` on the user's Desktop.
+- **Shortcut:** `rust-ui Gallery.lnk` on the user's Desktop — targets
+  `wscript.exe tools\windows\run-gallery.vbs`, a GUI-subsystem wrapper so
+  NO console window is ever created (powershell.exe -WindowStyle Hidden
+  still flashes a console before hiding — the VBS removes that flash).
 - **Source:** authoritative WSL checkout `/home/therceman/git/rust-ui`,
   resolved at launch time via `wsl.exe wslpath -w` — the launcher does not
   hard-code a distro name; never the abandoned `W:\devin_folder\rust-ui` tree.
@@ -29,8 +32,8 @@ The native Shadcn Gallery launches via a one-click Windows Desktop shortcut:
   $repo = (& wsl.exe wslpath -w /home/therceman/git/rust-ui).Trim()
   $ws = New-Object -ComObject WScript.Shell
   $l = $ws.CreateShortcut("$([Environment]::GetFolderPath('Desktop'))\rust-ui Gallery.lnk")
-  $l.TargetPath = 'powershell.exe'
-  $l.Arguments = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$repo\tools\windows\run-gallery.ps1`""
+  $l.TargetPath = 'wscript.exe'
+  $l.Arguments = "`"$repo\tools\windows\run-gallery.vbs`""
   $l.Save()
   ```
 
