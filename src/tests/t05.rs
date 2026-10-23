@@ -356,6 +356,7 @@ fn callback_destructor_runs_outside_the_state_lock() {
     impl Drop for ReentryGuard {
         fn drop(&mut self) {
             if let Some(mb) = self.mb.upgrade() {
+                let mb: std::sync::Arc<crate::tasks::Mailbox> = mb;
                 let held = mb.state_try_locked();
                 // assert BEFORE reentry — a regression must fail here,
                 // not hang on a lock it would itself hold
