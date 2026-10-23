@@ -6206,7 +6206,9 @@ mod native_contract_tests {
     use crate::platform::win32::window::{
         NATIVE_TIMER_BASE, NATIVE_TIMER_CAP, QueuedMsg, REENTRANT_DRAIN_MAX, REENTRANT_QUEUE_CAP,
         deferrable_arrival, drain_queue, focus_targeted, is_teardown, next_drain_item,
+        wndproc::{dispatch_owned, reentrant},
     };
+    use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
     use windows::Win32::UI::WindowsAndMessaging::*;
 
     /// Only scalar/copyable payloads may be deferred — a borrowed-pointer
@@ -6463,6 +6465,71 @@ mod native_contract_tests {
     }
 
     /// F01 — drain-TIME arrival: the reproduced blocker. One ordinary
+    /// Held title-bar move semantics: the modal move loop delivers every
+    /// arrival reentrantly, so WM_MOVE must coalesce into a single pending
+    /// flag (bounded memory, no per-pixel position history) and the
+    /// session markers must arm/clear `sizing_session` — the flag that
+    /// keeps reentrant WM_PAINT dispatched live while the button is held.
+    #[test]
+    fn held_move_session_coalesces_and_arms() {
+        struct S {
+            v: TextValue,
+        }
+        let s = S {
+            v: TextValue::new("x"),
+        };
+        let mut rig = Rig::new(
+            s,
+            |_: &mut S, _: Msg, _: &mut UpdateCtx<Msg>| {},
+            |s: &S, ui: &mut Ui<Msg>| {
+                ui.text_input(&s.v).on_edit(Msg::Edited);
+            },
+        );
+        rig.view().unwrap();
+        let Rig { rt, .. } = rig;
+        let mut be = crate::platform::win32::Backend::for_test(
+            rt,
+            crate::platform::win32::PeerCtx::for_test().unwrap(),
+        )
+        .unwrap();
+        let ptr: *mut _ = &mut be;
+        let h = HWND::default();
+        unsafe {
+            reentrant(h, WM_ENTERSIZEMOVE, WPARAM(0), LPARAM(0), ptr);
+        }
+        assert!(be.sizing_session.get(), "ENTER must arm the session");
+        // hundreds of reentrant moves during a held drag collapse into
+        // one pending flag — the queue must not grow at all
+        for _ in 0..256 {
+            unsafe { reentrant(h, WM_MOVE, WPARAM(0), LPARAM(0), ptr) };
+        }
+        assert!(be.move_pending.get(), "moves must coalesce to pending");
+        assert_eq!(
+            be.reentrant_queue.borrow().len(),
+            0,
+            "reentrant WM_MOVE must never enqueue a position history"
+        );
+        // the real EXIT consume path runs through dispatch (the reentrant
+        // arm re-enters it via the trampoline) — exercise the same arm
+        dispatch_owned(
+            h,
+            QueuedMsg {
+                msg: WM_EXITSIZEMOVE,
+                wparam: 0,
+                lparam: 0,
+                rect: None,
+                arrival_focus: None,
+            },
+            &mut be,
+        )
+        .unwrap();
+        assert!(!be.sizing_session.get(), "EXIT must clear the session");
+        assert!(
+            !be.move_pending.get(),
+            "EXIT must consume the coalesced move exactly once"
+        );
+    }
+
     /// queued item whose dispatch itself produces the reentrant
     /// WM_NCDESTROY arrival (closed + mailbox close + owned queue push —
     /// the same atomic leg the trampoline's `reentrant` performs) —

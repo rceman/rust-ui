@@ -605,11 +605,11 @@ where
     /// OR title-bar move) — reentrant WM_PAINT must run live for the whole
     /// session: a move can expose previously off-screen client pixels even
     /// though size/layout are unchanged
-    sizing_session: std::cell::Cell<bool>,
+    pub(crate) sizing_session: std::cell::Cell<bool>,
     /// coalesced WM_MOVE pending — during a held title-bar drag every move
     /// is reentrant; the latest position wins, a single UIA refresh runs
     /// at session end rather than replaying the full move history
-    move_pending: std::cell::Cell<bool>,
+    pub(crate) move_pending: std::cell::Cell<bool>,
     /// replay-owner discriminator: `None` = live dispatch (resolve current
     /// focus); `Some(c)` = replaying — `c` is the captured arrival owner,
     /// `None` inside means EXPLICITLY no owner (never fall through)

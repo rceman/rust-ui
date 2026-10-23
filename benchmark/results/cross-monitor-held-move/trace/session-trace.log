@@ -1,0 +1,31 @@
+SIZE 1 lparam=964x1561 client=964x1561 target=0x0 pending=false->true
+PAINT client=964x1561 target=964x1561 pending=true stale=false relaid=true laid=964x1561 root=0x0 edge=948 epoch=1
+SIZE 1 lparam=964x1561 client=964x1561 target=0x0 pending=false->true
+PAINT client=964x1561 target=964x1561 pending=true stale=false relaid=true laid=964x1561 root=0x0 edge=948 epoch=2
+ENTERSIZEMOVE session=true
+SIZE 1 lparam=1207x1953 client=1207x1953 target=964x1561 pending=false->true
+PAINT client=1207x1953 target=1207x1953 pending=false stale=false relaid=false laid=965.6x1562.4 root=0x0 edge=949.6 epoch=4
+PAINT client=1207x1953 target=1207x1953 pending=false stale=false relaid=false laid=965.6x1562.4 root=0x0 edge=949.6 epoch=5
+PAINT client=1207x1953 target=1207x1953 pending=false stale=false relaid=false laid=965.6x1562.4 root=0x0 edge=949.6 epoch=6
+PAINT client=1207x1953 target=1207x1953 pending=false stale=false relaid=false laid=965.6x1562.4 root=0x0 edge=949.6 epoch=7
+PAINT client=1207x1953 target=1207x1953 pending=false stale=false relaid=false laid=965.6x1562.4 root=0x0 edge=949.6 epoch=8
+PAINT client=1207x1953 target=1207x1953 pending=false stale=false relaid=false laid=965.6x1562.4 root=0x0 edge=949.6 epoch=9
+PAINT client=1207x1953 target=1207x1953 pending=false stale=false relaid=false laid=965.6x1562.4 root=0x0 edge=949.6 epoch=10
+PAINT client=1207x1953 target=1207x1953 pending=false stale=false relaid=false laid=965.6x1562.4 root=0x0 edge=949.6 epoch=11
+PAINT client=1207x1953 target=1207x1953 pending=false stale=false relaid=false laid=965.6x1562.4 root=0x0 edge=949.6 epoch=12
+PAINT client=1207x1953 target=1207x1953 pending=false stale=false relaid=false laid=965.6x1562.4 root=0x0 edge=949.6 epoch=13
+PAINT client=1207x1953 target=1207x1953 pending=false stale=false relaid=false laid=965.6x1562.4 root=0x0 edge=949.6 epoch=14
+PAINT client=1207x1953 target=1207x1953 pending=false stale=false relaid=false laid=965.6x1562.4 root=0x0 edge=949.6 epoch=15
+PAINT client=1207x1953 target=1207x1953 pending=false stale=false relaid=false laid=965.6x1562.4 root=0x0 edge=949.6 epoch=16
+PAINT client=1207x1953 target=1207x1953 pending=false stale=false relaid=false laid=965.6x1562.4 root=0x0 edge=949.6 epoch=17
+PAINT client=1207x1953 target=1207x1953 pending=false stale=false relaid=false laid=965.6x1562.4 root=0x0 edge=949.6 epoch=18
+PAINT client=1207x1953 target=1207x1953 pending=false stale=false relaid=false laid=965.6x1562.4 root=0x0 edge=949.6 epoch=19
+PAINT client=1207x1953 target=1207x1953 pending=false stale=false relaid=false laid=965.6x1562.4 root=0x0 edge=949.6 epoch=20
+PAINT client=1207x1953 target=1207x1953 pending=false stale=false relaid=false laid=965.6x1562.4 root=0x0 edge=949.6 epoch=21
+PAINT client=1207x1953 target=1207x1953 pending=false stale=false relaid=false laid=965.6x1562.4 root=0x0 edge=949.6 epoch=22
+PAINT client=1207x1953 target=1207x1953 pending=false stale=false relaid=false laid=965.6x1562.4 root=0x0 edge=949.6 epoch=23
+PAINT client=1207x1953 target=1207x1953 pending=false stale=false relaid=false laid=965.6x1562.4 root=0x0 edge=949.6 epoch=24
+EXITSIZEMOVE session=false
+EXITSIZEMOVE session=false
+SIZE 1 lparam=0x0 client=0x0 target=1207x1953 pending=false->true
+PAINT client=0x0 target=1x1 pending=true stale=true relaid=true laid=0x0 root=0x0 edge=700 epoch=37

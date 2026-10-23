@@ -321,7 +321,7 @@ pub(crate) mod wndproc {
     ///   re-posted to the same queue — Win32 posted messages stay FIFO, so
     ///   the re-delivery runs after the in-flight call unwinds without
     ///   reordering ahead of unrelated queued input.
-    unsafe fn reentrant<S, M, U, V>(
+    pub(crate) unsafe fn reentrant<S, M, U, V>(
         hwnd: HWND,
         msg: u32,
         wparam: WPARAM,

@@ -1,0 +1,7 @@
+{
+  "monitors": [
+    {"name": "\\\\.\\DISPLAY1", "primary": true,  "bounds_px": {"x": 0, "y": 0, "w": 3072, "h": 1728}, "work_px": {"x": 0, "y": 0, "w": 3072, "h": 1680}, "dpi_scale": 1.25},
+    {"name": "\\\\.\\DISPLAY2", "primary": false, "bounds_px": {"x": -1440, "y": 0, "w": 1440, "h": 2560}, "work_px": {"x": -1440, "y": 0, "w": 1440, "h": 2512}, "dpi_scale": 1.0}
+  ],
+  "note": "DISPLAY1 is primary landscape at 125% scaling; DISPLAY2 is left portrait at 100%. The held move crossing carried a REAL live DPI transition (WM_DPICHANGED mid-drag, client 964->1207 px, laid 965.6 DIP stable)."
+}

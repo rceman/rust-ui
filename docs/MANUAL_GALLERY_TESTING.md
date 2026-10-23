@@ -6,12 +6,18 @@ The native Shadcn Gallery launches via a one-click Windows Desktop shortcut:
 - **Source:** authoritative WSL checkout `/home/therceman/git/rust-ui`,
   resolved at launch time via `wsl.exe wslpath -w` — the launcher does not
   hard-code a distro name; never the abandoned `W:\devin_folder\rust-ui` tree.
-- **Launcher:** `tools/windows/run-gallery.ps1` (committed). It runs the
-  native Windows Cargo toolchain (`cargo.exe build --locked --features
-  devtools --bin rust-ui-gallery`) into `W:\devin_folder\rust-ui-gallery-target`
-  and starts `debug\rust-ui-gallery.exe`.
-- **Success path:** hidden PowerShell builds (incremental — fast if nothing
-  changed) and exits; the Gallery window opens, no terminal is left behind.
+- **Launcher:** `tools/windows/run-gallery.ps1` (committed). On a clean
+  unchanged repo it launches the already-built
+  `W:\devin_folder\rust-ui-gallery-target\debug\rust-ui-gallery.exe`
+  **immediately** (a build stamp records HEAD + profile — clean worktree +
+  matching HEAD + binary present → no cargo run). A dirty worktree or a
+  HEAD change triggers a **headless** cargo build (`--locked --features
+  devtools --bin rust-ui-gallery --manifest-path <resolved UNC>`) via
+  `ProcessStartInfo` with `CreateNoWindow` — no terminal/conhost window on
+  any path.
+- **Success path:** hidden PowerShell exits; the Gallery window opens in
+  ~1–2s on the fast path, a few seconds on a rebuild; no terminal is left
+  behind.
 - **Failure path:** a visible native message box shows the cargo error tail;
   the Gallery is not launched and no invisible process waits for input.
 - **Manual run (no shortcut):**
