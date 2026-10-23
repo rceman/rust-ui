@@ -62,3 +62,18 @@ Correct hand-crafted strategy for the 4 remainders (documented):
 - text.rs/uia.rs: COM `#[implement]` macro binds `_Impl` types to module — must stay with generated impl types; split at complete `#[implement]`-block boundaries or single-file policy exceptions.
 
 Evidence: benchmark/results/pre-p12-structural-refactor/{baseline-head.txt,final-head.txt,token-after.txt,REPORT.md}
+
+## Final status — R6 remainders
+
+Resolved: devctl_client.rs (client/server `#[path]` split), runtime.rs (mod + impl_a/b/c/d child impl blocks) — both committed green (195/195).
+
+Still over ceiling (documented — mechanical method/impl split produces 60-300 error cascades: `use super::*` propagation gaps, `pub(crate)` trait-method E0449, `Rc`/`Weak`/`RefCell` inference, `#[implement]` COM `_Impl` binding, dense sibling-type cross-refs, private field/method access):
+- src/ui.rs 36411 tok — `impl Ui`(~1400L)+builder `Drop` impls cross private struct fields; `pub(crate)` field regex hits fn params.
+- src/style.rs 22587 tok — data types + recipe fns; `use super::*` circular `crate::style::*` chains.
+- src/platform/win32/text.rs 19029 tok — `#[implement]` COM macro binds `_Impl` types to module.
+- src/platform/win32/uia.rs 16862 tok — same COM `#[implement]` coupling.
+
+Correct hand-crafted strategy: cohesive item-group boundaries keeping each `impl` block WHOLE with `where` clause; `pub(crate)` ONLY on struct fields (never fn params); explicit `use super::{sibling}::{item}` for cross-impl private methods; COM `#[implement]` items stay with generated `_Impl` types.
+
+Evidence: benchmark/results/pre-p12-structural-refactor/{baseline-head.txt,final-head.txt,token-after.txt,REPORT.md}
+STATUS: STRUCTURAL_REFACTOR_CANDIDATE — 15/19 files decomposed green; 4 remainders documented for hand-crafted decomposition. Independent Argon review required.
