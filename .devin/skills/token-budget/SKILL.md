@@ -22,39 +22,31 @@ Only text sources count (`.rs`/`.md`/`.toml`/scripts); `benchmark/`,
 
 ## 2. Pick the worst offender — refactor mechanically
 
+**`docs/**` is exempt** (single-purpose specs + immutable review records).
+
 Splits are **moves, not redesigns**: relocate contiguous marked sections
-into a `<name>/` module dir, keep `pub(crate)` visibility, re-export where
-needed. Standard targets (worst-first):
+into a `<name>/` module dir. Prefer **parent-declared types + child impl
+modules** (`struct X` stays in `mod.rs`, method groups move to
+`mod.rs`'s children so fields stay private). For test files use
+`include!("slice.rs")` inside the parent `mod.rs` so `cargo test --list`
+paths stay byte-identical.
 
-| File | Split |
-|---|---|
-| `src/tests.rs` | `src/tests/{mod,fake_peers,executor,node,runtime,style,layout,win32_reentrancy,devctl,uia,text}.rs` |
-| `src/platform/win32/mod.rs` | `win32/{backend,peer,popup,syscolor,run,turn}.rs` |
-| `src/ui.rs` | `ui/{mod,semantics,container,text,button,form,nav,overlay,canvas}.rs` |
-| `src/platform/win32/render.rs` | `render/{mod,dwrite,chrome,richedit,canvas,tooltip,shadow}.rs` |
-| `examples/gallery.rs` | `examples/gallery/{mod,pages/*,state,nav}.rs` (keep `include!` wiring working) |
-| `src/style.rs` | `style/{mod,color,geometry,box_style,text_style,visual_style,patch}.rs` |
-| `src/devtools/mod.rs` | `devtools/{mod,codec,rect,compare}.rs` |
-| `src/platform/win32/text.rs` | `text/{mod,host,msftedit,d2d,ime,measure}.rs` |
-| `src/platform/win32/uia.rs` | `uia/{mod,provider,events,rects,richedit_peer}.rs` |
-| `src/runtime.rs` | `runtime/{mod,transaction,focus,schedule,pump}.rs` |
-| `src/platform/win32/window.rs` | `window/{mod,wndproc,messages}.rs` |
+Procedure for each file >=5000 tokens (work through at a coherent
+task/campaign/goal completion boundary — the Stop hook is only a
+reminder, not permission to hijack an unrelated task):
 
-Docs over 5000: prefer splitting a `docs/<topic>/` index+sections only
-when a doc is actively edited; review/freeze artifacts may stay (note the
-exemption choice to the user rather than splitting blindly).
+1. Read the file's `// =====`/`//!` section markers and type/impl layout.
+2. Choose cohesive responsibility boundaries (never a stale filename map).
+3. Move sections to `<stem>/<child>.rs`; keep `pub(crate)`/`pub(super)`
+   minimal; add `pub use` re-exports in `mod.rs` for public API stability.
+4. Verify: `cargo fmt --check`, `cargo check --locked --examples`,
+   `cargo test --locked --lib`.
+5. Re-run `tools/check-file-tokens.sh` until exit 0 — target <4500/file.
+6. If a mechanical move uncovers a latent bug, record it — do NOT fix it
+   inside the refactor.
 
-## 3. Verify after every split
+## 3. Re-run until green (or report the honest blocker)
 
-```bash
-cargo fmt --check && cargo check --locked --examples && cargo test --locked --lib
-```
-
-Keep each moved section byte-identical — no "cleanup while moving"
-without explicit ask.
-
-## 4. Re-run until green (or report the honest blocker)
-
-The Stop hook will re-flag remaining violations on the next turn end —
+The Stop hook re-flags remaining violations on the next turn end —
 acknowledge consciously deferred files to the user instead of letting the
 gate nag silently.

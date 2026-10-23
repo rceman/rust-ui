@@ -16,7 +16,7 @@ Keep native handles private. Application state changes in `update`; views stage 
 
 ## Windows authority
 
-The authoritative checkout is `W:\devin_folder\rust-ui`. The spike branch is `agent/windows-native-composer-contract-spike-v0.1-swe2`. Build, run, render, profile, review, commit, and push from this native Windows checkout. Do not open a PR for the spike.
+The authoritative SOURCE checkout is `/home/therceman/git/rust-ui` (all source edits + git operations here). Windows `W:\devin_folder\` paths are build/output targets only (e.g. `CARGO_TARGET_DIR`), never source authority.
 
 ## Verification
 
@@ -53,4 +53,4 @@ Required spike findings belong in `docs/SPIKE_ARCHITECTURE_DEVIATIONS.md` and `d
 
 ## File token budget
 
-Every source file must stay under 5000 tokens (estimate = bytes/4 → 20000 bytes). `tools/check-file-tokens.sh` reports violations (exit 1, worst-first); a Stop hook (`tools/token-budget-gate.sh`) blocks turn completion when files exceed the limit. Refactor oversized files via mechanical module splits (`.devin/skills/token-budget/SKILL.md` has the per-file split map) — move marked sections, keep visibility/exports, verify `cargo fmt --check`, `cargo check --locked --examples`, `cargo test --locked --lib` after each split.
+Every authored source/config file must stay under 5000 tokens (estimate = bytes/4 → 20000 bytes; planning target <4500); `docs/**` is exempt. `tools/check-file-tokens.sh` reports violations (exit 1, worst-first). A Stop hook (`tools/token-budget-gate.sh`) reminds at turn end — it is a safety check only and must NOT hijack an unrelated in-progress task with surprise architectural work; the full budget obligation is enforced at a coherent task/campaign/goal completion boundary. Refactor oversized files via mechanical module splits per the `token-budget` skill (inspect cohesion boundaries, move sections, keep API/behavior, run affected gates).

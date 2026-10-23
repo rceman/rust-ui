@@ -22,6 +22,7 @@ find "$root" -type f \
     ! -path '*/reference/*' \
     ! -path '*/benchmark/*' \
     ! -path '*/assets/*' \
+    ! -path '*/docs/*' \
     ! -path '*/node_modules/*' \
     -size "+${max_bytes}c" -printf '%s\t%p\n' \
   | sort -rn \
