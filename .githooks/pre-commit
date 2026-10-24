@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+# .githooks/pre-commit — staged-authored-file token budget gate.
+#
+# Policy (same as tools/check-file-tokens.sh):
+#   estimated_tokens = staged blob bytes / 4
+#   FAIL if a staged authored blob is >= 20000 bytes (5000 tokens)
+#
+# Inspects the Git INDEX (staged blobs), never the working tree: an
+# oversized staged blob blocks even if the file on disk was trimmed.
+# Covers additions, modifications and rename destinations. NUL-safe for
+# spaces/unusual filenames. No LLM, no network, no auto-refactor, silent
+# on success. Any git/script failure exits nonzero — never a false pass.
+#
+# Activation is per-checkout:  git config --local core.hooksPath .githooks
+# (--no-verify bypasses local enforcement; there is no server-side gate.)
+
+set -u
+
+MAX_BYTES=20000
+
+if ! git rev-parse --git-dir >/dev/null 2>&1; then
+    echo "pre-commit: not inside a git work tree" >&2
+    exit 1
+fi
+
+# Root commit has no HEAD — diff against the empty tree object instead.
+if git rev-parse --verify HEAD >/dev/null 2>&1; then
+    base="HEAD"
+else
+    base="4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+fi
+
+# Added / modified / renamed entries, NUL-separated. For R<score> the two
+# following fields are old-path then new-path — we keep the destination.
+statuses="$(mktemp)"; trap 'rm -f "$statuses"' EXIT
+if ! git diff-index --cached -z --name-status \
+        --diff-filter=AMR "$base" >"$statuses" 2>/dev/null; then
+    echo "pre-commit: git diff-index failed" >&2
+    exit 1
+fi
+
+is_authored() {
+    case "$1" in
+        *.rs|*.md|*.toml|*.ps1|*.vbs|*.sh|*.json|*.html|*.css|*.js|*.ts|*.yaml|*.yml|*.txt) ;;
+        *) return 1 ;;
+    esac
+    case "/$1" in
+        */.git/*|*/target/*|*/.devctl/*|*/reference/*|*/benchmark/*|*/assets/*|*/docs/*|*/node_modules/*) return 1 ;;
+    esac
+    return 0
+}
+
+violations=""
+while IFS= read -r -d '' status; do
+    IFS= read -r -d '' p
+    case "$status" in
+        R*) IFS= read -r -d '' p ;;  # rename: second path is the destination
+    esac
+    is_authored "$p" || continue
+    if ! size="$(git cat-file -s ":$p" 2>/dev/null)"; then
+        echo "pre-commit: git cat-file failed for staged path: $p" >&2
+        exit 1
+    fi
+    if [ "$size" -ge "$MAX_BYTES" ]; then
+        violations="${violations}FAIL  $((size / 4)) tok  $p ($size bytes)\n"
+    fi
+done <"$statuses"
+
+if [ -n "$violations" ]; then
+    printf '%b' "$violations" >&2
+    printf '%s\n' "--- token budget: staged authored file >= $MAX_BYTES bytes ($((MAX_BYTES / 4)) tok) ---" >&2
+    exit 1
+fi
+exit 0
