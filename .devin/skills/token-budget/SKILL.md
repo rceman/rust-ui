@@ -7,8 +7,11 @@ description: File-size gate — run after every task/campaign/goal completes. Ve
 
 **Budget: 5000 tokens per file.** Estimate = `bytes / 4` → **20000 byte limit**.
 
-Runs automatically at every stop via `.devin/hooks.v1.json` →
-`tools/token-budget-gate.sh`. When invoked, work this procedure:
+Enforced locally by `.githooks/pre-commit` (staged authored blob >=
+20000 bytes blocks the commit; activate per-checkout with
+`git config --local core.hooksPath .githooks`). `tools/check-file-tokens.sh`
+is the manual full-tree gate — run it at every task/campaign/goal
+completion boundary, and work this procedure when it reports violations:
 
 ## 1. Measure
 
@@ -32,8 +35,7 @@ modules** (`struct X` stays in `mod.rs`, method groups move to
 paths stay byte-identical.
 
 Procedure for each file >=5000 tokens (work through at a coherent
-task/campaign/goal completion boundary — the Stop hook is only a
-reminder, not permission to hijack an unrelated task):
+task/campaign/goal completion boundary):
 
 1. Read the file's `// =====`/`//!` section markers and type/impl layout.
 2. Choose cohesive responsibility boundaries (never a stale filename map).
@@ -47,6 +49,7 @@ reminder, not permission to hijack an unrelated task):
 
 ## 3. Re-run until green (or report the honest blocker)
 
-The Stop hook re-flags remaining violations on the next turn end —
-acknowledge consciously deferred files to the user instead of letting the
-gate nag silently.
+The Git pre-commit hook blocks any staged oversized authored file
+immediately; the full-tree checker catches anything staged before the
+hook was activated. Acknowledge consciously deferred files to the user
+instead of letting the gate nag silently.
