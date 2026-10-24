@@ -147,8 +147,8 @@
                     "automation_id": "shell.nav.overlays",
                     "children": [],
                     "enabled": true,
-                    "focus_visible": true,
-                    "focused": true,
+                    "focus_visible": false,
+                    "focused": false,
                     "hovered": false,
                     "kind": "button",
                     "label": "Overlays",
@@ -262,9 +262,9 @@
                     "automation_id": "shell.theme.dark",
                     "children": [],
                     "enabled": true,
-                    "focus_visible": false,
-                    "focused": false,
-                    "hovered": false,
+                    "focus_visible": true,
+                    "focused": true,
+                    "hovered": true,
                     "kind": "button",
                     "label": "Dark",
                     "parts": [
@@ -402,7 +402,7 @@
                             "automation_id": "select.default.open.trigger",
                             "children": [],
                             "enabled": true,
-                            "expanded": false,
+                            "expanded": true,
                             "focus_visible": false,
                             "focused": false,
                             "hovered": false,
@@ -440,6 +440,538 @@
                               "y": 141.0
                             },
                             "visible": true
+                          },
+                          {
+                            "automation_id": "select.default.open.content",
+                            "children": [
+                              {
+                                "automation_id": null,
+                                "children": [
+                                  {
+                                    "automation_id": null,
+                                    "children": [
+                                      {
+                                        "automation_id": null,
+                                        "children": [],
+                                        "enabled": true,
+                                        "focus_visible": false,
+                                        "focused": false,
+                                        "hovered": false,
+                                        "kind": "label",
+                                        "label": "Environment",
+                                        "pressed": false,
+                                        "rect_dp": {
+                                          "height": 24.0,
+                                          "width": 200.0,
+                                          "x": 382.0,
+                                          "y": 181.0
+                                        },
+                                        "rect_px": {
+                                          "height": 24.0,
+                                          "width": 200.0,
+                                          "x": 382.0,
+                                          "y": 181.0
+                                        },
+                                        "visible": true
+                                      },
+                                      {
+                                        "automation_id": null,
+                                        "children": [],
+                                        "enabled": true,
+                                        "focus_visible": false,
+                                        "focused": false,
+                                        "hovered": false,
+                                        "kind": "option",
+                                        "label": "Development",
+                                        "pressed": false,
+                                        "rect_dp": {
+                                          "height": 28.0,
+                                          "width": 200.0,
+                                          "x": 382.0,
+                                          "y": 205.0
+                                        },
+                                        "rect_px": {
+                                          "height": 28.0,
+                                          "width": 200.0,
+                                          "x": 382.0,
+                                          "y": 205.0
+                                        },
+                                        "selected": false,
+                                        "visible": true
+                                      },
+                                      {
+                                        "automation_id": "select.default.open.item-highlighted",
+                                        "children": [],
+                                        "enabled": true,
+                                        "focus_visible": false,
+                                        "focused": false,
+                                        "hovered": false,
+                                        "kind": "option",
+                                        "label": "Staging",
+                                        "parts": [
+                                          {
+                                            "key": "item[staging]",
+                                            "rect_dp": {
+                                              "height": 28.0,
+                                              "width": 200.0,
+                                              "x": 382.0,
+                                              "y": 233.0
+                                            },
+                                            "rect_px": {
+                                              "height": 28.0,
+                                              "width": 200.0,
+                                              "x": 382.0,
+                                              "y": 233.0
+                                            },
+                                            "visible": true
+                                          }
+                                        ],
+                                        "presented": {
+                                          "focus_visible": false,
+                                          "hover": true,
+                                          "pressed": false
+                                        },
+                                        "pressed": false,
+                                        "rect_dp": {
+                                          "height": 28.0,
+                                          "width": 200.0,
+                                          "x": 382.0,
+                                          "y": 233.0
+                                        },
+                                        "rect_px": {
+                                          "height": 28.0,
+                                          "width": 200.0,
+                                          "x": 382.0,
+                                          "y": 233.0
+                                        },
+                                        "selected": false,
+                                        "visible": true
+                                      },
+                                      {
+                                        "automation_id": null,
+                                        "children": [],
+                                        "enabled": true,
+                                        "focus_visible": false,
+                                        "focused": false,
+                                        "hovered": false,
+                                        "kind": "option",
+                                        "label": "Production",
+                                        "pressed": false,
+                                        "rect_dp": {
+                                          "height": 28.0,
+                                          "width": 200.0,
+                                          "x": 382.0,
+                                          "y": 261.0
+                                        },
+                                        "rect_px": {
+                                          "height": 28.0,
+                                          "width": 200.0,
+                                          "x": 382.0,
+                                          "y": 261.0
+                                        },
+                                        "selected": true,
+                                        "visible": true
+                                      },
+                                      {
+                                        "automation_id": null,
+                                        "children": [],
+                                        "enabled": true,
+                                        "focus_visible": false,
+                                        "focused": false,
+                                        "hovered": false,
+                                        "kind": "option",
+                                        "label": "Preview",
+                                        "pressed": false,
+                                        "rect_dp": {
+                                          "height": 28.0,
+                                          "width": 200.0,
+                                          "x": 382.0,
+                                          "y": 289.0
+                                        },
+                                        "rect_px": {
+                                          "height": 28.0,
+                                          "width": 200.0,
+                                          "x": 382.0,
+                                          "y": 289.0
+                                        },
+                                        "selected": false,
+                                        "visible": true
+                                      },
+                                      {
+                                        "automation_id": null,
+                                        "children": [],
+                                        "enabled": false,
+                                        "focus_visible": false,
+                                        "focused": false,
+                                        "hovered": false,
+                                        "kind": "option",
+                                        "label": "Deprecated",
+                                        "pressed": false,
+                                        "rect_dp": {
+                                          "height": 28.0,
+                                          "width": 200.0,
+                                          "x": 382.0,
+                                          "y": 317.0
+                                        },
+                                        "rect_px": {
+                                          "height": 28.0,
+                                          "width": 200.0,
+                                          "x": 382.0,
+                                          "y": 317.0
+                                        },
+                                        "selected": false,
+                                        "visible": true
+                                      }
+                                    ],
+                                    "enabled": true,
+                                    "focus_visible": false,
+                                    "focused": false,
+                                    "hovered": false,
+                                    "kind": "group",
+                                    "label": "",
+                                    "pressed": false,
+                                    "rect_dp": {
+                                      "height": 164.0,
+                                      "width": 200.0,
+                                      "x": 382.0,
+                                      "y": 181.0
+                                    },
+                                    "rect_px": {
+                                      "height": 164.0,
+                                      "width": 200.0,
+                                      "x": 382.0,
+                                      "y": 181.0
+                                    },
+                                    "visible": true
+                                  },
+                                  {
+                                    "automation_id": null,
+                                    "children": [
+                                      {
+                                        "automation_id": null,
+                                        "children": [],
+                                        "enabled": true,
+                                        "focus_visible": false,
+                                        "focused": false,
+                                        "hovered": false,
+                                        "kind": "container",
+                                        "label": "",
+                                        "pressed": false,
+                                        "rect_dp": {
+                                          "height": 1.0,
+                                          "width": 208.0,
+                                          "x": 378.0,
+                                          "y": 353.0
+                                        },
+                                        "rect_px": {
+                                          "height": 1.0,
+                                          "width": 208.0,
+                                          "x": 378.0,
+                                          "y": 353.0
+                                        },
+                                        "visible": true
+                                      }
+                                    ],
+                                    "enabled": true,
+                                    "focus_visible": false,
+                                    "focused": false,
+                                    "hovered": false,
+                                    "kind": "container",
+                                    "label": "",
+                                    "pressed": false,
+                                    "rect_dp": {
+                                      "height": 17.0,
+                                      "width": 200.0,
+                                      "x": 382.0,
+                                      "y": 345.0
+                                    },
+                                    "rect_px": {
+                                      "height": 17.0,
+                                      "width": 200.0,
+                                      "x": 382.0,
+                                      "y": 345.0
+                                    },
+                                    "visible": true
+                                  },
+                                  {
+                                    "automation_id": null,
+                                    "children": [
+                                      {
+                                        "automation_id": null,
+                                        "children": [],
+                                        "enabled": true,
+                                        "focus_visible": false,
+                                        "focused": false,
+                                        "hovered": false,
+                                        "kind": "label",
+                                        "label": "Region",
+                                        "pressed": false,
+                                        "rect_dp": {
+                                          "height": 24.0,
+                                          "width": 200.0,
+                                          "x": 382.0,
+                                          "y": 362.0
+                                        },
+                                        "rect_px": {
+                                          "height": 24.0,
+                                          "width": 200.0,
+                                          "x": 382.0,
+                                          "y": 362.0
+                                        },
+                                        "visible": true
+                                      },
+                                      {
+                                        "automation_id": null,
+                                        "children": [],
+                                        "enabled": true,
+                                        "focus_visible": false,
+                                        "focused": false,
+                                        "hovered": false,
+                                        "kind": "option",
+                                        "label": "EU West",
+                                        "pressed": false,
+                                        "rect_dp": {
+                                          "height": 28.0,
+                                          "width": 200.0,
+                                          "x": 382.0,
+                                          "y": 386.0
+                                        },
+                                        "rect_px": {
+                                          "height": 28.0,
+                                          "width": 200.0,
+                                          "x": 382.0,
+                                          "y": 386.0
+                                        },
+                                        "selected": false,
+                                        "visible": true
+                                      }
+                                    ],
+                                    "enabled": true,
+                                    "focus_visible": false,
+                                    "focused": false,
+                                    "hovered": false,
+                                    "kind": "group",
+                                    "label": "",
+                                    "pressed": false,
+                                    "rect_dp": {
+                                      "height": 52.0,
+                                      "width": 200.0,
+                                      "x": 382.0,
+                                      "y": 362.0
+                                    },
+                                    "rect_px": {
+                                      "height": 52.0,
+                                      "width": 200.0,
+                                      "x": 382.0,
+                                      "y": 362.0
+                                    },
+                                    "visible": true
+                                  }
+                                ],
+                                "enabled": true,
+                                "focus_visible": false,
+                                "focused": false,
+                                "hovered": false,
+                                "kind": "container",
+                                "label": "",
+                                "pressed": false,
+                                "rect_dp": {
+                                  "height": 233.0,
+                                  "width": 200.0,
+                                  "x": 382.0,
+                                  "y": 181.0
+                                },
+                                "rect_px": {
+                                  "height": 233.0,
+                                  "width": 200.0,
+                                  "x": 382.0,
+                                  "y": 181.0
+                                },
+                                "visible": true
+                              }
+                            ],
+                            "enabled": true,
+                            "focus_visible": false,
+                            "focused": false,
+                            "hovered": false,
+                            "kind": "popup",
+                            "label": "",
+                            "parts": [
+                              {
+                                "key": "group[environment]",
+                                "rect_dp": {
+                                  "height": 164.0,
+                                  "width": 200.0,
+                                  "x": 382.0,
+                                  "y": 181.0
+                                },
+                                "rect_px": {
+                                  "height": 164.0,
+                                  "width": 200.0,
+                                  "x": 382.0,
+                                  "y": 181.0
+                                },
+                                "visible": true
+                              },
+                              {
+                                "key": "group[environment].label[environment]",
+                                "rect_dp": {
+                                  "height": 24.0,
+                                  "width": 200.0,
+                                  "x": 382.0,
+                                  "y": 181.0
+                                },
+                                "rect_px": {
+                                  "height": 24.0,
+                                  "width": 200.0,
+                                  "x": 382.0,
+                                  "y": 181.0
+                                },
+                                "visible": true
+                              },
+                              {
+                                "key": "group[environment].item[development]",
+                                "rect_dp": {
+                                  "height": 28.0,
+                                  "width": 200.0,
+                                  "x": 382.0,
+                                  "y": 205.0
+                                },
+                                "rect_px": {
+                                  "height": 28.0,
+                                  "width": 200.0,
+                                  "x": 382.0,
+                                  "y": 205.0
+                                },
+                                "visible": true
+                              },
+                              {
+                                "key": "group[environment].item[production]",
+                                "rect_dp": {
+                                  "height": 28.0,
+                                  "width": 200.0,
+                                  "x": 382.0,
+                                  "y": 261.0
+                                },
+                                "rect_px": {
+                                  "height": 28.0,
+                                  "width": 200.0,
+                                  "x": 382.0,
+                                  "y": 261.0
+                                },
+                                "visible": true
+                              },
+                              {
+                                "key": "group[environment].item[preview]",
+                                "rect_dp": {
+                                  "height": 28.0,
+                                  "width": 200.0,
+                                  "x": 382.0,
+                                  "y": 289.0
+                                },
+                                "rect_px": {
+                                  "height": 28.0,
+                                  "width": 200.0,
+                                  "x": 382.0,
+                                  "y": 289.0
+                                },
+                                "visible": true
+                              },
+                              {
+                                "key": "group[environment].item[deprecated]",
+                                "rect_dp": {
+                                  "height": 28.0,
+                                  "width": 200.0,
+                                  "x": 382.0,
+                                  "y": 317.0
+                                },
+                                "rect_px": {
+                                  "height": 28.0,
+                                  "width": 200.0,
+                                  "x": 382.0,
+                                  "y": 317.0
+                                },
+                                "visible": true
+                              },
+                              {
+                                "key": "separator",
+                                "rect_dp": {
+                                  "height": 1.0,
+                                  "width": 208.0,
+                                  "x": 378.0,
+                                  "y": 353.0
+                                },
+                                "rect_px": {
+                                  "height": 1.0,
+                                  "width": 208.0,
+                                  "x": 378.0,
+                                  "y": 353.0
+                                },
+                                "visible": true
+                              },
+                              {
+                                "key": "group[region]",
+                                "rect_dp": {
+                                  "height": 52.0,
+                                  "width": 200.0,
+                                  "x": 382.0,
+                                  "y": 362.0
+                                },
+                                "rect_px": {
+                                  "height": 52.0,
+                                  "width": 200.0,
+                                  "x": 382.0,
+                                  "y": 362.0
+                                },
+                                "visible": true
+                              },
+                              {
+                                "key": "group[region].label[region]",
+                                "rect_dp": {
+                                  "height": 24.0,
+                                  "width": 200.0,
+                                  "x": 382.0,
+                                  "y": 362.0
+                                },
+                                "rect_px": {
+                                  "height": 24.0,
+                                  "width": 200.0,
+                                  "x": 382.0,
+                                  "y": 362.0
+                                },
+                                "visible": true
+                              },
+                              {
+                                "key": "group[region].item[eu-west]",
+                                "rect_dp": {
+                                  "height": 28.0,
+                                  "width": 200.0,
+                                  "x": 382.0,
+                                  "y": 386.0
+                                },
+                                "rect_px": {
+                                  "height": 28.0,
+                                  "width": 200.0,
+                                  "x": 382.0,
+                                  "y": 386.0
+                                },
+                                "visible": true
+                              }
+                            ],
+                            "pressed": false,
+                            "rect_dp": {
+                              "height": 241.0,
+                              "width": 208.0,
+                              "x": 378.0,
+                              "y": 177.0
+                            },
+                            "rect_px": {
+                              "height": 241.0,
+                              "width": 208.0,
+                              "x": 378.0,
+                              "y": 177.0
+                            },
+                            "visible": true
                           }
                         ],
                         "enabled": true,
@@ -470,24 +1002,6 @@
                     "hovered": false,
                     "kind": "container",
                     "label": "",
-                    "parts": [
-                      {
-                        "key": "list",
-                        "rect_dp": {
-                          "height": 360.0,
-                          "width": 884.0,
-                          "x": 40.0,
-                          "y": 108.0
-                        },
-                        "rect_px": {
-                          "height": 360.0,
-                          "width": 884.0,
-                          "x": 40.0,
-                          "y": 108.0
-                        },
-                        "visible": true
-                      }
-                    ],
                     "pressed": false,
                     "rect_dp": {
                       "height": 360.0,

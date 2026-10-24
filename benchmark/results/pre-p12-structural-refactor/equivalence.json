@@ -1,68 +1,347 @@
 {
- "test_identity": {
-  "linux": {
-   "before": 123,
-   "after": 123,
-   "diff_lines": 0
+  "title": "Pre-P12 structural refactor \u2014 deterministic 12-state equivalence",
+  "method": "clean-room: identical capture script run against BEFORE (3344c0c) and AFTER (branch HEAD) in back-to-back fresh Gallery processes; RUI_GALLERY_PAGE boot page + resize + single click shell.theme.<t> + wait-idle + WGC screenshot + snapshot-layout",
+  "before_sha": "3344c0cf53800ca8935f6fc4c0a68ccf37be46f4",
+  "after_sha": "a56f727301f399fefcc86f155d7d8840e7b970bc",
+  "capture_protocol": {
+    "process": "fresh launch per state",
+    "boot_page": "RUI_GALLERY_PAGE env",
+    "viewport": "980x(page_height+39) window -> 964x(page_height) client, per-page heights {components:1515,forms:1690,navigation:1176,typography:775,overlays:1036,native-text:1048}",
+    "interaction": "single click shell.theme.<t> last -> theme focused+hovered; overlays select.default.open stays expanded (dismiss not armed pre-first-interaction)",
+    "settle": "wait-idle before each capture"
   },
-  "windows": {
-   "before": 195,
-   "after": 195,
-   "diff_lines": 0
-  },
-  "devctl_integration": {
-   "before": "1/1",
-   "after": "2/2 (resize test restored into tests/devctl_windows/resize.rs)"
-  }
- },
- "public_api": {
-  "lib_rs_pub_items": "IDENTICAL",
-  "prelude_pub_use": "IDENTICAL (11 items)",
-  "new_public_api": 0,
-  "removed_public_api": 0,
-  "consumer_path_changes": 0
- },
- "token_gate": {
-  "before": "19 violations",
-  "after": "0 violations (exit 0)"
- },
- "layout_equivalence": {
-  "identical_8_of_12": [
-   "light/components",
-   "light/navigation",
-   "light/typography",
-   "light/native-text",
-   "dark/components",
-   "dark/navigation",
-   "dark/typography",
-   "dark/native-text"
+  "states": [
+    {
+      "state": "light/components",
+      "before_sha": "3344c0cf53800ca8935f6fc4c0a68ccf37be46f4",
+      "after_sha": "a56f727301f399fefcc86f155d7d8840e7b970bc",
+      "viewport_dp": {
+        "height": 1515.0,
+        "width": 964.0,
+        "x": 0.0,
+        "y": 0.0
+      },
+      "scale_factor": 1.0,
+      "focused": [
+        "shell.theme.light"
+      ],
+      "hovered": [
+        "shell.theme.light"
+      ],
+      "expanded": [],
+      "semantic_tree_diffs": 0,
+      "geometry_diffs": 0,
+      "part_visibility_diffs": 0,
+      "raster_mismatched_pixels": 0,
+      "before_ref": "before_clean/light-components.json + before_clean/light/components.png",
+      "after_ref": "after/light-components.json + after/light/components.png",
+      "result": "PASS"
+    },
+    {
+      "state": "light/forms",
+      "before_sha": "3344c0cf53800ca8935f6fc4c0a68ccf37be46f4",
+      "after_sha": "a56f727301f399fefcc86f155d7d8840e7b970bc",
+      "viewport_dp": {
+        "height": 1690.0,
+        "width": 964.0,
+        "x": 0.0,
+        "y": 0.0
+      },
+      "scale_factor": 1.0,
+      "focused": [
+        "shell.theme.light"
+      ],
+      "hovered": [
+        "shell.theme.light"
+      ],
+      "expanded": [],
+      "semantic_tree_diffs": 0,
+      "geometry_diffs": 0,
+      "part_visibility_diffs": 0,
+      "raster_mismatched_pixels": 0,
+      "before_ref": "before_clean/light-forms.json + before_clean/light/forms.png",
+      "after_ref": "after/light-forms.json + after/light/forms.png",
+      "result": "PASS"
+    },
+    {
+      "state": "light/navigation",
+      "before_sha": "3344c0cf53800ca8935f6fc4c0a68ccf37be46f4",
+      "after_sha": "a56f727301f399fefcc86f155d7d8840e7b970bc",
+      "viewport_dp": {
+        "height": 1176.0,
+        "width": 964.0,
+        "x": 0.0,
+        "y": 0.0
+      },
+      "scale_factor": 1.0,
+      "focused": [
+        "shell.theme.light"
+      ],
+      "hovered": [
+        "shell.theme.light"
+      ],
+      "expanded": [],
+      "semantic_tree_diffs": 0,
+      "geometry_diffs": 0,
+      "part_visibility_diffs": 0,
+      "raster_mismatched_pixels": 0,
+      "before_ref": "before_clean/light-navigation.json + before_clean/light/navigation.png",
+      "after_ref": "after/light-navigation.json + after/light/navigation.png",
+      "result": "PASS"
+    },
+    {
+      "state": "light/overlays",
+      "before_sha": "3344c0cf53800ca8935f6fc4c0a68ccf37be46f4",
+      "after_sha": "a56f727301f399fefcc86f155d7d8840e7b970bc",
+      "viewport_dp": {
+        "height": 1036.0,
+        "width": 964.0,
+        "x": 0.0,
+        "y": 0.0
+      },
+      "scale_factor": 1.0,
+      "focused": [
+        "shell.theme.light"
+      ],
+      "hovered": [
+        "shell.theme.light"
+      ],
+      "expanded": [
+        "select.default.open.trigger"
+      ],
+      "semantic_tree_diffs": 0,
+      "geometry_diffs": 0,
+      "part_visibility_diffs": 0,
+      "raster_mismatched_pixels": 0,
+      "before_ref": "before_clean/light-overlays.json + before_clean/light/overlays.png",
+      "after_ref": "after/light-overlays.json + after/light/overlays.png",
+      "result": "PASS"
+    },
+    {
+      "state": "light/typography",
+      "before_sha": "3344c0cf53800ca8935f6fc4c0a68ccf37be46f4",
+      "after_sha": "a56f727301f399fefcc86f155d7d8840e7b970bc",
+      "viewport_dp": {
+        "height": 775.0,
+        "width": 964.0,
+        "x": 0.0,
+        "y": 0.0
+      },
+      "scale_factor": 1.0,
+      "focused": [
+        "shell.theme.light"
+      ],
+      "hovered": [
+        "shell.theme.light"
+      ],
+      "expanded": [],
+      "semantic_tree_diffs": 0,
+      "geometry_diffs": 0,
+      "part_visibility_diffs": 0,
+      "raster_mismatched_pixels": 0,
+      "before_ref": "before_clean/light-typography.json + before_clean/light/typography.png",
+      "after_ref": "after/light-typography.json + after/light/typography.png",
+      "result": "PASS"
+    },
+    {
+      "state": "light/native-text",
+      "before_sha": "3344c0cf53800ca8935f6fc4c0a68ccf37be46f4",
+      "after_sha": "a56f727301f399fefcc86f155d7d8840e7b970bc",
+      "viewport_dp": {
+        "height": 1048.0,
+        "width": 964.0,
+        "x": 0.0,
+        "y": 0.0
+      },
+      "scale_factor": 1.0,
+      "focused": [
+        "shell.theme.light"
+      ],
+      "hovered": [
+        "shell.theme.light"
+      ],
+      "expanded": [],
+      "semantic_tree_diffs": 0,
+      "geometry_diffs": 0,
+      "part_visibility_diffs": 0,
+      "raster_mismatched_pixels": 0,
+      "before_ref": "before_clean/light-native-text.json + before_clean/light/native-text.png",
+      "after_ref": "after/light-native-text.json + after/light/native-text.png",
+      "result": "PASS"
+    },
+    {
+      "state": "dark/components",
+      "before_sha": "3344c0cf53800ca8935f6fc4c0a68ccf37be46f4",
+      "after_sha": "a56f727301f399fefcc86f155d7d8840e7b970bc",
+      "viewport_dp": {
+        "height": 1515.0,
+        "width": 964.0,
+        "x": 0.0,
+        "y": 0.0
+      },
+      "scale_factor": 1.0,
+      "focused": [
+        "shell.theme.dark"
+      ],
+      "hovered": [
+        "shell.theme.dark"
+      ],
+      "expanded": [],
+      "semantic_tree_diffs": 0,
+      "geometry_diffs": 0,
+      "part_visibility_diffs": 0,
+      "raster_mismatched_pixels": 0,
+      "before_ref": "before_clean/dark-components.json + before_clean/dark/components.png",
+      "after_ref": "after/dark-components.json + after/dark/components.png",
+      "result": "PASS"
+    },
+    {
+      "state": "dark/forms",
+      "before_sha": "3344c0cf53800ca8935f6fc4c0a68ccf37be46f4",
+      "after_sha": "a56f727301f399fefcc86f155d7d8840e7b970bc",
+      "viewport_dp": {
+        "height": 1690.0,
+        "width": 964.0,
+        "x": 0.0,
+        "y": 0.0
+      },
+      "scale_factor": 1.0,
+      "focused": [
+        "shell.theme.dark"
+      ],
+      "hovered": [
+        "shell.theme.dark"
+      ],
+      "expanded": [],
+      "semantic_tree_diffs": 0,
+      "geometry_diffs": 0,
+      "part_visibility_diffs": 0,
+      "raster_mismatched_pixels": 0,
+      "before_ref": "before_clean/dark-forms.json + before_clean/dark/forms.png",
+      "after_ref": "after/dark-forms.json + after/dark/forms.png",
+      "result": "PASS"
+    },
+    {
+      "state": "dark/navigation",
+      "before_sha": "3344c0cf53800ca8935f6fc4c0a68ccf37be46f4",
+      "after_sha": "a56f727301f399fefcc86f155d7d8840e7b970bc",
+      "viewport_dp": {
+        "height": 1176.0,
+        "width": 964.0,
+        "x": 0.0,
+        "y": 0.0
+      },
+      "scale_factor": 1.0,
+      "focused": [
+        "shell.theme.dark"
+      ],
+      "hovered": [
+        "shell.theme.dark"
+      ],
+      "expanded": [],
+      "semantic_tree_diffs": 0,
+      "geometry_diffs": 0,
+      "part_visibility_diffs": 0,
+      "raster_mismatched_pixels": 0,
+      "before_ref": "before_clean/dark-navigation.json + before_clean/dark/navigation.png",
+      "after_ref": "after/dark-navigation.json + after/dark/navigation.png",
+      "result": "PASS"
+    },
+    {
+      "state": "dark/overlays",
+      "before_sha": "3344c0cf53800ca8935f6fc4c0a68ccf37be46f4",
+      "after_sha": "a56f727301f399fefcc86f155d7d8840e7b970bc",
+      "viewport_dp": {
+        "height": 1036.0,
+        "width": 964.0,
+        "x": 0.0,
+        "y": 0.0
+      },
+      "scale_factor": 1.0,
+      "focused": [
+        "shell.theme.dark"
+      ],
+      "hovered": [
+        "shell.theme.dark"
+      ],
+      "expanded": [
+        "select.default.open.trigger"
+      ],
+      "semantic_tree_diffs": 0,
+      "geometry_diffs": 0,
+      "part_visibility_diffs": 0,
+      "raster_mismatched_pixels": 0,
+      "before_ref": "before_clean/dark-overlays.json + before_clean/dark/overlays.png",
+      "after_ref": "after/dark-overlays.json + after/dark/overlays.png",
+      "result": "PASS"
+    },
+    {
+      "state": "dark/typography",
+      "before_sha": "3344c0cf53800ca8935f6fc4c0a68ccf37be46f4",
+      "after_sha": "a56f727301f399fefcc86f155d7d8840e7b970bc",
+      "viewport_dp": {
+        "height": 775.0,
+        "width": 964.0,
+        "x": 0.0,
+        "y": 0.0
+      },
+      "scale_factor": 1.0,
+      "focused": [
+        "shell.theme.dark"
+      ],
+      "hovered": [
+        "shell.theme.dark"
+      ],
+      "expanded": [],
+      "semantic_tree_diffs": 0,
+      "geometry_diffs": 0,
+      "part_visibility_diffs": 0,
+      "raster_mismatched_pixels": 0,
+      "before_ref": "before_clean/dark-typography.json + before_clean/dark/typography.png",
+      "after_ref": "after/dark-typography.json + after/dark/typography.png",
+      "result": "PASS"
+    },
+    {
+      "state": "dark/native-text",
+      "before_sha": "3344c0cf53800ca8935f6fc4c0a68ccf37be46f4",
+      "after_sha": "a56f727301f399fefcc86f155d7d8840e7b970bc",
+      "viewport_dp": {
+        "height": 1048.0,
+        "width": 964.0,
+        "x": 0.0,
+        "y": 0.0
+      },
+      "scale_factor": 1.0,
+      "focused": [
+        "shell.theme.dark"
+      ],
+      "hovered": [
+        "shell.theme.dark"
+      ],
+      "expanded": [],
+      "semantic_tree_diffs": 0,
+      "geometry_diffs": 0,
+      "part_visibility_diffs": 0,
+      "raster_mismatched_pixels": 0,
+      "before_ref": "before_clean/dark-native-text.json + before_clean/dark/native-text.png",
+      "after_ref": "after/dark-native-text.json + after/dark/native-text.png",
+      "result": "PASS"
+    }
   ],
-  "transient_diff_4_of_12": {
-   "states": [
-    "light/forms",
-    "light/overlays",
-    "dark/forms",
-    "dark/overlays"
-   ],
-   "cause": "Select/popup open('list')-vs-closed('label') transient capture state \u2014 the element exists in both trees with identical authored geometry; only the popup's expanded part-visibility differs at capture instant. Zero unexplained authored-geometry delta.",
-   "classification": "capture-state artifact, NOT a refactor regression"
-  }
- },
- "raster_equivalence": {
-  "method": "PIL pixel-diff before/after",
-  "note": "~2.5-3.6k mismatched px in header band (y45-75) \u2014 transient shell/theme-button state at capture instant; no content/geometry regression",
-  "classification": "capture-state artifact"
- },
- "p9": {
-  "result": "green \u2014 native_resize_retained_layout_converges 2/2 in devctl_windows"
- },
- "p10": {
-  "result": "preserved \u2014 single-display env; physical cross-monitor runtime testing unavailable; code-path preservation independently accepted by Argon"
- },
- "cloak_reveal": {
-  "result": "preserved \u2014 DWMWA_CLOAK/post-show paint/DwmFlush moved verbatim; E2E launch green"
- },
- "launcher": {
-  "result": "preserved \u2014 CREATE_NO_WINDOW + CARGO_BIN_EXE works"
- }
+  "aggregate": {
+    "states_passed": 12,
+    "states_total": 12,
+    "semantic_layout_equivalence": "12/12",
+    "raster_equivalence": "12/12",
+    "unexplained_geometry_differences": 0,
+    "mismatched_deterministic_pixels": 0
+  },
+  "notes": [
+    "original before/ set retained as historical evidence; before_clean/ is the canonical clean-room baseline captured with the identical script",
+    "same-SHA same-session repeat capture (dark/forms x2) produced 0 mismatched pixels \u2014 capture protocol is deterministic",
+    "earlier cross-session comparison showed 12 translucent alpha pixels at the outermost DWM rounded-corner edge rows (y=client_h-3..h-1) on 3 states; classified as OS compositor window-edge shadow drift, eliminated by back-to-back capture in identical compositor conditions",
+    "pre-existing unkeyed Box part_key reuse (list) after visiting Navigation \u2014 DEFERRED observation, pre-existing runtime behavior not modified by this refactor; fresh-process-per-state protocol eliminates it from evidence",
+    "P10 cross-monitor: structurally preserved, physical multi-monitor runtime testing unavailable (single-display env) \u2014 independently accepted by Argon",
+    "cloak/reveal + launcher: behavioral code moved verbatim; no runtime production behavior changed"
+  ]
 }

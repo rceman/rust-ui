@@ -75,8 +75,8 @@
                     "automation_id": "shell.nav.forms",
                     "children": [],
                     "enabled": true,
-                    "focus_visible": true,
-                    "focused": true,
+                    "focus_visible": false,
+                    "focused": false,
                     "hovered": false,
                     "kind": "button",
                     "label": "Forms",
@@ -220,9 +220,9 @@
                     "automation_id": "shell.theme.light",
                     "children": [],
                     "enabled": true,
-                    "focus_visible": false,
-                    "focused": false,
-                    "hovered": false,
+                    "focus_visible": true,
+                    "focused": true,
+                    "hovered": true,
                     "kind": "button",
                     "label": "Light",
                     "parts": [
@@ -528,23 +528,7 @@
                     "label": "",
                     "parts": [
                       {
-                        "key": "list",
-                        "rect_dp": {
-                          "height": 54.0,
-                          "width": 214.0,
-                          "x": 40.0,
-                          "y": 108.0
-                        },
-                        "rect_px": {
-                          "height": 54.0,
-                          "width": 214.0,
-                          "x": 40.0,
-                          "y": 108.0
-                        },
-                        "visible": true
-                      },
-                      {
-                        "key": "list.label",
+                        "key": "label",
                         "rect_dp": {
                           "height": 14.0,
                           "width": 33.6806640625,
