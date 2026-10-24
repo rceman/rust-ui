@@ -45,7 +45,7 @@ is_authored() {
         *) return 1 ;;
     esac
     case "/$1" in
-        */.git/*|*/target/*|*/.devctl/*|*/reference/*|*/benchmark/*|*/assets/*|*/docs/*|*/node_modules/*) return 1 ;;
+        */.git/*|*/target/*|*/target-*/*|*/.devctl/*|*/reference/*|*/benchmark/*|*/assets/*|*/docs/*|*/node_modules/*) return 1 ;;
     esac
     return 0
 }

@@ -34,8 +34,9 @@ find "$root" -type f \
     ! -path '*/node_modules/*' \
     -size "+${max_m1}c" -printf '%s\t%p\n' \
   | sort -rn \
-  | awk -v max="$max_bytes" -F'\t' '{
-      t=int($1/4); lim=int(max/4)
+  | awk -v max="$max_bytes" -F'\t' 'BEGIN { lim=int(max/4) }
+    {
+      t=int($1/4)
       printf "FAIL  %6d tok  %s\n", t, $2
       bad=1
     } END {
