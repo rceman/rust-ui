@@ -96,15 +96,15 @@ pub struct Ui<'ui, 'tx, M> {
     pub(crate) _m: std::marker::PhantomData<&'ui M>,
 }
 
-include!("types_a.rs");
-include!("types_b.rs");
-include!("types_c.rs");
-include!("impl_a.rs");
-include!("impl_b.rs");
-include!("impl_c.rs");
-include!("builders.rs");
-include!("builders2.rs");
-include!("builders3.rs");
-include!("groups.rs");
-include!("groups2.rs");
-include!("input.rs");
+include!("container_props.rs");
+include!("control_props.rs");
+include!("tx_staging.rs");
+include!("ui_containers.rs");
+include!("ui_primitives.rs");
+include!("ui_controls.rs");
+include!("builders_label_button.rs");
+include!("builders_text_custom.rs");
+include!("builders_action_popup.rs");
+include!("scope_builders_nav.rs");
+include!("scope_builders_settings.rs");
+include!("builders_input.rs");

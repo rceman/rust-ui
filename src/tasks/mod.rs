@@ -188,5 +188,5 @@ impl Drop for Charge {
 /// charge decrements exactly once on dequeue/drop/purge.
 pub(crate) mod mailbox;
 pub(crate) mod sender;
-pub(crate) use mailbox::{ChanCore, Envelope, Mailbox, MailboxState, PushOutcome, Waiter};
+pub(crate) use mailbox::{Envelope, Mailbox};
 pub use sender::*;

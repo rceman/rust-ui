@@ -1,156 +1,3 @@
-/// Frozen dropdown-menu item chrome. Child content owns its ink so a
-/// destructive item can retain the destructive role while highlighted.
-
-pub fn dropdown_item_style(destructive: bool) -> ActionStyle {
-    let mut base = BoxStyle::new();
-    base.background = Color::rgba(0, 0, 0, 0);
-    base.radii = CornerRadii::all(Dp(8.0));
-    base.padding = Insets {
-        top: Dp(4.0),
-        right: Dp(6.0),
-        bottom: Dp(4.0),
-        left: Dp(6.0),
-    };
-    let mut hover = BoxStylePatch::new();
-    hover.background = Some(Color::Role(if destructive {
-        ColorRole::DestructiveTint
-    } else {
-        ColorRole::Accent
-    }));
-    ActionStyle::new(base).hover(hover).focus_visible({
-        let mut patch = BoxStylePatch::new();
-        patch.background = Some(Color::Role(if destructive {
-            ColorRole::DestructiveTint
-        } else {
-            ColorRole::Accent
-        }));
-        patch
-    })
-}
-
-pub fn dropdown_label_style() -> TextStyle {
-    TextStyle {
-        foreground: Color::Role(ColorRole::MutedForeground),
-        size: TextSize::Exact(Dp(12.0)),
-        weight: TextWeight::Medium,
-        line_height: Some(Dp(16.0)),
-        ..TextStyle::default()
-    }
-}
-
-pub fn dropdown_label_box() -> BoxStyle {
-    BoxStyle {
-        padding: Insets {
-            top: Dp(4.0),
-            right: Dp(6.0),
-            bottom: Dp(4.0),
-            left: Dp(6.0),
-        },
-        ..BoxStyle::default()
-    }
-}
-
-pub fn dropdown_item_text_style(foreground: ColorRole) -> TextStyle {
-    TextStyle {
-        foreground: Color::Role(foreground),
-        size: TextSize::Exact(Dp(14.0)),
-        weight: TextWeight::Normal,
-        line_height: Some(Dp(20.0)),
-        ..TextStyle::default()
-    }
-}
-
-pub fn dropdown_shortcut_style() -> TextStyle {
-    TextStyle {
-        foreground: Color::Role(ColorRole::MutedForeground),
-        size: TextSize::Exact(Dp(12.0)),
-        weight: TextWeight::Normal,
-        line_height: Some(Dp(16.0)),
-        letter_spacing: 0.6,
-        ..TextStyle::default()
-    }
-}
-
-pub fn settings_nav_surface() -> BoxStyle {
-    BoxStyle {
-        background: Color::Role(ColorRole::Sidebar),
-        ..BoxStyle::default()
-    }
-}
-
-pub fn settings_nav_header_style() -> TextStyle {
-    TextStyle {
-        foreground: Color::Role(ColorRole::SidebarForeground),
-        size: TextSize::Exact(Dp(14.0)),
-        weight: TextWeight::Semibold,
-        line_height: Some(Dp(20.0)),
-        ..TextStyle::default()
-    }
-}
-
-pub fn settings_nav_header_box() -> BoxStyle {
-    BoxStyle {
-        padding: Insets {
-            top: Dp(12.0),
-            right: Dp(16.0),
-            bottom: Dp(12.0),
-            left: Dp(16.0),
-        },
-        ..BoxStyle::default()
-    }
-}
-
-pub fn settings_nav_group_style() -> TextStyle {
-    TextStyle {
-        foreground: Color::Role(ColorRole::SidebarForeground70),
-        size: TextSize::Exact(Dp(12.0)),
-        weight: TextWeight::Medium,
-        line_height: Some(Dp(16.0)),
-        ..TextStyle::default()
-    }
-}
-
-pub fn settings_nav_group_box() -> BoxStyle {
-    BoxStyle {
-        padding: Insets::all(Dp(8.0)),
-        ..BoxStyle::default()
-    }
-}
-
-pub fn settings_nav_item_text_style(active: bool) -> TextStyle {
-    TextStyle {
-        foreground: Color::Role(if active {
-            ColorRole::SidebarAccentForeground
-        } else {
-            ColorRole::SidebarForeground
-        }),
-        size: TextSize::Exact(Dp(14.0)),
-        weight: if active {
-            TextWeight::Medium
-        } else {
-            TextWeight::Normal
-        },
-        line_height: Some(Dp(20.0)),
-        ..TextStyle::default()
-    }
-}
-
-/// Sidebar navigation row. Active state is semantic input; hover and
-/// focus-visible remain runtime/presentation interaction states.
-pub fn settings_nav_item_style(active: bool) -> ActionStyle {
-    let mut base = BoxStyle::new();
-    base.background = Color::Role(if active {
-        ColorRole::SidebarAccent
-    } else {
-        ColorRole::Sidebar
-    });
-    base.radii = CornerRadii::all(Dp(8.0));
-    base.padding = Insets::default();
-    let mut hover = BoxStylePatch::new();
-    hover.background = Some(Color::Role(ColorRole::SidebarAccent));
-    ActionStyle::new(base).hover(hover)
-}
-
 /// `ui.box_` props — opaque: authored `BoxStyle` + retained layout props,
 /// so visual style never overwrites size inputs.
 #[derive(Copy, Clone, Default, PartialEq)]
@@ -366,4 +213,136 @@ pub fn resolve_color(c: Color, dark: bool) -> [f32; 4] {
 // ---------------------------------------------------------------------------
 
 use crate::theme::{ButtonVariant, ControlSize};
+
+/// Semantic OS-control color slots. Under forced colors a role resolves to
+/// a SYSTEM color slot; the platform adapter turns the slot into the real
+/// OS RGB (GetSysColor on Windows). The mapping itself is shared policy —
+/// a backend never invents its own role->system routing.
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub enum SystemColor {
+    /// COLOR_WINDOW — page/canvas background
+    Window,
+    /// COLOR_WINDOWTEXT — primary text on Window
+    WindowText,
+    /// COLOR_HIGHLIGHT — selection/accent fill
+    Highlight,
+    /// COLOR_HIGHLIGHTTEXT — text on Highlight
+    HighlightText,
+    /// COLOR_GRAYTEXT — disabled/muted text
+    GrayText,
+    /// COLOR_INACTIVEBORDER — secondary strokes/dividers
+    InactiveBorder,
+    /// COLOR_HOTLIGHT — interactive affordance
+    HotTrack,
+}
+
+/// The shared role -> system-slot mapping used under forced colors.
+/// Covers the whole `ColorRole` vocabulary — a role can never escape
+/// enforcement.
+pub fn system_slot(role: crate::theme::ColorRole) -> SystemColor {
+    use crate::theme::ColorRole as R;
+    match role {
+        R::Background
+        | R::Muted
+        | R::Card
+        | R::Surface
+        | R::Code
+        | R::Secondary
+        | R::Muted50
+        | R::Muted40
+        | R::DestructiveTint
+        | R::DestructiveTintHover
+        | R::Input30
+        | R::Input50
+        | R::InputDisabled
+        | R::SecondaryHover
+        | R::Sidebar
+        | R::SidebarAccent => SystemColor::Window,
+        R::InputDestructive => SystemColor::Highlight,
+        R::Foreground
+        | R::Destructive
+        | R::Destructive90
+        | R::CardForeground
+        | R::SecondaryForeground
+        | R::SurfaceForeground
+        | R::CodeForeground
+        | R::CodeHighlight
+        | R::Primary
+        | R::DestructiveForeground => SystemColor::WindowText,
+        R::SidebarForeground | R::SidebarAccentForeground => SystemColor::WindowText,
+        R::MutedForeground
+        | R::CodeNumber
+        | R::Shadow
+        | R::Foreground60
+        | R::SidebarForeground70 => SystemColor::GrayText,
+        R::Accent
+        | R::Focus
+        | R::Ring
+        | R::Primary80
+        | R::Selection
+        | R::DestructiveRing
+        | R::Destructive40
+        | R::Destructive50 => SystemColor::Highlight,
+        R::SidebarRing => SystemColor::Highlight,
+        R::AccentForeground | R::PrimaryForeground | R::SelectionForeground => {
+            SystemColor::HighlightText
+        }
+        R::Border | R::Input | R::Foreground10 => SystemColor::InactiveBorder,
+    }
+}
+
+/// OS/accessibility enforcement — applied AFTER all recipe+consumer
+/// layers. Forced-colors/high-contrast: decorative shadow resolves to
+/// `None` (the approved contract); required focus visibility lives in the
+/// focus enforcement layer and survives. Colors keep their role
+/// resolution — under forced colors the OS-level palette follows.
+fn enforce_color(c: &mut Color, sys: &dyn Fn(SystemColor) -> [f32; 4]) {
+    if let Color::Role(r) = c {
+        let [r8, g8, b8, a8] = sys(system_slot(*r));
+        *c = Color::rgba(
+            (r8 * 255.0).round() as u8,
+            (g8 * 255.0).round() as u8,
+            (b8 * 255.0).round() as u8,
+            (a8 * 255.0).round() as u8,
+        );
+    }
+}
+
+fn enforce_box_colors(b: &mut BoxStyle, sys: &dyn Fn(SystemColor) -> [f32; 4]) {
+    enforce_color(&mut b.background, sys);
+    for side in [
+        &mut b.border.top,
+        &mut b.border.right,
+        &mut b.border.bottom,
+        &mut b.border.left,
+    ] {
+        enforce_color(&mut side.color, sys);
+    }
+    if let Some(s) = &mut b.shadow {
+        enforce_color(&mut s.color, sys);
+    }
+}
+
+/// `forced_resolver` = the platform's system-color lookup — `None` keeps
+/// the authored palette (forced-colors off). `Some` rewrites every role to
+/// its system slot's real RGB and removes decorative shadow.
+pub(crate) fn os_enforce_box(
+    b: &mut BoxStyle,
+    forced_resolver: Option<&dyn Fn(SystemColor) -> [f32; 4]>,
+) {
+    if let Some(sys) = forced_resolver {
+        b.shadow = None;
+        enforce_box_colors(b, sys);
+    }
+}
+pub(crate) fn os_enforce_visual(
+    v: &mut VisualStyle,
+    forced_resolver: Option<&dyn Fn(SystemColor) -> [f32; 4]>,
+) {
+    os_enforce_box(&mut v.box_style, forced_resolver);
+    if let Some(sys) = forced_resolver {
+        enforce_color(&mut v.text_style.foreground, sys);
+        v.text_style.size = TextSize::Body; // OS text size wins
+    }
+}
 

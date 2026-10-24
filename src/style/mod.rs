@@ -397,7 +397,8 @@ impl VisualStyle {
 
 include!("patches.rs");
 include!("action.rs");
-include!("recipes1.rs");
-include!("recipes2.rs");
-include!("recipes3.rs");
+include!("palette_tokens.rs");
+include!("recipes_button.rs");
+include!("recipes_surface_display.rs");
+include!("recipes_forms_nav_overlays.rs");
 include!("validate.rs");

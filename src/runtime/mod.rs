@@ -4,24 +4,14 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use crate::arena::Arena;
-use crate::event::{EVENT_QUEUE_CAP, EventQueue};
-use crate::geom::Visibility;
-use crate::key::{ChildKey, ErasedKey, KeyId};
-use crate::node::{
-    ContainerProps, KIND_GROUP, Node, NodeData, NodeEvent, NodeId, PeerDecision, QueuedEvent,
-    TextPeer,
-};
+use crate::event::EventQueue;
+use crate::key::{ErasedKey, KeyId};
+use crate::node::{NodeData, NodeId, TextPeer};
 use crate::sched::{SchedEvent, Scheduler};
-use crate::tasks::{
-    CancelWatch, Envelope, Executor, Job, MAILBOX_CAP, Mailbox, ScopePath, TaskRegistry,
-    TaskStartError,
-};
-use crate::text::{
-    TextConflict, TextEdit, TextRevision, TextValue, lease_id_of, validate_selection,
-};
-use crate::theme::{Appearance, ReducedMotion, Theme};
-use crate::ui::{StagedNode, Tx, Ui, UiFrame};
-use crate::{UiDiagnostic, UiError, UiResult};
+use crate::tasks::{CancelWatch, Executor, Job, Mailbox, ScopePath, TaskRegistry, TaskStartError};
+use crate::theme::{Appearance, Theme};
+use crate::ui::{StagedNode, Tx, Ui};
+use crate::{UiDiagnostic, UiError};
 
 /// Update context handed to `update` — task spawning, cancellation and
 /// scoped namespaces. No view/arena access from here.
@@ -255,7 +245,7 @@ fn validate_styles(tx: &Tx, dark: bool) -> Option<UiError> {
     None
 }
 
-pub(crate) mod impl_a;
-pub(crate) mod impl_b;
-pub(crate) mod impl_c;
-pub(crate) mod impl_d;
+pub(crate) mod dispatch_conflict;
+pub(crate) mod peer_sched;
+pub(crate) mod pump_review;
+pub(crate) mod reconcile_nodes;

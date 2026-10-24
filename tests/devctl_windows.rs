@@ -79,3 +79,4 @@ fn handles(pid: u32) -> u32 {
     }
 }
 include!("devctl_windows/workflow.rs");
+include!("devctl_windows/resize.rs");

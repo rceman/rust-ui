@@ -300,3 +300,90 @@ impl<'a, 'ui, M: 'static> ButtonBuilder<'a, 'ui, M> {
     }
 }
 
+
+impl<'a, 'ui, M: 'static> Drop for ButtonBuilder<'a, 'ui, M> {
+    fn drop(&mut self) {
+        let before = self.tx.frames.last().unwrap().children.len();
+        let text = self.text;
+        let (
+            variant,
+            style,
+            disabled,
+            size,
+            motion,
+            tooltip,
+            icon_start,
+            icon_end,
+            icon_only,
+            accessible_name,
+            invalid,
+            selected,
+            expanded,
+            icon_color,
+        ) = (
+            self.variant,
+            self.style,
+            self.disabled,
+            self.size,
+            self.motion,
+            self.tooltip.clone(),
+            self.icon_start,
+            self.icon_end,
+            self.icon_only,
+            self.accessible_name.clone(),
+            self.invalid,
+            self.selected,
+            self.expanded,
+            self.icon_color,
+        );
+        let presented = self.presented;
+        self.tx.stage_leaf(
+            crate::node::KIND_BUTTON,
+            None,
+            self.visibility,
+            self.layout,
+            std::mem::take(&mut self.factories),
+            move |retained| {
+                let text = match retained {
+                    Some(crate::node::Node {
+                        data: NodeData::Button { text: old, .. },
+                        ..
+                    }) if &**old == text => old.clone(),
+                    _ => Rc::from(text),
+                };
+                NodeData::Button {
+                    text,
+                    variant,
+                    style,
+                    disabled,
+                    size,
+                    motion,
+                    tooltip,
+                    icon_start,
+                    icon_end,
+                    icon_only,
+                    accessible_name,
+                    invalid,
+                    selected,
+                    expanded,
+                    icon_color,
+                }
+            },
+        );
+        if let Some(index) = self
+            .tx
+            .frames
+            .last()
+            .unwrap()
+            .children
+            .last()
+            .copied()
+            .filter(|_| self.tx.frames.last().unwrap().children.len() > before)
+        {
+            if let Some(id) = self.automation_id.take() {
+                self.tx.nodes[index as usize].automation_id = Some(id);
+            }
+            self.tx.nodes[index as usize].presented = presented;
+        }
+    }
+}

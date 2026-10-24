@@ -436,31 +436,3 @@ fn selected_overlay(variant: ButtonVariant, dark: bool) -> Option<VisualStylePat
     Some(p)
 }
 
-/// Native editor chrome recipe — the pill frame around the peer:
-/// Background-role surface, Border-role 1dp outline, 6dp radii, and the
-/// safety padding the peer surface insets by. Authored chrome patches
-/// overlay this; the peer island remains opaque and unclipped.
-pub fn text_input_chrome_recipe() -> BoxStyle {
-    BoxStyle {
-        background: Color::Role(ColorRole::Background),
-        border: Border::all(BorderSide::new(Dp(1.0), Color::Role(ColorRole::Border))),
-        radii: CornerRadii::all(Dp(6.0)),
-        padding: Insets {
-            top: Dp(5.0),
-            right: Dp(6.0),
-            bottom: Dp(5.0),
-            left: Dp(6.0),
-        },
-        shadow: None,
-    }
-}
-
-/// Resolve native editor chrome — recipe + authored patch. The paired
-/// safety inset the peer sits inside derives from the RESOLVED authored
-/// values (pre-normalization radii, per the approved rule).
-pub fn resolve_text_input_chrome(patch: &TextInputStylePatch) -> BoxStyle {
-    let mut b = text_input_chrome_recipe();
-    b.patch(&patch.chrome);
-    b
-}
-

@@ -1,3 +1,14 @@
+/// `ui.action` builder — the node stages immediately (children must draw
+/// inside it); factory methods retrofit onto the staged node before the
+/// transaction commits.
+
+pub struct ActionBuilder<'a, 'ui, M: 'static> {
+    tx: &'a mut Tx<'ui>,
+    /// staged node index in `tx.nodes` — None when the stage was rejected
+    staged: Option<u32>,
+    _m: std::marker::PhantomData<fn() -> M>,
+}
+
 impl<'a, 'ui, M: 'static> ActionBuilder<'a, 'ui, M> {
     pub fn automation_id(self, id: &str) -> Self {
         if let Some(i) = self.staged {

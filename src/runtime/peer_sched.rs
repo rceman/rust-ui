@@ -1,27 +1,8 @@
-use std::any::Any;
-use std::collections::{HashMap, HashSet};
-use std::rc::Rc;
-use std::sync::Arc;
-
-use crate::arena::Arena;
-use crate::event::{EVENT_QUEUE_CAP, EventQueue};
-use crate::geom::Visibility;
-use crate::key::{ChildKey, ErasedKey, KeyId};
-use crate::node::{
-    ContainerProps, KIND_GROUP, Node, NodeData, NodeEvent, NodeId, PeerDecision, QueuedEvent,
-    TextPeer,
-};
-use crate::sched::{SchedEvent, Scheduler};
-use crate::tasks::{
-    CancelWatch, Envelope, Executor, Job, MAILBOX_CAP, Mailbox, ScopePath, TaskRegistry,
-    TaskStartError,
-};
-use crate::text::{
-    TextConflict, TextEdit, TextRevision, TextValue, lease_id_of, validate_selection,
-};
-use crate::theme::{Appearance, ReducedMotion, Theme};
-use crate::ui::{StagedNode, Tx, Ui, UiFrame};
-use crate::{UiDiagnostic, UiError, UiResult};
+use crate::node::{NodeData, NodeEvent, NodeId, QueuedEvent, TextPeer};
+use crate::sched::SchedEvent;
+use crate::text::{TextEdit, TextRevision, TextValue};
+use crate::ui::Ui;
+use crate::{UiError, UiResult};
 
 /// Update context handed to `update` — task spawning, cancellation and
 use super::*;

@@ -88,138 +88,6 @@ pub(crate) fn action_style_ok(s: &ActionStyle) -> bool {
 // forced-colors — the semantic slot mapping is shared; the platform owns RGB
 // ---------------------------------------------------------------------------
 
-/// Semantic OS-control color slots. Under forced colors a role resolves to
-/// a SYSTEM color slot; the platform adapter turns the slot into the real
-/// OS RGB (GetSysColor on Windows). The mapping itself is shared policy —
-/// a backend never invents its own role->system routing.
-#[derive(Copy, Clone, PartialEq, Eq, Debug)]
-pub enum SystemColor {
-    /// COLOR_WINDOW — page/canvas background
-    Window,
-    /// COLOR_WINDOWTEXT — primary text on Window
-    WindowText,
-    /// COLOR_HIGHLIGHT — selection/accent fill
-    Highlight,
-    /// COLOR_HIGHLIGHTTEXT — text on Highlight
-    HighlightText,
-    /// COLOR_GRAYTEXT — disabled/muted text
-    GrayText,
-    /// COLOR_INACTIVEBORDER — secondary strokes/dividers
-    InactiveBorder,
-    /// COLOR_HOTLIGHT — interactive affordance
-    HotTrack,
-}
-
-/// The shared role -> system-slot mapping used under forced colors.
-/// Covers the whole `ColorRole` vocabulary — a role can never escape
-/// enforcement.
-pub fn system_slot(role: crate::theme::ColorRole) -> SystemColor {
-    use crate::theme::ColorRole as R;
-    match role {
-        R::Background
-        | R::Muted
-        | R::Card
-        | R::Surface
-        | R::Code
-        | R::Secondary
-        | R::Muted50
-        | R::Muted40
-        | R::DestructiveTint
-        | R::DestructiveTintHover
-        | R::Input30
-        | R::Input50
-        | R::InputDisabled
-        | R::SecondaryHover
-        | R::Sidebar
-        | R::SidebarAccent => SystemColor::Window,
-        R::InputDestructive => SystemColor::Highlight,
-        R::Foreground
-        | R::Destructive
-        | R::Destructive90
-        | R::CardForeground
-        | R::SecondaryForeground
-        | R::SurfaceForeground
-        | R::CodeForeground
-        | R::CodeHighlight
-        | R::Primary
-        | R::DestructiveForeground => SystemColor::WindowText,
-        R::SidebarForeground | R::SidebarAccentForeground => SystemColor::WindowText,
-        R::MutedForeground
-        | R::CodeNumber
-        | R::Shadow
-        | R::Foreground60
-        | R::SidebarForeground70 => SystemColor::GrayText,
-        R::Accent
-        | R::Focus
-        | R::Ring
-        | R::Primary80
-        | R::Selection
-        | R::DestructiveRing
-        | R::Destructive40
-        | R::Destructive50 => SystemColor::Highlight,
-        R::SidebarRing => SystemColor::Highlight,
-        R::AccentForeground | R::PrimaryForeground | R::SelectionForeground => {
-            SystemColor::HighlightText
-        }
-        R::Border | R::Input | R::Foreground10 => SystemColor::InactiveBorder,
-    }
-}
-
-/// OS/accessibility enforcement — applied AFTER all recipe+consumer
-/// layers. Forced-colors/high-contrast: decorative shadow resolves to
-/// `None` (the approved contract); required focus visibility lives in the
-/// focus enforcement layer and survives. Colors keep their role
-/// resolution — under forced colors the OS-level palette follows.
-fn enforce_color(c: &mut Color, sys: &dyn Fn(SystemColor) -> [f32; 4]) {
-    if let Color::Role(r) = c {
-        let [r8, g8, b8, a8] = sys(system_slot(*r));
-        *c = Color::rgba(
-            (r8 * 255.0).round() as u8,
-            (g8 * 255.0).round() as u8,
-            (b8 * 255.0).round() as u8,
-            (a8 * 255.0).round() as u8,
-        );
-    }
-}
-
-fn enforce_box_colors(b: &mut BoxStyle, sys: &dyn Fn(SystemColor) -> [f32; 4]) {
-    enforce_color(&mut b.background, sys);
-    for side in [
-        &mut b.border.top,
-        &mut b.border.right,
-        &mut b.border.bottom,
-        &mut b.border.left,
-    ] {
-        enforce_color(&mut side.color, sys);
-    }
-    if let Some(s) = &mut b.shadow {
-        enforce_color(&mut s.color, sys);
-    }
-}
-
-/// `forced_resolver` = the platform's system-color lookup — `None` keeps
-/// the authored palette (forced-colors off). `Some` rewrites every role to
-/// its system slot's real RGB and removes decorative shadow.
-pub(crate) fn os_enforce_box(
-    b: &mut BoxStyle,
-    forced_resolver: Option<&dyn Fn(SystemColor) -> [f32; 4]>,
-) {
-    if let Some(sys) = forced_resolver {
-        b.shadow = None;
-        enforce_box_colors(b, sys);
-    }
-}
-pub(crate) fn os_enforce_visual(
-    v: &mut VisualStyle,
-    forced_resolver: Option<&dyn Fn(SystemColor) -> [f32; 4]>,
-) {
-    os_enforce_box(&mut v.box_style, forced_resolver);
-    if let Some(sys) = forced_resolver {
-        enforce_color(&mut v.text_style.foreground, sys);
-        v.text_style.size = TextSize::Body; // OS text size wins
-    }
-}
-
 /// Does a box patch touch any field that feeds layout insets (padding) or
 /// content-consuming border widths? Shadow/background/color never do.
 pub(crate) fn patch_touches_layout(p: &BoxStylePatch) -> bool {
@@ -239,68 +107,38 @@ pub(crate) fn patch_touches_layout(p: &BoxStylePatch) -> bool {
 
 /// `cn-select-content` chrome patch — `bg-popover ring-1
 /// ring-foreground/10 shadow-md rounded-lg` at the frozen p-1 content
-/// lane (3dp patch padding + the 1dp ring border = 4dp effective inset).
-/// The single-shadow primitive carries the dominant `shadow-md` layer
-/// (`0 4px 6px -1px`); the `ring-1` edge is the 1dp `foreground/10`
-/// border — same 10%-alpha 1px ink the CSS ring paints.
-pub fn select_content_patch() -> BoxStylePatch {
-    let mut p = BoxStylePatch::new();
-    p.background = Some(Color::Role(ColorRole::Card));
-    p.border = p.border.all(BorderSidePatch {
-        width: Some(Dp(1.0)),
-        color: Some(Color::Role(ColorRole::Foreground10)),
-    });
-    p.radii = CornerRadiiPatch {
-        top_left: Some(Dp(10.0)),
-        top_right: Some(Dp(10.0)),
-        bottom_right: Some(Dp(10.0)),
-        bottom_left: Some(Dp(10.0)),
+
+// ---------------------------------------------------------------------------
+// style preflight — finite numbers, nonnegative geometry, positive text size,
+/// checked before ANY native mutation at commit time
+// ---------------------------------------------------------------------------
+
+fn dp_ok(d: &Dp) -> bool {
+    d.0.is_finite() && d.0 >= 0.0
+}
+fn insets_ok(i: &Insets) -> bool {
+    dp_ok(&i.top) && dp_ok(&i.right) && dp_ok(&i.bottom) && dp_ok(&i.left)
+}
+fn radii_ok(r: &CornerRadii) -> bool {
+    dp_ok(&r.top_left) && dp_ok(&r.top_right) && dp_ok(&r.bottom_right) && dp_ok(&r.bottom_left)
+}
+fn border_ok(b: &Border) -> bool {
+    [&b.top, &b.right, &b.bottom, &b.left]
+        .iter()
+        .all(|s| dp_ok(&s.width))
+}
+fn shadow_ok(s: &Shadow) -> bool {
+    s.offset_x.0.is_finite()
+        && s.offset_y.0.is_finite()
+        && s.blur_sigma.0.is_finite()
+        && s.blur_sigma.0 >= 0.0
+}
+fn text_ok(t: &TextStyle) -> bool {
+    let size_ok = match t.size {
+        TextSize::Body => true,
+        TextSize::Exact(d) => d.0.is_finite() && d.0 > 0.0,
     };
-    p.padding = InsetsPatch::all(Dp(3.0));
-    p.shadow = ShadowPatch::Set(Shadow {
-        color: Color::Role(ColorRole::Shadow),
-        offset_x: Dp(0.0),
-        offset_y: Dp(4.0),
-        blur_sigma: Dp(3.0),
-        spread: Dp(-1.0),
-    });
-    p
+    let lh_ok = t.line_height.is_none_or(|d| d.0.is_finite() && d.0 > 0.0);
+    size_ok && lh_ok && t.letter_spacing.is_finite()
 }
 
-/// `cn-tabs-list` chrome — `rounded-lg p-[3px]` muted pill (default) or
-/// transparent `rounded-none` lane (line). Height/gap are staged by the
-/// list's layout spec, not the chrome.
-pub fn tabs_list_recipe(variant: crate::theme::TabsVariant) -> BoxStyle {
-    BoxStyle {
-        background: match variant {
-            crate::theme::TabsVariant::Default => Color::Role(ColorRole::Muted),
-            crate::theme::TabsVariant::Line => Color::rgba(0, 0, 0, 0),
-        },
-        border: Border::default(),
-        radii: CornerRadii::all(Dp(match variant {
-            crate::theme::TabsVariant::Default => 10.0,
-            crate::theme::TabsVariant::Line => 0.0,
-        })),
-        padding: Insets::all(Dp(3.0)),
-        shadow: None,
-    }
-}
-
-/// `cn-select-label` — group label text (12px muted-foreground).
-pub fn select_label_style() -> TextStyle {
-    TextStyle {
-        foreground: Color::Role(ColorRole::MutedForeground),
-        size: TextSize::Exact(Dp(12.0)),
-        weight: TextWeight::Normal,
-        line_height: Some(Dp(16.0)),
-        ..TextStyle::default()
-    }
-}
-
-/// `cn-select-value` placeholder tint — the `data-placeholder` state is
-/// staged: `muted-foreground` until the control holds a value.
-pub fn select_placeholder_patch() -> ButtonStylePatch {
-    let mut p = ButtonStylePatch::new();
-    p.styles.base.text_style.foreground = Some(Color::Role(ColorRole::MutedForeground));
-    p
-}

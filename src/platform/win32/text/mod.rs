@@ -92,6 +92,6 @@ unsafe impl Sync for Msftedit {}
 include!("host.rs");
 include!("com.rs");
 include!("hostbox.rs");
-include!("peer_a.rs");
-include!("peer_b.rs");
-include!("peer_c.rs");
+include!("peer_format_create.rs");
+include!("peer_draw_measure.rs");
+include!("peer_selection_lifecycle.rs");

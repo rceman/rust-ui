@@ -14,9 +14,9 @@
 
 #[cfg(windows)]
 mod probe {
-    include!("probe/probe_a.rs");
-    include!("probe/probe_b.rs");
-    include!("probe/probe_c.rs");
+    include!("probe/input_window.rs");
+    include!("probe/uia_inspect.rs");
+    include!("probe/ime_japanese.rs");
 }
 #[cfg(windows)]
 /// Complete JSON string escaping — quotes, backslashes, control chars and
