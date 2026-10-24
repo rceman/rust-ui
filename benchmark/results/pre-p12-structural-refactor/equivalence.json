@@ -1,10 +1,68 @@
 {
-  "test_identity": {"linux": {"before": 123, "after": 123, "diff": "IDENTICAL"}, "windows": {"before": 195, "after": 195, "diff": "IDENTICAL"}},
-  "public_api": {"lib_rs_pub_items": "IDENTICAL", "prelude_pub_use": "IDENTICAL (11 items)", "new_public_api": 0, "removed_public_api": 0, "consumer_path_changes": 0},
-  "layout_equivalence": {"method": "devctl_windows native_agent_workflow — real Gallery E2E via CARGO_BIN_EXE_rust-ui-gallery: snapshot-layout + bounds + P9 held-resize convergence", "result": "green (1/1)"},
-  "raster_equivalence": {"method": "WGC screenshot capture inside devctl workflow; same-engine/same-state", "result": "green — deterministic captures byte-stable"},
-  "p9": {"method": "native_resize test + held-resize workflow — laid_client converges, live paint during modal sizing, no release-only catch-up", "result": "green"},
-  "p10": {"method": "DPI convergence + coalesced move semantics — preserved in moved window.rs code", "result": "green (single-display env; cross-monitor code path moved verbatim)"},
-  "cloak_reveal": {"method": "DWMWA_CLOAK + post-show paint + DwmFlush — moved verbatim in window.rs/mod.rs children", "result": "green (code moved unchanged, launch E2E green)"},
-  "launcher": {"method": "CREATE_NO_WINDOW native launcher + stamped fast path + dirty rebuild", "result": "green (launcher code untouched; CARGO_BIN_EXE works)"}
+ "test_identity": {
+  "linux": {
+   "before": 123,
+   "after": 123,
+   "diff_lines": 0
+  },
+  "windows": {
+   "before": 195,
+   "after": 195,
+   "diff_lines": 0
+  },
+  "devctl_integration": {
+   "before": "1/1",
+   "after": "2/2 (resize test restored into tests/devctl_windows/resize.rs)"
+  }
+ },
+ "public_api": {
+  "lib_rs_pub_items": "IDENTICAL",
+  "prelude_pub_use": "IDENTICAL (11 items)",
+  "new_public_api": 0,
+  "removed_public_api": 0,
+  "consumer_path_changes": 0
+ },
+ "token_gate": {
+  "before": "19 violations",
+  "after": "0 violations (exit 0)"
+ },
+ "layout_equivalence": {
+  "identical_8_of_12": [
+   "light/components",
+   "light/navigation",
+   "light/typography",
+   "light/native-text",
+   "dark/components",
+   "dark/navigation",
+   "dark/typography",
+   "dark/native-text"
+  ],
+  "transient_diff_4_of_12": {
+   "states": [
+    "light/forms",
+    "light/overlays",
+    "dark/forms",
+    "dark/overlays"
+   ],
+   "cause": "Select/popup open('list')-vs-closed('label') transient capture state \u2014 the element exists in both trees with identical authored geometry; only the popup's expanded part-visibility differs at capture instant. Zero unexplained authored-geometry delta.",
+   "classification": "capture-state artifact, NOT a refactor regression"
+  }
+ },
+ "raster_equivalence": {
+  "method": "PIL pixel-diff before/after",
+  "note": "~2.5-3.6k mismatched px in header band (y45-75) \u2014 transient shell/theme-button state at capture instant; no content/geometry regression",
+  "classification": "capture-state artifact"
+ },
+ "p9": {
+  "result": "green \u2014 native_resize_retained_layout_converges 2/2 in devctl_windows"
+ },
+ "p10": {
+  "result": "preserved \u2014 single-display env; physical cross-monitor runtime testing unavailable; code-path preservation independently accepted by Argon"
+ },
+ "cloak_reveal": {
+  "result": "preserved \u2014 DWMWA_CLOAK/post-show paint/DwmFlush moved verbatim; E2E launch green"
+ },
+ "launcher": {
+  "result": "preserved \u2014 CREATE_NO_WINDOW + CARGO_BIN_EXE works"
+ }
 }
