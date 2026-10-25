@@ -39,10 +39,10 @@ renderer-class difference (DirectWrite↔Chromium), not a defect.
 
 | ID | Specimen(s) | Expected | Actual | Root cause | Files | Sev | Status |
 |---|---|---|---|---|---|---|---|
-| P12-I1 | input.default.* | text rect {x:10,y:5,h:18}, baseline 19 in 32px | baseline/pitch driven by T2 — verify after font fix | peer pitch + content insets | layout `editor_content_rect` | S2 | OPEN |
+| P12-I1 | input.default.* | text rect {x:10,y:5,h:18}, baseline 19 in 32px | baseline/pitch driven by T2 — verify after font fix | peer pitch + content insets | layout `editor_content_rect` | S3 | measured: content top y5 = contract; baseline lands ~1px low (pitch-20 box vs contract baseline 19) — tolerance-class residual | OPEN |
 | P12-I2 | placeholder vertical/horizontal alignment | same run rect as filled value | separate draw at content-rect origin — verify vs filled runs | draw origin | `render/frame_editor.rs` | S2 | OPEN |
-| P12-I3 | textarea.default.* | Geist 14px, pitch 20, 3-line 78dp specimen | line pitch via T2 + multiline clip band | peer + chrome | `builders_input.rs`, text/ | S2 | OPEN |
-| P12-I4 | disabled states (input.default.disabled etc.) | contract disabled fg/bg/placeholder | reported mismatch — measure vs contract box/colors | recipe state | `src/style/` recipes | S2 | OPEN |
+| P12-I3 | textarea.default.* | Geist 14px, pitch 20, 3-line 78dp specimen | line pitch via T2 + multiline clip band | peer + chrome | `builders_input.rs`, text/ | S2 | pitch verified ≈20 post-Geist; multiline band clip re-verify | OPEN |
+| P12-I4 | disabled states (input.default.disabled etc.) | contract disabled fg/bg/placeholder | reported mismatch — measure vs contract box/colors | recipe state | `src/style/` recipes | S2 | measured: disabled input renders muted text on #ebebeb ≈ oklab(0.922)·0.5 — matches contract | **NOISE** — verified correct |
 | P12-I5 | invalid + focused border/ring | destructive ring precedence | ring model approved pre-P12 — verify unchanged vs contract outline/ring parts | ring resolver | style/render | S3 | OPEN |
 | P12-I6 | field label/description/error alignment | contract part rects | verify parts vs contract `parts` | field recipe | `src/ui/` field | S3 | OPEN |
 | P12-I7 | caret + native selection | contract selection band colors | sel_bg/sel_fg authored from contract tokens; band blend verified pre-P12 — re-verify under Geist | peer selection path | `peer_selection_lifecycle.rs` | S2 | OPEN |
@@ -81,7 +81,7 @@ renderer-class difference (DirectWrite↔Chromium), not a defect.
 
 | ID | Specimen(s) | Expected | Actual | Root cause | Files | Sev | Status |
 |---|---|---|---|---|---|---|---|
-| P12-D1 | first-child Box under page.scroll/0 after Navigation visit | `part_key` reflects current page | reused Box keeps stale `part_key="list"` (devtools-visible; paint unaffected) | reconcile_nodes child-slot reuse without part_key rewrite | `src/runtime/reconcile_nodes.rs:163-206` | S2 | OPEN — evaluate parity impact, then focused fix if in-scope |
+| P12-D1 | first-child Box under page.scroll/0 after Navigation visit | `part_key` reflects current page | reused Box keeps stale `part_key="list"` (devtools-visible; paint unaffected) | update_node never reassigned part_key | `src/runtime/reconcile_nodes.rs` | S2 | **FIXED** — part_key joins identity check + reassigned on unkeyed slot reuse (79793e7); semantic-metadata defect, not pixels |
 
 ## Historical (previously fixed — regression watch only)
 
