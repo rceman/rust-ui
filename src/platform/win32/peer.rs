@@ -76,7 +76,17 @@ impl PeerCtx {
                 multiline: spec.multiline,
                 // disabled peers mount read-only — inert until enabled
                 read_only: spec.read_only || spec.disabled,
-                face: "Segoe UI".into(),
+                // parity: the bundled Geist (privately registered via
+                // fonts.rs) is the frozen reference face; Segoe remains
+                // only where Geist never registered (non-parity apps).
+                face: if super::fonts::geist().sans {
+                    "Geist".into()
+                } else {
+                    "Segoe UI".into()
+                },
+                // 14pt in twips → 14 DIP em under TXTBIT_D2DDWRITE
+                // (measured: msftedit maps pt→DIP 1:1, so 280tw renders
+                // a 14px font — the contract font_size — NOT 18.67px)
                 size_twips: (14.0f32 * 20.0) as i32,
                 // 1 dip = 15 twips (twips are absolute — the authored
                 // DIP count lands exact at any scale)

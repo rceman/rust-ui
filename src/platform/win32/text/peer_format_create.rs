@@ -136,20 +136,16 @@ impl WindowlessPeer {
                     // CFE_AUTOCOLOR: draw-time theme recoloring without
                     // rewriting character formats on every view
                     dwEffects: CFE_EFFECTS(CFE_AUTOCOLOR.0 | if cfg.bold { CFE_BOLD.0 } else { 0 }),
-                    // An authored exact line box is reached by
-                    // calibrating the FONT SIZE: under TXTBIT_D2DDWRITE
-                    // msftedit ignores every paragraph line-spacing
-                    // control and derives the pitch from yHeight.
-                    // Measured on this host (Segoe UI, 96dpi):
-                    // yHeight 280→25px, 240→21, 230/224/220→20,
-                    // 210→19, 200→17 — i.e. ≈11.5 twips of yHeight per
-                    // px of pitch, so `line_twips * 23/30` lands the
-                    // authored DIP pitch (300tw/20dip → 230tw → 20px).
-                    yHeight: if cfg.line_twips > 0 {
-                        cfg.line_twips * 23 / 30
-                    } else {
-                        cfg.size_twips
-                    },
+                    // Font size stays authored-exact (`size_twips` =
+                    // contract font px): under TXTBIT_D2DDWRITE the
+                    // line pitch historically derived from yHeight,
+                    // which conflated glyph size with line spacing and
+                    // rendered ~9% oversized text at lh20. The exact
+                    // pitch is now requested through the initial
+                    // PARAFORMAT2 line-spacing fields below (measured
+                    // live on this host; see the pf comment) — yHeight
+                    // never carries the pitch again.
+                    yHeight: cfg.size_twips,
                     yOffset: 0,
                     crTextColor: colorref(cfg.fg),
                     bCharSet: DEFAULT_CHARSET,
@@ -159,6 +155,11 @@ impl WindowlessPeer {
                 pf: Box::new({
                     let mut p = PARAFORMAT2::default();
                     p.Base.cbSize = std::mem::size_of::<PARAFORMAT2>() as u32;
+                    // Measured live (Geist, 96dpi, P12): the initial-pf
+                    // PFM_LINESPACING/rule-4 exact channel is INERT too —
+                    // dyLineSpacing 360 still pitched at ~20px. Pitch is
+                    // font-metric + msftedit leading only, so it now
+                    // follows the exact 14px face (≈20px) with no hack.
                     p
                 }),
                 fg: colorref(cfg.fg),
