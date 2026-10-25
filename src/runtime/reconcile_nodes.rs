@@ -169,6 +169,7 @@ where
         let StagedNode {
             automation_id,
             role,
+            part_key,
             data,
             presented,
             visibility,
@@ -194,9 +195,14 @@ where
                 .forced_colors
                 .then(|| self.forced_resolver.as_deref())
                 .flatten();
-            let identity_changed = n.automation_id != automation_id || n.role != role;
+            let identity_changed =
+                n.automation_id != automation_id || n.role != role || n.part_key != part_key;
             n.automation_id = automation_id;
             n.role = role;
+            // unkeyed child-slot reuse must not inherit the previous
+            // node's part identity — devtools/UIA part metadata reads
+            // this field (P12-D1: stale "list" leaked across pages)
+            n.part_key = part_key;
             n.dirty = crate::node::dirty_diff(&old_data, &n.data, dark, forced);
             if identity_changed {
                 n.dirty |= Self::DIRTY_SEMANTICS;
