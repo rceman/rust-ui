@@ -74,7 +74,7 @@ renderer-class difference (DirectWrite↔Chromium), not a defect.
 
 | ID | Specimen(s) | Expected | Actual | Root cause | Files | Sev | Status |
 |---|---|---|---|---|---|---|---|
-| P12-M1 | hover fade-out symmetry | reference transitions (CSS) | reported abrupt/asymmetric hover leave — native has no transition engine; investigate enter/leave paint symmetry vs contract staged states | hot tracking + repaint | input_pointer + render | S2 | Leave/Enter dispatch → update → dirty → repaint is symmetric; no transition engine = instant swap (renderer-class diff vs CSS; contract states are static) | **ACCEPTED** — symmetric; transition gap is renderer class |
+| P12-M1 | hover fade-out symmetry | reference transitions (CSS) | reported abrupt/asymmetric hover leave — native has no transition engine; investigate enter/leave paint symmetry vs contract staged states | hot tracking + repaint | input_pointer + render | S2 | **OPEN / PENDING_VISUAL_REVIEW** — measured frozen CSS: `transition-all` on button/checkbox/switch/tabs triggers, `transition-transform` switch thumb + sidebar actions, `transition-opacity` tabs line ::after; 150ms cubic-bezier(.4,0,.2,1). Native swaps instantly — behavioral fidelity difference, NOT raster class. Capture-mode `transition:none` means static evidence cannot prove motion. Minimal event-driven color-lerp (existing paint scheduler, no general framework) is the candidate; switch-thumb translate + reduced-motion handling decided in review. Requires Opus 5.5 approval of impl or documented deviation |
 | P12-M2 | reduced-motion / idle repaints | no loops, no wakeups when static | verify no continuous scheduling | timers | win32 timers | S3 | OPEN |
 
 ## Deferred runtime observation
