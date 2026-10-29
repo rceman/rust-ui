@@ -208,6 +208,9 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
                                 TabsVariant::Line => Space::Xs,
                                 TabsVariant::Default => Space::None,
                             })
+                            // exact chrome — the list recipe owns insets;
+                            // opt out of the generic Space::Sm row padding
+                            .padding(Space::None)
                             .align(Align::Center),
                         |ui| {
                             let mut tl = TabList {

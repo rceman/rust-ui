@@ -1,6 +1,14 @@
 impl Gallery {
     pub fn view(&self, ui: &mut Ui<Msg>) {
-        ui.theme(Theme::resolve(self.theme, ui.appearance()));
+        // evidence hook — RUI_REDUCED_MOTION=1 forces the reduced-motion
+        // policy for M2 verification; unset keeps the System default
+        let theme = Theme::resolve(self.theme, ui.appearance());
+        let theme = if std::env::var("RUI_REDUCED_MOTION").is_ok_and(|v| v == "1") {
+            theme.reduced_motion(ReducedMotion::Reduce)
+        } else {
+            theme
+        };
+        ui.theme(theme);
         ui.named("shell.root", |ui| {
             ui.column(
                 Column::new()
