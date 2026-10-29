@@ -112,7 +112,7 @@ where
     /// old->new resolved visual difference, never by "some branch
     /// somewhere has metrics". Identical resolved output = no work;
     /// metric-bearing fields moving = LAYOUT|PAINT; paint-only = PAINT.
-    pub(super) fn mark_state_dirty(&self, id: NodeId, old: InteractState) {
+    pub(super) fn mark_state_dirty(&mut self, id: NodeId, old: InteractState) {
         let new = self.interact(id);
         let bits = match (self.resolved_at(id, old), self.resolved_at(id, new)) {
             (Some(a), Some(b)) => {
@@ -126,6 +126,10 @@ where
             _ => 0b11,
         };
         self.state_dirty.set(self.state_dirty.get() | bits);
+        // a resolved-visual difference on a transition-carrying control
+        // runs the eased channel interpolation (cn-button / cn-switch /
+        // cn-tabs-trigger `transition-all`); ineligible kinds no-op inside
+        self.begin_transition(id);
     }
 
     /// WM_MOUSEMOVE: hot tracking (Enter/Leave) + raw move to hovered peer.

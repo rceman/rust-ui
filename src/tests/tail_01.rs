@@ -183,3 +183,108 @@ fn devctl_automation_id_reaches_uia_and_refreshes_without_replacement() {
     assert_eq!(get(), "sample.renamed");
     root.close();
 }
+
+#[test]
+fn ease_css_endpoints_monotonic_material_curve() {
+    use crate::sched::ease_css;
+    assert_eq!(ease_css(0.0), 0.0);
+    assert_eq!(ease_css(1.0), 1.0);
+    // cubic-bezier(.4,0,.2,1) — front-loaded ease-in-out: progress at
+    // x=0.5 is ~0.7756 (verified against a reference bisection solve),
+    // well past linear
+    let mid = ease_css(0.5);
+    assert!((mid - 0.7756).abs() < 0.001, "mid {mid}");
+    // strictly monotonic over the unit interval
+    let mut prev = 0.0f32;
+    for i in 1..=100 {
+        let y = ease_css(i as f32 / 100.0);
+        assert!(y > prev, "non-monotonic at {i}");
+        prev = y;
+    }
+    // out-of-domain clamps
+    assert_eq!(ease_css(-0.5), 0.0);
+    assert_eq!(ease_css(1.5), 1.0);
+}
+
+#[test]
+fn value_flip_flags_animatable_channels_only() {
+    use crate::node::NodeData;
+    use crate::runtime::reconcile_nodes::value_flip;
+    use crate::theme::ToggleKind;
+    let base = NodeData::Toggle {
+        kind: ToggleKind::Switch,
+        checked: false,
+        disabled: false,
+        invalid: false,
+        size: Default::default(),
+        label: None,
+        accessible_name: None,
+    };
+    let mut changed = |f: &dyn Fn(&mut bool)| {
+        let mut n = match &base {
+            NodeData::Toggle {
+                checked,
+                disabled,
+                invalid,
+                ..
+            } => NodeData::Toggle {
+                kind: ToggleKind::Switch,
+                checked: *checked,
+                disabled: *disabled,
+                invalid: *invalid,
+                size: Default::default(),
+                label: None,
+                accessible_name: None,
+            },
+            _ => unreachable!(),
+        };
+        if let NodeData::Toggle {
+            checked,
+            disabled,
+            invalid,
+            ..
+        } = &mut n
+        {
+            for b in [checked, disabled, invalid] {
+                f(b);
+            }
+        }
+        n
+    };
+    assert!(!value_flip(&base, &base));
+    assert!(value_flip(&base, &changed(&mut |b: &mut bool| *b = true)));
+    // non-animatable fields (label text) never set the bit
+    let relabeled = NodeData::Toggle {
+        kind: ToggleKind::Switch,
+        checked: false,
+        disabled: false,
+        invalid: false,
+        size: Default::default(),
+        label: Some("x".into()),
+        accessible_name: None,
+    };
+    assert!(!value_flip(&base, &relabeled));
+    let _ = changed;
+}
+
+#[test]
+fn toggle_thumb_rect_fractional_endpoints_and_midpoint() {
+    use crate::geom::Rect;
+    use crate::layout::{toggle_thumb_rect, toggle_thumb_rect_t};
+    use crate::theme::ToggleSize;
+    let r = Rect {
+        x: 10.0,
+        y: 10.0,
+        width: 32.0,
+        height: 18.4,
+    };
+    let off = toggle_thumb_rect(ToggleSize::Default, false, &r);
+    let on = toggle_thumb_rect(ToggleSize::Default, true, &r);
+    assert_eq!(toggle_thumb_rect_t(ToggleSize::Default, 0.0, &r), off);
+    assert_eq!(toggle_thumb_rect_t(ToggleSize::Default, 1.0, &r), on);
+    let mid = toggle_thumb_rect_t(ToggleSize::Default, 0.5, &r);
+    assert!((mid.x - (off.x + on.x) / 2.0).abs() < 1e-4);
+    // clamps outside 0..1
+    assert_eq!(toggle_thumb_rect_t(ToggleSize::Default, 2.0, &r), on);
+    assert_eq!(toggle_thumb_rect_t(ToggleSize::Default, -1.0, &r), off);
+}

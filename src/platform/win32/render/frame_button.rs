@@ -15,11 +15,15 @@
                         *selected,
                         *invalid,
                     );
+                    // eased transition (cn-button / cn-tabs-trigger
+                    // transition-all) — instant resolve for snap kinds
+                    let vs = be.displayed_visual(id, vs);
                     let bs = &vs.box_style;
                     let pressed = be.resolved_pressed(id, n);
                     let ins = crate::layout::button_content_insets(&n.data, &vs);
-                    // active:translate-y-px — the whole control shifts 1dp
-                    let dy = if pressed && !*disabled { 1.0 } else { 0.0 };
+                    // active:translate-y-px — the whole control shifts 1dp,
+                    // eased through the pressed transition channel
+                    let dy = be.displayed_pressed(id, (pressed && !*disabled) as u8 as f32);
                     let br = D2D_RECT_F {
                         left: r.x,
                         top: r.y + dy,
@@ -31,7 +35,8 @@
                         // fades; the layer wraps chrome + content. RAII:
                         // a `?` below must not strand the pushed layer on
                         // the shared target for the rest of the frame
-                        let _layer_guard = (*disabled).then(|| {
+                        let alpha = be.displayed_opacity(id, if *disabled { 0.5 } else { 1.0 });
+                        let _layer_guard = (alpha < 1.0).then(|| {
                             target.PushLayer(
                                 &D2D1_LAYER_PARAMETERS {
                                     contentBounds: D2D_RECT_F {
@@ -40,7 +45,7 @@
                                         right: f32::MAX,
                                         bottom: f32::MAX,
                                     },
-                                    opacity: 0.5,
+                                    opacity: alpha,
                                     ..Default::default()
                                 },
                                 None,
@@ -62,8 +67,27 @@
                         // supplies it for Focus-role colors too. The
                         // invalid state carries the same 3dp band in
                         // ring-destructive and does NOT require focus.
-                        if (be.resolved_focus_visible(id, n) || *invalid) && !*disabled {
-                            paint_ring_color(&target, &br, &bs.radii, vs.focus_ring, dark, forced)?;
+                        // the box-shadow ring fades under transition-all
+                        // — alpha comes through the eased ring channel
+                        let ring_on =
+                            (be.resolved_focus_visible(id, n) || *invalid) && !*disabled;
+                        let ring_a = be.displayed_ring(id, ring_on as u8 as f32);
+                        if ring_a > 0.0 {
+                            let mut rc = resolve_render(vs.focus_ring, dark, forced);
+                            rc.a *= ring_a;
+                            paint_ring_color(
+                                &target,
+                                &br,
+                                &bs.radii,
+                                crate::style::Color::Rgba {
+                                    r: (rc.r * 255.0).round().clamp(0.0, 255.0) as u8,
+                                    g: (rc.g * 255.0).round().clamp(0.0, 255.0) as u8,
+                                    b: (rc.b * 255.0).round().clamp(0.0, 255.0) as u8,
+                                    a: (rc.a * 255.0).round().clamp(0.0, 255.0) as u8,
+                                },
+                                dark,
+                                forced,
+                            )?;
                         }
                         let fg = resolve_render(vs.text_style.foreground, dark, forced);
                         let fg_brush = target.CreateSolidColorBrush(&fg, None)?;
@@ -131,17 +155,19 @@
                             );
                         }
                         // line-variant active tab — the frozen `::after`
-                        // underline (bottom-[-5px] h-0.5 bg-foreground)
-                        if *selected && *variant == crate::theme::ButtonVariant::TabLine {
+                        // underline (bottom-[-5px] h-0.5 bg-foreground),
+                        // `after:transition-opacity` — the channel fades
+                        // in/out instead of snapping
+                        let ul_alpha = be.displayed_scalar(id, (*selected) as u8 as f32);
+                        if ul_alpha > 0.0 && *variant == crate::theme::ButtonVariant::TabLine {
                             let ur = crate::layout::tab_underline_rect(&rect_dp);
-                            let ub = target.CreateSolidColorBrush(
-                                &resolve_render(
-                                    crate::style::Color::Role(crate::theme::ColorRole::Foreground),
-                                    dark,
-                                    forced,
-                                ),
-                                None,
-                            )?;
+                            let mut uc = resolve_render(
+                                crate::style::Color::Role(crate::theme::ColorRole::Foreground),
+                                dark,
+                                forced,
+                            );
+                            uc.a *= ul_alpha;
+                            let ub = target.CreateSolidColorBrush(&uc, None)?;
                             target.FillRectangle(
                                 &D2D_RECT_F {
                                     left: ur.x,

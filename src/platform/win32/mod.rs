@@ -28,6 +28,7 @@ mod peer_events;
 mod peer_native;
 mod run;
 mod syscolor;
+mod transitions;
 mod turn;
 mod uia_bridge;
 
@@ -355,6 +356,13 @@ where
     /// handler — classified: bit0 relayout (a metric-bearing branch
     /// transitioned), bit1 repaint; consumed by turn_body
     state_dirty: std::cell::Cell<u8>,
+    /// live eased transitions — the render-side half of the scheduler's
+    /// transition clock (`transitions.rs`): per-slot from/to channel
+    /// values stepped at each deadline-driven repaint
+    trans: std::cell::RefCell<HashMap<u32, transitions::Trans>>,
+    /// the last-painted per-channel values — a new transition's `from`
+    /// (interruption-safe continuation) and the settled endpoint
+    shown: std::cell::RefCell<HashMap<u32, transitions::Shown>>,
     /// a WM_SIZE resized the target but layout/paint have not yet run —
     /// coalesced into the next delivered WM_PAINT (OS-batched during the
     /// modal sizing loop) so one frame's work runs per paint delivery,

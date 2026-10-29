@@ -119,6 +119,8 @@ where
         pump_queued: std::cell::Cell::new(false),
         deferred_native: std::collections::VecDeque::new(),
         state_dirty: std::cell::Cell::new(0),
+        trans: std::cell::RefCell::new(HashMap::new()),
+        shown: std::cell::RefCell::new(HashMap::new()),
         size_pending: std::cell::Cell::new(false),
         laid_client: std::cell::Cell::new((0.0, 0.0)),
         resize_trace_path: std::env::var_os("RUI_RESIZE_TRACE").map(std::path::PathBuf::from),

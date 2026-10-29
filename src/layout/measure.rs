@@ -347,12 +347,19 @@ pub fn toggle_radio_dot_rect(r: &Rect) -> Rect {
 /// Switch thumb rect — default `(1,1.19,16,16)` → checked `(15,…)`;
 /// sm `(1,1,12,12)` → checked `(11,…)`.
 pub fn toggle_thumb_rect(size: crate::theme::ToggleSize, checked: bool, r: &Rect) -> Rect {
+    toggle_thumb_rect_t(size, checked as u8 as f32, r)
+}
+
+/// Fractional thumb — `t` is the eased 0..1 position between the
+/// unchecked and checked anchors (`transition-transform` on the frozen
+/// cn-switch thumb). `t = checked as f32` reproduces the static rects.
+pub fn toggle_thumb_rect_t(size: crate::theme::ToggleSize, t: f32, r: &Rect) -> Rect {
     let (d, y, xu, xc) = match size {
         crate::theme::ToggleSize::Default => (16.0, 1.188, 1.0, 15.0),
         crate::theme::ToggleSize::Sm => (12.0, 1.0, 1.0, 11.0),
     };
     Rect {
-        x: r.x + if checked { xc } else { xu },
+        x: r.x + xu + (xc - xu) * t.clamp(0.0, 1.0),
         y: r.y + y,
         width: d,
         height: d,

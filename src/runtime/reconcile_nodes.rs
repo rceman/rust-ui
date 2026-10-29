@@ -159,6 +159,10 @@ where
     pub(crate) const DIRTY_PAINT: u8 = 0b0000_0010;
     /// Semantics/accessibility-affecting change (labels, disabled, role).
     pub(crate) const DIRTY_SEMANTICS: u8 = 0b0000_1000;
+    /// Animatable value flipped (checked / selected / disabled / invalid)
+    /// — the backend's transition classifier consumes it; carries no
+    /// layout or UIA implication of its own.
+    pub(crate) const DIRTY_VALUE: u8 = 0b0001_0000;
 
     pub(crate) fn update_node(
         &mut self,
@@ -206,6 +210,12 @@ where
             n.dirty = crate::node::dirty_diff(&old_data, &n.data, dark, forced);
             if identity_changed {
                 n.dirty |= Self::DIRTY_SEMANTICS;
+            }
+            // animatable value channels (checked / selected / disabled /
+            // invalid) — the backend transitions these fields on eligible
+            // controls; identical values never set the bit
+            if value_flip(&old_data, &n.data) {
+                n.dirty |= Self::DIRTY_VALUE;
             }
             if n.layout != layout || old_vis != visibility {
                 n.dirty |= Self::DIRTY_LAYOUT;
@@ -372,4 +382,42 @@ where
     }
 
     // ----- native event dispatch (post-commit; generation-fenced) ----------
+}
+
+/// Did an animatable value field flip between the retained and staged
+/// data? Only the transition-carrying channels count — checked /
+/// selected / disabled / invalid on Button and Toggle; the backend uses
+/// the bit to start eased transitions instead of instant swaps.
+pub(crate) fn value_flip(old: &NodeData, new: &NodeData) -> bool {
+    match (old, new) {
+        (
+            NodeData::Button {
+                selected: s1,
+                disabled: d1,
+                invalid: i1,
+                ..
+            },
+            NodeData::Button {
+                selected: s2,
+                disabled: d2,
+                invalid: i2,
+                ..
+            },
+        ) => s1 != s2 || d1 != d2 || i1 != i2,
+        (
+            NodeData::Toggle {
+                checked: c1,
+                disabled: d1,
+                invalid: i1,
+                ..
+            },
+            NodeData::Toggle {
+                checked: c2,
+                disabled: d2,
+                invalid: i2,
+                ..
+            },
+        ) => c1 != c2 || d1 != d2 || i1 != i2,
+        _ => false,
+    }
 }

@@ -122,6 +122,13 @@ impl Scheduler {
         self.tooltips.remove(&node.slot);
     }
 
+    /// Cancel a live transition without settling events — the node's
+    /// target became unreachable (hidden, removed, or reclassified
+    /// non-transition) so the painted state must snap, not tween.
+    pub(crate) fn cancel_transition(&mut self, node: NodeId) {
+        self.transitions.remove(&node.slot);
+    }
+
     /// Hide/unmount-ish suspension: transitions and tooltips are cancelled;
     /// frame demand is parked (delta resets — resume restarts the clock).
     /// `suspended` is the entry's own flag, orthogonal to the reduced
@@ -300,4 +307,51 @@ impl Default for Scheduler {
             reduced: false,
         }
     }
+}
+
+/// The frozen reference easing — Tailwind `--default-transition-timing-
+/// function` = `cubic-bezier(0.4, 0, 0.2, 1)` (Material standard). Given
+/// normalized time `x ∈ [0,1]`, returns the curve's y (progress).
+/// Newton–Raphson with bisection fallback — the standard CSS solver.
+pub(crate) fn ease_css(x: f32) -> f32 {
+    const X1: f32 = 0.4;
+    const Y1: f32 = 0.0;
+    const X2: f32 = 0.2;
+    const Y2: f32 = 1.0;
+    fn cubic(a: f32, b: f32, t: f32) -> f32 {
+        let u = 1.0 - t;
+        3.0 * a * u * u * t + 3.0 * b * u * t * t + t * t * t
+    }
+    fn deriv(a: f32, b: f32, t: f32) -> f32 {
+        let u = 1.0 - t;
+        3.0 * a * u * u + 6.0 * (b - a) * u * t + 3.0 * (1.0 - b) * t * t
+    }
+    if x <= 0.0 || x >= 1.0 {
+        return x.clamp(0.0, 1.0);
+    }
+    // invert x(t) → s, then evaluate y(s)
+    let mut s = x;
+    for _ in 0..8 {
+        let err = cubic(X1, X2, s) - x;
+        if err.abs() < 1e-6 {
+            break;
+        }
+        let d = deriv(X1, X2, s);
+        if d.abs() < 1e-6 {
+            break;
+        }
+        s = (s - err / d).clamp(0.0, 1.0);
+    }
+    if (cubic(X1, X2, s) - x).abs() > 1e-4 {
+        let (mut lo, mut hi) = (0.0f32, 1.0f32);
+        for _ in 0..32 {
+            s = (lo + hi) / 2.0;
+            if cubic(X1, X2, s) < x {
+                lo = s;
+            } else {
+                hi = s;
+            }
+        }
+    }
+    cubic(Y1, Y2, s)
 }

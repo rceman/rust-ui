@@ -216,6 +216,21 @@ where
         let mut needs_paint = !chrome.is_empty();
         let mut needs_uia = false;
         for (id, d) in dirty {
+            if d & crate::runtime::Runtime::<S, M, U, V>::DIRTY_REMOVED != 0
+                || !self
+                    .rt
+                    .arena
+                    .get(id)
+                    .is_some_and(|n| n.visibility == Visibility::Visible)
+            {
+                // gone or hidden — the transition clock and the shown
+                // cache drop with it (a re-show snaps, never resumes)
+                self.prune_transition(id.slot);
+            } else if d & crate::runtime::Runtime::<S, M, U, V>::DIRTY_VALUE != 0 {
+                // animatable value flip (checked / selected / disabled /
+                // invalid) — eligible controls ease; others snap
+                self.begin_transition(id);
+            }
             if d & crate::runtime::Runtime::<S, M, U, V>::DIRTY_LAYOUT != 0 {
                 needs_layout = true;
             }
@@ -341,14 +356,22 @@ where
             SchedEvent::TooltipShow { node } => {
                 self.show_tooltip(*node);
             }
-            SchedEvent::TransitionStep { node, .. } | SchedEvent::TransitionDone { node, .. } => {
-                // hover/focus chrome animation — invalidate the node rect
-                if let Some(r) = self.rects.get(node).copied() {
-                    self.counters
-                        .animation_callbacks
-                        .fetch_add(1, Ordering::Relaxed);
-                    let _ = r;
-                }
+            SchedEvent::TransitionStep { node, .. } => {
+                // eased chrome step — the turn already repaints on any
+                // chrome event; the deadline timer re-arms from the
+                // scheduler's next_deadline
+                self.counters
+                    .animation_callbacks
+                    .fetch_add(1, Ordering::Relaxed);
+                let _ = node;
+            }
+            SchedEvent::TransitionDone { node, .. } => {
+                // settle — the interpolated entry drops; this turn's
+                // repaint resolves the instant target
+                self.counters
+                    .animation_callbacks
+                    .fetch_add(1, Ordering::Relaxed);
+                self.end_transition(*node);
             }
             _ => {}
         }

@@ -13,6 +13,9 @@
                         be.resolved_focus_visible(id, n),
                         dark,
                     );
+                    // eased transition (cn-switch transition-all) —
+                    // instant resolve for snap kinds (checkbox/radio)
+                    let vs = be.displayed_visual(id, vs);
                     let r_dp = crate::geom::Rect {
                         x: r.x,
                         y: r.y,
@@ -22,7 +25,8 @@
                     unsafe {
                         // same disabled alpha-fade as Button — RAII so a
                         // `?` below can never strand the 0.5 layer
-                        let _layer_guard = (*disabled).then(|| {
+                        let alpha = be.displayed_opacity(id, if *disabled { 0.5 } else { 1.0 });
+                        let _layer_guard = (alpha < 1.0).then(|| {
                             // contentBounds must be unbounded — a
                             // Default (0,0,0,0) bounds clips every draw
                             // inside the layer to nothing
@@ -34,7 +38,7 @@
                                         right: f32::MAX,
                                         bottom: f32::MAX,
                                     },
-                                    opacity: 0.5,
+                                    opacity: alpha,
                                     ..Default::default()
                                 },
                                 None,
@@ -87,7 +91,12 @@
                                 }
                             }
                             crate::theme::ToggleKind::Switch => {
-                                let tr = crate::layout::toggle_thumb_rect(*size, *checked, &r_dp);
+                                // `transition-transform` on the thumb —
+                                // eased x between the unchecked/checked
+                                // anchors via the scalar channel
+                                let thumb_t = be.displayed_scalar(id, (*checked) as u8 as f32);
+                                let tr =
+                                    crate::layout::toggle_thumb_rect_t(*size, thumb_t, &r_dp);
                                 let white = resolve_render(
                                     crate::style::Color::rgba(255, 255, 255, 255),
                                     dark,
@@ -108,13 +117,24 @@
                             }
                         }
                         // focus-visible OR unconditional invalid ring —
-                        // destructive tint when invalid
-                        if (be.resolved_focus_visible(id, n) || *invalid) && !*disabled {
+                        // destructive tint when invalid; the ring fades
+                        // through the eased ring channel (transition-all)
+                        let ring_on =
+                            (be.resolved_focus_visible(id, n) || *invalid) && !*disabled;
+                        let ring_a = be.displayed_ring(id, ring_on as u8 as f32);
+                        if ring_a > 0.0 {
+                            let mut rc = resolve_render(vs.focus_ring, dark, forced);
+                            rc.a *= ring_a;
                             paint_ring_color(
                                 &target,
                                 &clip,
                                 &vs.box_style.radii,
-                                vs.focus_ring,
+                                crate::style::Color::Rgba {
+                                    r: (rc.r * 255.0).round().clamp(0.0, 255.0) as u8,
+                                    g: (rc.g * 255.0).round().clamp(0.0, 255.0) as u8,
+                                    b: (rc.b * 255.0).round().clamp(0.0, 255.0) as u8,
+                                    a: (rc.a * 255.0).round().clamp(0.0, 255.0) as u8,
+                                },
                                 dark,
                                 forced,
                             )?;
