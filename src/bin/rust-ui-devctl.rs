@@ -42,7 +42,7 @@ impl Args {
             "launch" => &["exe", "session"],
             "shutdown" | "cleanup" => &["session"],
             "tree" | "snapshot-layout" => &["session", "timeout", "out"],
-            "wait-idle" | "leave" => &["session", "timeout"],
+            "wait-idle" | "leave" | "epoch" => &["session", "timeout"],
             "rect" | "hover" | "press" | "release" | "click" => &["session", "timeout", "id"],
             "focus" => &["session", "timeout", "id", "modality"],
             "press-at" => &["session", "timeout", "x", "y"],
@@ -380,6 +380,15 @@ fn native(a: &Args) -> Result<Value> {
         image.save(path)?;
         d::write_json(&path.with_extension("capture.json"), &meta)?;
         return Ok(meta);
+    }
+    // motion probe — the paint epoch is the scheduler's heartbeat:
+    // epochs advancing without input prove deadline-driven frames
+    if a.command == "epoch" {
+        let v = c::request(&session, "handshake", Value::Null, timeout)?;
+        if let Some(out) = a.get("out") {
+            d::write_json(Path::new(out), &v)?;
+        }
+        return Ok(v);
     }
     let args = json!({"id":a.id(),"key":a.get("key").or_else(||a.position.first().map(String::as_str)),"modality":a.get("modality"),"width":a.get("width"),"height":a.get("height"),"dy":a.get("dy"),"x":a.get("x"),"y":a.get("y")});
     let v = c::request(&session, &a.command, args, timeout)?;

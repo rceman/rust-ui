@@ -204,15 +204,14 @@ where
     /// owner is resolved BEFORE layout/paint see it. The native side
     /// follows — blur message, capture release, caret destroyed.
     pub(crate) fn sanitize_focus(&mut self) -> UiResult {
-        let ok = |f: NodeId| {
-            self.rt
-                .arena
+        let ok = |arena: &crate::arena::Arena, f: NodeId| {
+            arena
                 .get(f)
                 .is_some_and(|n| n.interactive() && n.visibility == Visibility::Visible)
         };
         // capture release: a captured node that died or went inert lets go
         if let Some(cap) = self.native_capture
-            && !ok(cap)
+            && !ok(&self.rt.arena, cap)
         {
             unsafe {
                 let _ = windows::Win32::UI::Input::KeyboardAndMouse::ReleaseCapture();
@@ -220,7 +219,7 @@ where
             self.native_capture = None;
         }
         if let Some(pr) = self.pressed
-            && !ok(pr)
+            && !ok(&self.rt.arena, pr)
         {
             let st = InteractState {
                 pressed: true,
@@ -231,7 +230,7 @@ where
             self.mark_state_dirty(pr, st);
         }
         if let Some(h) = self.hot
-            && !ok(h)
+            && !ok(&self.rt.arena, h)
         {
             let st = InteractState {
                 pressed: self.pressed == Some(h),
@@ -241,7 +240,7 @@ where
             self.hot = None;
             self.mark_state_dirty(h, st);
         }
-        let valid = self.focus.is_some_and(|f| ok(f));
+        let valid = self.focus.is_some_and(|f| ok(&self.rt.arena, f));
         if !valid {
             if let Some(id) = self.focus.take() {
                 // blur the native peer even when the node is dead — its

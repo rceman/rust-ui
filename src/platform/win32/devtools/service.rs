@@ -91,6 +91,14 @@ where
         self.devtools = Some(server);
         Ok(())
     }
+    /// the `epoch` probe payload — paint epoch + live transition and
+    /// animation counters so motion scheduling is observable end-to-end
+    pub(crate) fn handshake_json(&self) -> Result<Value> {
+        let s = self.dev_snapshot()?;
+        Ok(
+            json!({"hwnd":self.hwnd.0 as usize,"pid":std::process::id(),"paint_epoch":self.paint_epoch.get(),"counters":{"native_timer_fires":self.counters.native_timer_fires.load(std::sync::atomic::Ordering::Relaxed),"requested_redraws":self.counters.requested_redraws.load(std::sync::atomic::Ordering::Relaxed),"animation_timer_fires":self.counters.animation_timer_fires.load(std::sync::atomic::Ordering::Relaxed),"animation_callbacks":self.counters.animation_callbacks.load(std::sync::atomic::Ordering::Relaxed)},"transitions":self.trans.borrow().len(),"reduced":self.rt.sched.reduced,"scale_factor":s.scale_factor,"client_dp":s.client_dp,"client_px":s.client_px,"protocol":d::PROTOCOL}),
+        )
+    }
     pub(crate) fn dev_idle_state(&self) -> (bool, Value) {
         let dirty = (0..self.rt.arena.slot_len()).any(|i| {
             self.rt.arena.slot(i as u32).is_some_and(|n| {
