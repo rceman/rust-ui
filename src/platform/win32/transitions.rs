@@ -197,6 +197,28 @@ where
         self.trans.borrow_mut().remove(&node.slot);
     }
 
+    /// Live transition rows for the devctl probe — (slot, eased
+    /// fraction, per-channel from→to scalars) so mid-flight interpolated
+    /// state is observable end-to-end without pixel-timing races.
+    pub(crate) fn trans_probe(&self) -> Vec<serde_json::Value> {
+        let now = std::time::Instant::now();
+        self.trans
+            .borrow()
+            .iter()
+            .map(|(slot, t)| {
+                let e = trans_ease(*t, now);
+                serde_json::json!({
+                    "slot": slot,
+                    "frac": e,
+                    "s": [t.from_s, t.to_s],
+                    "p": [t.from_p, t.to_p],
+                    "o": [t.from_o, t.to_o],
+                    "r": [t.from_r, t.to_r],
+                })
+            })
+            .collect()
+    }
+
     /// Remove every trace of a node — unmount, hide, or reclassify.
     pub(super) fn prune_transition(&self, slot: u32) {
         self.trans.borrow_mut().remove(&slot);
