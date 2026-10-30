@@ -242,9 +242,21 @@ where
                     _ => None,
                 }
             });
+        // Ink can land outside `r`: the focus/invalid ring draws `spread +
+        // width/2` ≈ 3dp out on every side, a pressed button shifts its body
+        // +1dp down (its ring then reaches +4), and the TabLine underline
+        // sits 3..5dp below `r.bottom`. A conservative outset covers every
+        // outside-`r` paint path — bounded over-invalidation, never the
+        // stranded halo or clipped ring the raw node rect produced.
+        let ink = LogicalRect {
+            x: r.x - 3.0,
+            y: r.y - 3.0,
+            width: r.width + 6.0,
+            height: r.height + 8.0,
+        };
         match shadow {
-            Some(sh) => r.union(render::shadow_ink_rect(&r, &sh)),
-            None => r,
+            Some(sh) => ink.union(render::shadow_ink_rect(&r, &sh)),
+            None => ink,
         }
     }
 

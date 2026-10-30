@@ -16,18 +16,28 @@
 
 #![windows_subsystem = "windows"]
 
+#[cfg(windows)]
 use std::io::Write;
+#[cfg(windows)]
 use std::os::windows::process::CommandExt;
+#[cfg(windows)]
 use std::path::{Path, PathBuf};
+#[cfg(windows)]
 use std::process::{Command, Stdio};
 
+#[cfg(windows)]
 use windows::Win32::UI::WindowsAndMessaging::{MB_ICONERROR, MB_OK, MessageBoxW};
 
+#[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+#[cfg(windows)]
 const REPO_WSL: &str = "/home/therceman/git/rust-ui";
+#[cfg(windows)]
 const TARGET_DIR: &str = "W:\\devin_folder\\rust-ui-gallery-target";
+#[cfg(windows)]
 const PROFILE_ID: &str = "debug-devtools";
 
+#[cfg(windows)]
 fn run(exe: &str, args: &[&str], cwd: &str) -> Option<(i32, String)> {
     let out = Command::new(exe)
         .args(args)
@@ -43,6 +53,7 @@ fn run(exe: &str, args: &[&str], cwd: &str) -> Option<(i32, String)> {
     Some((out.status.code().unwrap_or(-1), text))
 }
 
+#[cfg(windows)]
 fn launch(exe: &Path) -> bool {
     Command::new(exe)
         .current_dir(TARGET_DIR)
@@ -52,6 +63,7 @@ fn launch(exe: &Path) -> bool {
         .is_ok()
 }
 
+#[cfg(windows)]
 fn fail(msg: &str) -> ! {
     unsafe {
         MessageBoxW(
@@ -64,11 +76,13 @@ fn fail(msg: &str) -> ! {
     std::process::exit(1);
 }
 
+#[cfg(windows)]
 fn stamp_path() -> PathBuf {
     Path::new(TARGET_DIR).join(".rust-ui-gallery-build")
 }
 
 /// Line-based stamp: head=<sha>\nprofile=<id>\nbin_mtime=<ticks>\nbin_size=<n>
+#[cfg(windows)]
 fn read_stamp() -> std::collections::HashMap<String, String> {
     std::fs::read_to_string(stamp_path())
         .unwrap_or_default()
@@ -77,6 +91,7 @@ fn read_stamp() -> std::collections::HashMap<String, String> {
         .collect()
 }
 
+#[cfg(windows)]
 fn main() {
     let bin = Path::new(TARGET_DIR).join("debug\\rust-ui-gallery.exe");
 
@@ -186,3 +201,6 @@ fn main() {
         fail(&format!("launch failed - {}", bin.display()));
     }
 }
+
+#[cfg(not(windows))]
+fn main() {}

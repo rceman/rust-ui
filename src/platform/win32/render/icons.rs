@@ -75,7 +75,7 @@ pub(crate) fn shadow_ink_rect(
     r: &super::super::space::LogicalRect,
     s: &Shadow,
 ) -> super::super::space::LogicalRect {
-    let pad = (s.blur_sigma.0.max(0.0) * 3.0).max(1.0);
+    let pad = (s.blur_sigma.0.max(0.0) * 3.0 + s.spread.0.max(0.0)).max(1.0) + 1.0;
     super::super::space::LogicalRect {
         x: r.x + s.offset_x.0 - pad,
         y: r.y + s.offset_y.0 - pad,
