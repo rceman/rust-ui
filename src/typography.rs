@@ -93,7 +93,7 @@ impl Typography {
             }
             Typography::InlineCode => {
                 s.font = FontFamily::Mono;
-                s.size = crate::style::TextSize::Exact(Dp(13.0));
+                s.size = crate::style::TextSize::Exact(Dp(14.0));
                 s.weight = TextWeight::Semibold;
                 s.line_height = Some(Dp(20.0));
             }
