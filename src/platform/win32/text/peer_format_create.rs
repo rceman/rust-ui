@@ -100,6 +100,43 @@ impl WindowlessPeer {
             *sh.host.cf
         };
         let _ = self.send(EM_SETCHARFORMAT, SCF_ALL as usize, &cf as *const _ as isize);
+        self.apply_font_tom();
+    }
+
+    /// Push the configured face+size through TOM — the only channel
+    /// msftedit honors for font metrics under TXTBIT_D2DDWRITE
+    /// (EM_SETCHARFORMAT's szFaceName/yHeight are ignored there — the
+    /// range font is the live authority). Re-applied after every text
+    /// load because TxSetText resets the story to the default font.
+    pub(crate) fn apply_font_tom(&self) {
+        let (face_w, size_pt) = {
+            let sh = self.shared();
+            (sh.host.cf.szFaceName, sh.host.cf.yHeight as f32 / 20.0)
+        };
+        unsafe {
+            let mut doc_raw: *mut c_void = std::ptr::null_mut();
+            let vt = Interface::vtable(self.tx());
+            if (vt.base__.base__.QueryInterface)(
+                self.tx().as_raw(),
+                &ITextDocument::IID as *const GUID,
+                &mut doc_raw,
+            )
+            .is_err()
+            {
+                return;
+            }
+            let doc = ITextDocument::from_raw(doc_raw);
+            let Ok(range) = doc.Range(0, 0) else { return };
+            let Ok(_) = range.MoveEnd(6, 1) else { return };
+            let Ok(font) = range.GetFont() else { return };
+            let name: Vec<u16> = face_w
+                .iter()
+                .take_while(|c| **c != 0)
+                .copied()
+                .collect();
+            let _ = font.SetName(&windows::core::BSTR::from_wide(&name));
+            let _ = font.SetSize(size_pt);
+        }
     }
 
     /// Build the host + text services for one peer.
