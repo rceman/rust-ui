@@ -40,9 +40,9 @@ fn card_part_recipes_match_frozen_contract() {
 }
 
 #[test]
-fn inline_code_recipe_is_13px_and_wraps_content() {
+fn inline_code_recipe_is_14px_and_wraps_content() {
     let s = crate::typography::Typography::InlineCode.style();
-    assert_eq!(s.size, crate::style::TextSize::Exact(crate::geom::Dp(13.0)));
+    assert_eq!(s.size, crate::style::TextSize::Exact(crate::geom::Dp(14.0)));
     assert_eq!(s.weight, crate::style::TextWeight::Semibold);
     assert_eq!(s.line_height, Some(crate::geom::Dp(20.0)));
 }
