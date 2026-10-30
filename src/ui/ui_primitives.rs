@@ -369,7 +369,9 @@ impl<'ui, 'tx, M: 'static> Ui<'ui, 'tx, M> {
             ..crate::style::TextStyle::default()
         };
         self.part("pre", |ui| {
-            ui.box_(BoxProps::new().style(chrome), |ui| {
+            // -mx-1 on the frozen figure — the border box bleeds 4dp
+            // past the column on both sides
+            ui.box_(BoxProps::new().style(chrome).margin_x(crate::geom::Dp(-4.0)), |ui| {
                 // zero-pad/zero-gap — the chrome owns the frozen 14/16
                 // insets; lines stack at their 20dp line-height
                 ui.column(Column::new().padding(Space::None).gap(Space::None), |ui| {

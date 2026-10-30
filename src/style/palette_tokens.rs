@@ -36,6 +36,16 @@ impl BoxProps {
         self.layout.max_width = Some(v);
         self
     }
+    /// Signed both-sides margin — negative values grow the border box
+    /// beyond the allocated slot (frozen `-mx-1` breakout).
+    pub fn margin_x(mut self, v: Dp) -> Self {
+        self.layout.margin_x = v;
+        self
+    }
+    pub fn margin_y(mut self, v: Dp) -> Self {
+        self.layout.margin_y = v;
+        self
+    }
     pub fn min_height(mut self, v: Dp) -> Self {
         self.layout.min_height = Some(v);
         self

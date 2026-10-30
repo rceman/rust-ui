@@ -42,6 +42,20 @@ impl LayoutCache {
         if let Some(c) = clip {
             clips.insert(id, c);
         }
+        // authored margins adjust the ALLOCATED slot — the parent's
+        // sizing already consumed this node's share; negative margins
+        // grow the border box past it (the frozen `-mx-1` breakout)
+        let spec = n.layout;
+        let rect = if spec.margin_x.0 != 0.0 || spec.margin_y.0 != 0.0 {
+            LogicalRect {
+                x: rect.x + spec.margin_x.0,
+                y: rect.y + spec.margin_y.0,
+                width: (rect.width - 2.0 * spec.margin_x.0).max(0.0),
+                height: (rect.height - 2.0 * spec.margin_y.0).max(0.0),
+            }
+        } else {
+            rect
+        };
         let kind = match &n.data {
             NodeData::Container { kind, .. } => *kind,
             NodeData::Action { .. } => KIND_ACTION,

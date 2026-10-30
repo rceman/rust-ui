@@ -57,7 +57,7 @@ impl Gallery {
                     ui.named("typography.code-block", |ui| {
                         ui.code_block(&[
                             "fn render_button(rect: Rect) {",
-                            "ctx.fill(rect, theme.primary)",
+                            "    ctx.fill(rect, theme.primary)",
                             "}",
                         ]);
                     });

@@ -363,6 +363,11 @@ pub struct LayoutSpec {
     pub min_height: Option<Dp>,
     pub max_width: Option<Dp>,
     pub max_height: Option<Dp>,
+    /// signed margin applied to BOTH sides of the axis — the border box
+    /// shifts by the value and resizes by -2× (negative margins grow the
+    /// box beyond the allocated slot, the frozen `-mx-1` breakout)
+    pub margin_x: Dp,
+    pub margin_y: Dp,
 }
 
 impl LayoutSpec {
@@ -380,6 +385,8 @@ impl LayoutSpec {
             || !d_ok(&self.min_height)
             || !d_ok(&self.max_width)
             || !d_ok(&self.max_height)
+            || !self.margin_x.valid()
+            || !self.margin_y.valid()
         {
             return Some(crate::UiDiagnostic::InvalidLayout);
         }
