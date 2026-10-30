@@ -214,32 +214,58 @@ where
     pub(super) fn ink_map(&self) -> HashMap<NodeId, LogicalRect> {
         let mut m: HashMap<NodeId, LogicalRect> = HashMap::new();
         for (&id, &r) in self.rects.iter() {
-            let mut i = r;
-            let shadow = self
-                .resolved_at(id, self.interact(id))
-                .and_then(|v| v.box_style.shadow)
-                .or_else(|| {
-                    // editors resolve chrome (non-interactive) — the
-                    // resolved_at path does not cover them
-                    match self.rt.arena.get(id).map(|n| &n.data) {
-                        Some(crate::node::NodeData::Editor { patch, .. }) => {
-                            layout::editor_chrome(patch).shadow
-                        }
-                        Some(crate::node::NodeData::Container { kind, props }) => {
-                            props.resolved_box(*kind).and_then(|b| b.shadow)
-                        }
-                        Some(crate::node::NodeData::Popup { props, .. }) => props
-                            .resolved_box(crate::node::KIND_POPUP)
-                            .and_then(|b| b.shadow),
-                        _ => None,
-                    }
-                });
-            if let Some(sh) = shadow {
-                i = i.union(render::shadow_ink_rect(&r, &sh));
-            }
-            m.insert(id, i);
+            m.insert(id, self.ink_of(id, r));
         }
         m
+    }
+
+    /// One node's ink footprint — layout rect UNION resolved shadow ink
+    /// (same resolution path as ink_map: interactive first, then the
+    /// non-interactive chrome kinds resolved_at does not cover).
+    pub(super) fn ink_of(&self, id: NodeId, r: LogicalRect) -> LogicalRect {
+        let shadow = self
+            .resolved_at(id, self.interact(id))
+            .and_then(|v| v.box_style.shadow)
+            .or_else(|| {
+                // editors resolve chrome (non-interactive) — the
+                // resolved_at path does not cover them
+                match self.rt.arena.get(id).map(|n| &n.data) {
+                    Some(crate::node::NodeData::Editor { patch, .. }) => {
+                        layout::editor_chrome(patch).shadow
+                    }
+                    Some(crate::node::NodeData::Container { kind, props }) => {
+                        props.resolved_box(*kind).and_then(|b| b.shadow)
+                    }
+                    Some(crate::node::NodeData::Popup { props, .. }) => props
+                        .resolved_box(crate::node::KIND_POPUP)
+                        .and_then(|b| b.shadow),
+                    _ => None,
+                }
+            });
+        match shadow {
+            Some(sh) => r.union(render::shadow_ink_rect(&r, &sh)),
+            None => r,
+        }
+    }
+
+    /// Mark one node's full ink footprint as damaged — the OLD committed
+    /// footprint union the current one (covers a moved/shrunk/removed
+    /// shadow). Used for paint-classified changes and chrome steps
+    /// (transition repaints) where no ink-map diff exists to catch.
+    pub(super) fn mark_ink_damage(&self, id: NodeId) {
+        let Some(r) = self.rects.get(&id).copied() else {
+            return;
+        };
+        let ink = self.ink_of(id, r);
+        let dr = self
+            .committed_ink
+            .borrow()
+            .get(&id)
+            .copied()
+            .map(|old| old.union(ink))
+            .unwrap_or(ink);
+        let acc = self.damage.get().map(|d| d.union(dr)).unwrap_or(dr);
+        self.damage.set(Some(acc));
     }
 
     /// Present the frame — D2D target, axis-aligned clips, chrome paint.
@@ -296,8 +322,9 @@ where
         })
     }
 
-    #[cfg(test)]
-    pub(crate) fn damage_rect(&self) -> Option<LogicalRect> {
+    /// The accumulated damage union the next paint will clip to — read
+    /// by the renderer for bounded invalidation (and by tests).
+    pub(super) fn damage_rect(&self) -> Option<LogicalRect> {
         self.damage.get()
     }
 

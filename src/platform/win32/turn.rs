@@ -240,45 +240,9 @@ where
             if d & crate::runtime::Runtime::<S, M, U, V>::DIRTY_PAINT != 0 {
                 needs_paint = true;
                 // ink-damage union — the node's committed rect plus any
-                // shadow footprint; cumulative between paints. (The window
-                // still repaints fully today, but the union is the promised
-                // damage contract and is tested.)
-                if let Some(r) = self.rects.get(&id).copied() {
-                    // OLD committed ink (where the node last painted —
-                    // covers a moved/shrunk/removed shadow) UNION new ink
-                    let mut dr = self
-                        .committed_ink
-                        .borrow()
-                        .get(&id)
-                        .copied()
-                        .map(|old| old.union(r))
-                        .unwrap_or(r);
-                    let sh = match self.rt.arena.get(id).map(|n| &n.data) {
-                        Some(crate::node::NodeData::Container { kind, props }) => props
-                            .resolved_box(*kind)
-                            .and_then(|b| b.shadow.map(|s| (b, s))),
-                        Some(crate::node::NodeData::Popup { props, .. }) => props
-                            .resolved_box(crate::node::KIND_POPUP)
-                            .and_then(|b| b.shadow.map(|s| (b, s))),
-                        Some(crate::node::NodeData::Action {
-                            style, disabled, ..
-                        }) => {
-                            let b = style.resolve(*disabled, false, false, false);
-                            b.shadow.map(|s| (b, s))
-                        }
-                        Some(crate::node::NodeData::Editor { patch, .. }) => {
-                            let c = layout::editor_chrome(patch);
-                            c.shadow.map(|s| (c, s))
-                        }
-                        _ => None,
-                    };
-                    if let Some((_b, s)) = sh {
-                        let ink = super::render::shadow_ink_rect(&r, &s);
-                        dr = dr.union(ink);
-                    }
-                    let acc = self.damage.get().map(|d| d.union(dr)).unwrap_or(dr);
-                    self.damage.set(Some(acc));
-                }
+                // shadow footprint; cumulative between paints. The frame
+                // clips to this union — only damaged ink repaints.
+                self.mark_ink_damage(id);
             }
         }
         if self.rects.is_empty() {
@@ -357,20 +321,23 @@ where
                 self.show_tooltip(*node);
             }
             SchedEvent::TransitionStep { node, .. } => {
-                // eased chrome step — the turn already repaints on any
-                // chrome event; the deadline timer re-arms from the
+                // eased chrome step — damage ONLY the node's ink
+                // footprint so the frame repaints that region, not the
+                // whole scene; the deadline timer re-arms from the
                 // scheduler's next_deadline
                 self.counters
                     .animation_callbacks
                     .fetch_add(1, Ordering::Relaxed);
-                let _ = node;
+                self.mark_ink_damage(*node);
             }
             SchedEvent::TransitionDone { node, .. } => {
                 // settle — the interpolated entry drops; this turn's
-                // repaint resolves the instant target
+                // repaint resolves the instant target — bounded to the
+                // node's ink footprint like every step before it
                 self.counters
                     .animation_callbacks
                     .fetch_add(1, Ordering::Relaxed);
+                self.mark_ink_damage(*node);
                 self.end_transition(*node);
             }
             _ => {}

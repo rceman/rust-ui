@@ -37,13 +37,56 @@ impl Renderer {
         );
         unsafe {
             target.BeginDraw();
-            target.Clear(Some(&bg));
+        }
+        // Bounded invalidation — `damage` is the union of ink that must
+        // repaint (layout diffs, DIRTY_PAINT marks, transition steps).
+        // When set, clip the frame to it: the bg fill covers exactly that
+        // region (Clear ignores clips) and nodes outside it are skipped.
+        let damage = be.damage_rect();
+        let dmg_guard = damage.map(|d| {
+            unsafe {
+                target.PushAxisAlignedClip(
+                    &D2D_RECT_F {
+                        left: d.x,
+                        top: d.y,
+                        right: d.x + d.width,
+                        bottom: d.y + d.height,
+                    },
+                    D2D1_ANTIALIAS_MODE_ALIASED,
+                );
+            }
+            ClipGuard(&target)
+        });
+        match damage {
+            Some(d) => {
+                let brush = unsafe { target.CreateSolidColorBrush(&bg, None) }
+                    .map_err(|e| UiError::Platform(format!("bg brush: {e}")))?;
+                unsafe {
+                    target.FillRectangle(
+                        &D2D_RECT_F {
+                            left: d.x,
+                            top: d.y,
+                            right: d.x + d.width,
+                            bottom: d.y + d.height,
+                        },
+                        &brush,
+                    );
+                }
+            }
+            None => unsafe {
+                target.Clear(Some(&bg));
+            },
         }
         let order = be.order.clone();
         for id in order {
             let Some(r) = be.rects.get(&id).copied() else {
                 continue;
             };
+            if let Some(d) = damage
+                && !be.ink_of(id, r).intersects(d)
+            {
+                continue;
+            }
             let Some(n) = be.rt.arena.get(id) else {
                 continue;
             };
@@ -122,6 +165,9 @@ impl Renderer {
                 _ => {}
             }
         }
+        // the damage clip pops BEFORE EndDraw — ClipGuard's Drop also
+        // covers any `?` return inside the node loop
+        drop(dmg_guard);
         match unsafe { target.EndDraw(None, None) } {
             Err(e) if e.code() == D2DERR_RECREATE_TARGET => {
                 Err(UiError::Platform("D2DERR_RECREATE_TARGET".into()))
