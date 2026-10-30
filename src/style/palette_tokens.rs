@@ -182,9 +182,14 @@ pub fn role_color(role: ColorRole, dark: bool) -> [f32; 4] {
         (Destructive40, false) => rgba(0xe7000b, 0.40),
         (Destructive40, true) => rgba(0xff6467, 0.40),
         (Destructive50, _) => rgba(0xff6467, 0.50),
-        // frozen `input-50`: light e5e5e5@50%, dark #fff@12%
-        (InputDisabled, false) => rgba(0xe5e5e5, 0.5),
-        (InputDisabled, true) => rgba(0xffffff, 0.12),
+        // `disabled:opacity-50` on the transparent/15% input interior:
+        // light -> transparent over the page, dark -> the 4.5% wash halved
+        (InputDisabled, false) => rgba(0xffffff, 0.0),
+        (InputDisabled, true) => rgba(0xffffff, 0.0225),
+        // `disabled:opacity-50` on `border-input` (light 0.922 solid,
+        // dark white/15): the border fades with the whole control
+        (InputDisabledBorder, false) => rgba(0xe5e5e5, 0.5),
+        (InputDisabledBorder, true) => rgba(0xffffff, 0.075),
         // frozen `aria-invalid:border-destructive`: light full, dark /50
         (InputDestructive, false) => rgba(0xe7000b, 1.0),
         (InputDestructive, true) => rgba(0xff6467, 0.5),
@@ -297,7 +302,9 @@ pub fn system_slot(role: crate::theme::ColorRole) -> SystemColor {
         R::AccentForeground | R::PrimaryForeground | R::SelectionForeground => {
             SystemColor::HighlightText
         }
-        R::Border | R::Input | R::Foreground10 => SystemColor::InactiveBorder,
+        R::Border | R::Input | R::InputDisabledBorder | R::Foreground10 => {
+            SystemColor::InactiveBorder
+        }
     }
 }
 

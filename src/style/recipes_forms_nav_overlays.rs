@@ -255,25 +255,25 @@ pub fn resolve_toggle_visual(
 }
 
 /// `input`/`textarea` overlay chrome — the transparent top layer of the
-/// two-node stack: it carries ONLY the visible frame (border + radii 10 +
-/// optional `bg-input/50` disabled fill); the editor leaf under it owns
-/// the opaque content rect. `invalid` picks the theme-conditional
-/// `InputDestructive` border role; text metrics never touch this layer.
-pub fn input_overlay_style(disabled: bool, invalid: bool) -> BoxStyle {
+/// two-node stack: it carries ONLY the fill (`bg-input/30` dark wash /
+/// `InputDisabled` disabled composite) + radii 10 shell; the editor leaf
+/// under it paints the element border (runtime focus/invalid resolution
+/// cannot live in this stage-baked style) and owns the opaque content
+/// rect. Text metrics never touch this layer.
+pub fn input_overlay_style(disabled: bool) -> BoxStyle {
     BoxStyle {
+        // `dark:bg-input/30` — the frozen dark fill is a 4.5% white wash
+        // (Input30); over the light page it is invisible either way.
+        // Disabled keeps the SAME fill family at the 0.5 composite —
+        // `disabled:opacity-50` is whole-control, not a fill swap.
         background: if disabled {
             Color::Role(ColorRole::InputDisabled)
         } else {
-            Color::rgba(0, 0, 0, 0)
+            Color::Role(ColorRole::Input30)
         },
-        border: Border::all(BorderSide::new(
-            Dp(1.0),
-            if invalid {
-                Color::Role(ColorRole::InputDestructive)
-            } else {
-                Color::Role(ColorRole::Border)
-            },
-        )),
+        // the editor paints the element border at paint time (it owns
+        // runtime focus/invalid resolution) — the overlay stays frameless
+        border: Border::default(),
         radii: CornerRadii::all(Dp(10.0)),
         padding: Insets::default(),
         shadow: None,

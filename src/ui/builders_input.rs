@@ -233,7 +233,7 @@ impl<'a, 'ui, 'b, M: 'static> Drop for InputBuilder<'a, 'ui, 'b, M> {
                 }
                 ui.box_(
                     crate::style::BoxProps::new()
-                        .style(crate::style::input_overlay_style(disabled, invalid)),
+                        .style(crate::style::input_overlay_style(disabled)),
                     |_| {},
                 );
             },

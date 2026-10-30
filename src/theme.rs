@@ -103,9 +103,13 @@ pub enum ColorRole {
     Destructive40,
     /// `destructive-50-dark` — dark invalid border (`border-destructive/50`)
     Destructive50,
-    /// `input-50` — input/textarea disabled fill (`bg-input/50` light,
-    /// `bg-input/80` dark — the frozen token carries white/12 in dark)
+    /// `input-50` — input/textarea disabled interior composite under
+    /// `disabled:opacity-50` (light: transparent; dark: `bg-input/30`
+    /// halved — white/2.25)
     InputDisabled,
+    /// input/textarea disabled border — `border-input` at the frozen
+    /// `disabled:opacity-50` composite (light: e5e5e5/50, dark: white/7.5)
+    InputDisabledBorder,
     /// `input-destructive` — input/textarea invalid border
     /// (`aria-invalid:border-destructive` light = full destructive,
     /// `dark:aria-invalid:border-destructive/50` = /50 in dark)

@@ -14,6 +14,48 @@
                             &self.shadow_cache,
                             self.target_gen.get(),
                         )?;
+                        // frameless chrome => a STACKED input: the sibling
+                        // overlay is a transparent shell, so the EDITOR
+                        // paints the element border — runtime focus/
+                        // invalid resolution only exists here, never in
+                        // the overlay's stage-baked style.
+                        if !(chrome.border.any()
+                            || chrome.radii != crate::style::CornerRadii::default())
+                        {
+                            let border_color = if *invalid {
+                                crate::style::Color::Role(crate::theme::ColorRole::InputDestructive)
+                            } else if *disabled {
+                                crate::style::Color::Role(
+                                    crate::theme::ColorRole::InputDisabledBorder,
+                                )
+                            } else if be.resolved_focus_visible(id, n) {
+                                crate::style::Color::Role(crate::theme::ColorRole::Ring)
+                            } else {
+                                crate::style::Color::Role(crate::theme::ColorRole::Input)
+                            };
+                            let frame = crate::style::BoxStyle {
+                                background: crate::style::Color::rgba(0, 0, 0, 0),
+                                border: crate::style::Border::all(
+                                    crate::style::BorderSide::new(
+                                        crate::geom::Dp(1.0),
+                                        border_color,
+                                    ),
+                                ),
+                                radii: crate::style::CornerRadii::all(crate::geom::Dp(10.0)),
+                                padding: crate::style::Insets::default(),
+                                shadow: None,
+                            };
+                            paint_box(
+                                &target,
+                                &clip,
+                                &frame,
+                                dark,
+                                forced,
+                                dpi,
+                                &self.shadow_cache,
+                                self.target_gen.get(),
+                            )?;
+                        }
                         // focus ENFORCEMENT — same independent ring layer;
                         // `invalid` fires the destructive ring
                         // unconditionally (frozen `aria-invalid` rule)
@@ -27,7 +69,7 @@
                             {
                                 chrome.radii
                             } else {
-                                crate::style::input_overlay_style(*disabled, *invalid).radii
+                                crate::style::input_overlay_style(*disabled).radii
                             };
                             paint_ring_color(
                                 &target,
@@ -57,7 +99,14 @@
                         // rect so hit/caret math stays document-true
                         let clipped_out = be.clips.get(&id).map_or(false, |cl| !c.intersects(*cl));
                         if !clipped_out {
-                            peer.borrow().draw(&target, c, self.target_gen.get())?;
+                            // `disabled:opacity-50` — the frozen rule is
+                            // whole-control alpha, text included
+                            peer.borrow().draw(
+                                &target,
+                                c,
+                                self.target_gen.get(),
+                                if *disabled { 0.5 } else { 1.0 },
+                            )?;
                         }
                     }
                     // placeholder — staged hint text drawn muted over the
@@ -72,7 +121,11 @@
                                 crate::style::Color::Role(crate::theme::ColorRole::MutedForeground);
                             ts.size = crate::style::TextSize::Exact(crate::geom::Dp(14.0));
                             if let Ok(layout) = layout_for(ph, c.width, c.height, &ts) {
-                                let col = resolve_render(ts.foreground, dark, forced);
+                                let mut col = resolve_render(ts.foreground, dark, forced);
+                                // `disabled:opacity-50` — whole control
+                                if *disabled {
+                                    col.a *= 0.5;
+                                }
                                 unsafe {
                                     let brush = target.CreateSolidColorBrush(&col, None)?;
                                     target.DrawTextLayout(

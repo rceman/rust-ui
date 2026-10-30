@@ -117,6 +117,7 @@ impl WindowlessPeer {
         rt: &ID2D1RenderTarget,
         _bounds: LogicalRect,
         target_gen: u64,
+        opacity: f32,
     ) -> UiResult<()> {
         self.ensure_in_place()?;
         let (bounds, sc) = self.effective_geometry();
@@ -220,7 +221,7 @@ impl WindowlessPeer {
             rt.DrawBitmap(
                 &bmp,
                 Some(&dest),
-                1.0,
+                opacity,
                 D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR,
                 None,
             );
