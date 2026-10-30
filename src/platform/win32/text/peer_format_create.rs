@@ -120,6 +120,33 @@ impl WindowlessPeer {
     /// OnTxCharFormatChange writeback cannot poison re-pushes.
     pub(crate) fn apply_font_tom(&self) -> UiResult<()> {
         unsafe {
+            // Read-only stories reject TOM font mutation (SetName ->
+            // ACCESS_DENIED). The read-only bit gates editing, not
+            // formatting — lift it for the font push, restore after.
+            let ro = self.shared().host.bits & TXTBIT_READONLY != 0;
+            if ro {
+                let bits = {
+                    let mut s = self.shared_mut();
+                    s.host.bits &= !TXTBIT_READONLY;
+                    s.host.bits
+                };
+                self.tx()
+                    .OnTxPropertyBitsChange(TXTBIT_READONLY, bits)
+                    .map_err(|e| UiError::Platform(format!("lift READONLY: {e}")))?;
+            }
+            let saved_bits = self.shared().host.bits;
+            let r = self.apply_font_tom_inner();
+            if ro {
+                self.shared_mut().host.bits = saved_bits;
+                let _ = self
+                    .tx()
+                    .OnTxPropertyBitsChange(TXTBIT_READONLY, saved_bits);
+            }
+            r
+        }
+    }
+    fn apply_font_tom_inner(&self) -> UiResult<()> {
+        unsafe {
             let mut doc_raw: *mut c_void = std::ptr::null_mut();
             let vt = Interface::vtable(self.tx());
             (vt.base__.base__.QueryInterface)(
