@@ -2,7 +2,7 @@
 
 **Branch:** `feat/p12-automated-visual-parity`
 **Baseline:** `873c9996a908d5307c364925bfec6b4c1c40eb54` (main, P11 structural refactor — P12 start)
-**Candidate:** `9a58eeb` (signed-margin finiteness + probe/audit/boot-fix chain)
+**Candidate:** `0db6e33` (ink-footprint outset + shadow spread + launcher cfg gate)
 **Reference (frozen):** `reference/shadcn-gallery-v0.1` — immutable `contract.json` + `screenshots/{light,dark}/*.png`
 
 ## Verification matrix (R3)
