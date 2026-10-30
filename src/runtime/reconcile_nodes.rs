@@ -353,6 +353,9 @@ where
             self.mounted_editors.remove(&l);
         }
         self.arena.invalidate(id);
+        // record the removal before free — the dirty drain cannot
+        // observe a dead slot on its own
+        self.removed_ids.push(id);
         self.dropped_stale_events += self.events.purge_node(id.slot);
         self.sched.cancel_node(id);
         // teardown on the dead node via raw slot access

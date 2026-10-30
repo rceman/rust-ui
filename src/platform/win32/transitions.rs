@@ -130,7 +130,7 @@ where
             || self.rt.sched.reduced
             || self.rt.forced_resolver().is_some()
         {
-            self.trans.borrow_mut().remove(&id.slot);
+            self.trans.borrow_mut().remove(&id);
             self.rt.sched.cancel_transition(id);
             return;
         }
@@ -139,7 +139,7 @@ where
         // shown cache holds the last painted channel values otherwise
         let (fv, fs, fp, fo, fr) = {
             let tr = self.trans.borrow();
-            match tr.get(&id.slot) {
+            match tr.get(&id) {
                 Some(t) => {
                     let e = trans_ease(*t, now);
                     let dark = self.rt.theme.dark;
@@ -153,7 +153,7 @@ where
                 }
                 None => {
                     let sh = self.shown.borrow();
-                    let s = sh.get(&id.slot);
+                    let s = sh.get(&id);
                     (
                         s.and_then(|x| x.v).unwrap_or(to_v),
                         s.and_then(|x| x.s).unwrap_or(to_s),
@@ -165,12 +165,12 @@ where
             }
         };
         if fv == to_v && fs == to_s && fp == to_p && fo == to_o && fr == to_r {
-            self.trans.borrow_mut().remove(&id.slot);
+            self.trans.borrow_mut().remove(&id);
             self.rt.sched.cancel_transition(id);
             return;
         }
         self.trans.borrow_mut().insert(
-            id.slot,
+            id,
             Trans {
                 from_v: fv,
                 to_v,
@@ -194,7 +194,7 @@ where
     /// Settle: the scheduler's `TransitionDone` — the entry drops; the
     /// next paint resolves the instant target.
     pub(super) fn end_transition(&self, node: NodeId) {
-        self.trans.borrow_mut().remove(&node.slot);
+        self.trans.borrow_mut().remove(&node);
     }
 
     /// Live transition rows for the devctl probe — (slot, eased
@@ -210,7 +210,7 @@ where
             .map(|(slot, t)| {
                 let e = trans_ease(*t, now);
                 serde_json::json!({
-                    "slot": slot,
+                    "slot": slot.slot,"gen": slot.generation,
                     "frac": e,
                     "s": [t.from_s, t.to_s],
                     "p": [t.from_p, t.to_p],
@@ -222,9 +222,11 @@ where
     }
 
     /// Remove every trace of a node — unmount, hide, or reclassify.
-    pub(super) fn prune_transition(&self, slot: u32) {
-        self.trans.borrow_mut().remove(&slot);
-        self.shown.borrow_mut().remove(&slot);
+    /// Keyed by NodeId (slot+generation): a reused slot can never
+    /// inherit a dead node's flight or shown cache.
+    pub(super) fn prune_transition(&self, id: NodeId) {
+        self.trans.borrow_mut().remove(&id);
+        self.shown.borrow_mut().remove(&id);
     }
 
     /// The painted `VisualStyle` for this frame — the eased interpolation
@@ -237,25 +239,25 @@ where
     ) -> crate::style::VisualStyle {
         let dark = self.rt.theme.dark;
         let now = std::time::Instant::now();
-        let t = self.trans.borrow().get(&id.slot).copied();
+        let t = self.trans.borrow().get(&id).copied();
         let v = match t {
             Some(t) if t.to_v == to_v => {
                 let frac = trans_frac(t, now);
                 if frac < 1.0 {
                     lerp_visual(&t.from_v, &t.to_v, crate::sched::ease_css(frac), dark)
                 } else {
-                    self.trans.borrow_mut().remove(&id.slot);
+                    self.trans.borrow_mut().remove(&id);
                     to_v
                 }
             }
             Some(_) => {
                 // target drifted mid-flight — snap to the live resolve
-                self.trans.borrow_mut().remove(&id.slot);
+                self.trans.borrow_mut().remove(&id);
                 to_v
             }
             None => to_v,
         };
-        self.shown.borrow_mut().entry(id.slot).or_default().v = Some(v);
+        self.shown.borrow_mut().entry(id).or_default().v = Some(v);
         v
     }
 
@@ -264,21 +266,21 @@ where
     /// continue from their interpolated value.
     pub(crate) fn displayed_scalar(&self, id: NodeId, to_s: f32) -> f32 {
         let s = self.channel(id, to_s, |t| (t.from_s, t.to_s));
-        self.shown.borrow_mut().entry(id.slot).or_default().s = Some(s);
+        self.shown.borrow_mut().entry(id).or_default().s = Some(s);
         s
     }
 
     /// Painted pressed-offset channel (cn-button `active:translate-y-px`).
     pub(crate) fn displayed_pressed(&self, id: NodeId, to_p: f32) -> f32 {
         let p = self.channel(id, to_p, |t| (t.from_p, t.to_p));
-        self.shown.borrow_mut().entry(id.slot).or_default().p = Some(p);
+        self.shown.borrow_mut().entry(id).or_default().p = Some(p);
         p
     }
 
     /// Painted disabled-opacity channel (`disabled:opacity-50`).
     pub(crate) fn displayed_opacity(&self, id: NodeId, to_o: f32) -> f32 {
         let o = self.channel(id, to_o, |t| (t.from_o, t.to_o));
-        self.shown.borrow_mut().entry(id.slot).or_default().o = Some(o);
+        self.shown.borrow_mut().entry(id).or_default().o = Some(o);
         o
     }
 
@@ -286,14 +288,14 @@ where
     /// alpha (0 hidden, 1 shown) eased like the CSS box-shadow fade.
     pub(crate) fn displayed_ring(&self, id: NodeId, to_r: f32) -> f32 {
         let r = self.channel(id, to_r, |t| (t.from_r, t.to_r));
-        self.shown.borrow_mut().entry(id.slot).or_default().r = Some(r);
+        self.shown.borrow_mut().entry(id).or_default().r = Some(r);
         r
     }
 
     /// Shared scalar-channel step: eased `lerp(from,to)` while the node's
     /// transition targets `to`, else `to` (snap or settled).
     fn channel(&self, id: NodeId, to: f32, pick: impl Fn(Trans) -> (f32, f32)) -> f32 {
-        match self.trans.borrow().get(&id.slot).copied() {
+        match self.trans.borrow().get(&id).copied() {
             Some(t) => {
                 let (from, tgt) = pick(t);
                 let frac = trans_frac(t, std::time::Instant::now());

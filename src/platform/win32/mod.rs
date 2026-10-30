@@ -359,10 +359,10 @@ where
     /// live eased transitions — the render-side half of the scheduler's
     /// transition clock (`transitions.rs`): per-slot from/to channel
     /// values stepped at each deadline-driven repaint
-    trans: std::cell::RefCell<HashMap<u32, transitions::Trans>>,
+    trans: std::cell::RefCell<HashMap<NodeId, transitions::Trans>>,
     /// the last-painted per-channel values — a new transition's `from`
     /// (interruption-safe continuation) and the settled endpoint
-    shown: std::cell::RefCell<HashMap<u32, transitions::Shown>>,
+    shown: std::cell::RefCell<HashMap<NodeId, transitions::Shown>>,
     /// a WM_SIZE resized the target but layout/paint have not yet run —
     /// coalesced into the next delivered WM_PAINT (OS-batched during the
     /// modal sizing loop) so one frame's work runs per paint delivery,

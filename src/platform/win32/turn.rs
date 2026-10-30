@@ -225,7 +225,7 @@ where
             {
                 // gone or hidden — the transition clock and the shown
                 // cache drop with it (a re-show snaps, never resumes)
-                self.prune_transition(id.slot);
+                self.prune_transition(id);
             } else if d & crate::runtime::Runtime::<S, M, U, V>::DIRTY_VALUE != 0 {
                 // animatable value flip (checked / selected / disabled /
                 // invalid) — eligible controls ease; others snap

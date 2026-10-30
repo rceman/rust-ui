@@ -126,6 +126,11 @@ where
     pub(crate) view_count: u64,
     /// mounted-editor index: lease identity -> node (O(1) move detection)
     mounted_editors: HashMap<usize, NodeId>,
+    /// nodes freed since the last dirty drain — drain_dirty cannot
+    /// observe removals on its own (the slot is already dead, possibly
+    /// reused), so remove_node records the exact old-generation NodeId
+    /// here and the drain emits it as DIRTY_REMOVED for backend caches
+    removed_ids: Vec<NodeId>,
     /// flat reusable transaction buffer — allocated once per runtime
     scratch_nodes: Vec<StagedNode>,
     /// typed diagnostics collected across commits

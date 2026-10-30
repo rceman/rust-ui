@@ -80,6 +80,7 @@ where
             appearance_dirty: false,
             view_count: 0,
             mounted_editors: HashMap::new(),
+            removed_ids: Vec::new(),
             scratch_nodes: Vec::new(),
             diagnostics: Vec::new(),
             dropped_stale_events: 0,
@@ -402,6 +403,13 @@ where
                 n.dirty = 0;
             }
         }
+        // removals recorded by remove_node — their old-generation ids
+        // let generation-keyed backend caches prune the right entries
+        out.extend(
+            self.removed_ids
+                .drain(..)
+                .map(|id| (id, Self::DIRTY_REMOVED)),
+        );
         out
     }
 }

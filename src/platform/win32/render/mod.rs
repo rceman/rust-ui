@@ -108,17 +108,14 @@ pub(crate) fn dwrite() -> UiResult<&'static Dwrite> {
 /// faces (privately registered, see `fonts.rs`). `None` = Segoe UI for
 /// apps that never needed parity; the Gallery asserts `fonts::geist()`.
 pub(crate) fn family_name(f: crate::theme::FontFamily) -> windows::core::PCWSTR {
-    if super::fonts::geist().sans {
-        match f {
-            crate::theme::FontFamily::Sans => {
-                windows::core::PCWSTR(super::fonts::SANS_FAMILY.as_ptr())
-            }
-            crate::theme::FontFamily::Mono => {
-                windows::core::PCWSTR(super::fonts::MONO_FAMILY.as_ptr())
-            }
+    match f {
+        crate::theme::FontFamily::Sans if super::fonts::geist().sans => {
+            windows::core::PCWSTR(super::fonts::SANS_FAMILY.as_ptr())
         }
-    } else {
-        w!("Segoe UI")
+        crate::theme::FontFamily::Mono if super::fonts::geist().mono => {
+            windows::core::PCWSTR(super::fonts::MONO_FAMILY.as_ptr())
+        }
+        _ => w!("Segoe UI"),
     }
 }
 
