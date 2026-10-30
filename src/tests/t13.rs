@@ -222,6 +222,7 @@ fn draw_peer_dib_on(peer: &crate::platform::win32::WindowlessPeer, clear: [f32; 
                 height: 200.,
             },
             0,
+            1.0,
         )
         .expect("draw");
         rt.EndDraw(None, None).expect("end");
@@ -399,7 +400,7 @@ fn staged_selection_survives_first_activation() {
             a: 1.,
         }));
     }
-    peer.draw(&rt, island, 0).expect("draw");
+    peer.draw(&rt, island, 0, 1.0).expect("draw");
     unsafe { rt.EndDraw(None, None).expect("end") };
     let data = unsafe { std::slice::from_raw_parts(bits as *const u8, (FBW * FBH * 4) as usize) };
     // band = 0.4·sel_bg + 0.6·win_bg under D2DDWRITE → a (0.2,0.4,0.8)

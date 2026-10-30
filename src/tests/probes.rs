@@ -250,7 +250,7 @@ fn native_probe_richedit_paints_text() {
                 a: 1.0,
             }));
         }
-        peer.draw(&rt, island_dip, 0).expect("TxDrawD2D");
+        peer.draw(&rt, island_dip, 0, 1.0).expect("TxDrawD2D");
         unsafe {
             rt.EndDraw(None, None).expect("EndDraw");
         }

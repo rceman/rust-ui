@@ -31,7 +31,7 @@
                 a: 1.0,
             }));
         }
-        peer.draw(&rt, island_dip, 0).expect("draw@A");
+        peer.draw(&rt, island_dip, 0, 1.0).expect("draw@A");
         unsafe {
             rt.EndDraw(None, None).expect("EndDraw");
         }
@@ -59,7 +59,7 @@
                 a: 1.0,
             }));
         }
-        peer.draw(&rt, island_dip, 0).expect("draw@B");
+        peer.draw(&rt, island_dip, 0, 1.0).expect("draw@B");
         unsafe {
             rt.EndDraw(None, None).expect("EndDraw");
         }

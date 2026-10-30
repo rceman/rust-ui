@@ -324,7 +324,7 @@ where
 
     /// The accumulated damage union the next paint will clip to — read
     /// by the renderer for bounded invalidation (and by tests).
-    pub(super) fn damage_rect(&self) -> Option<LogicalRect> {
+    pub(crate) fn damage_rect(&self) -> Option<LogicalRect> {
         self.damage.get()
     }
 
