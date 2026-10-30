@@ -200,6 +200,8 @@ where
     /// Live transition rows for the devctl probe — (slot, eased
     /// fraction, per-channel from→to scalars) so mid-flight interpolated
     /// state is observable end-to-end without pixel-timing races.
+    /// serde_json is devtools-only; the default build has no probe.
+    #[cfg(feature = "devtools")]
     pub(crate) fn trans_probe(&self) -> Vec<serde_json::Value> {
         let now = std::time::Instant::now();
         self.trans

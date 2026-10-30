@@ -298,6 +298,9 @@ impl crate::node::TextPeer for WindowlessPeer {
                 .TxSetText(PCWSTR(h.as_ptr()))
                 .map_err(|e| UiError::Platform(format!("TxSetText(init): {e}")))?;
         }
+        // push the authored face+size+pitch onto the fresh story —
+        // TxSetText resets formatting to the default font
+        self.apply_font_tom()?;
         self.binding = Some(binding);
         self.peer_rev.set(revision);
         // mount-time init must NOT fabricate an acknowledgement — the sync
@@ -312,10 +315,10 @@ impl crate::node::TextPeer for WindowlessPeer {
                 .TxSetText(PCWSTR(h.as_ptr()))
                 .map_err(|e| UiError::Platform(format!("TxSetText: {e}")))?;
         }
-        // re-push the configured face+size — TxSetText resets the story
-        // to the default font (EM_SETCHARFORMAT is inert under D2DDWRITE;
-        // the TOM range font is the live authority)
-        self.apply_font_tom();
+        // re-push the configured face+size+pitch — TxSetText resets the
+        // story to the default font (EM_SETCHARFORMAT is inert under
+        // D2DDWRITE; the TOM range font is the live authority)
+        self.apply_font_tom()?;
         // actual read-back — the ack must describe what the peer committed
         let committed = self.text()?;
         self.peer_rev.set(requested);
@@ -389,6 +392,7 @@ impl WindowlessPeer {
                 .TxSetText(windows_core::PCWSTR(h.as_ptr()))
                 .map_err(|e| UiError::Platform(format!("TxSetText: {e}")))?;
         }
+        self.apply_font_tom()?;
         Ok(())
     }
 

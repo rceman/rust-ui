@@ -26,6 +26,10 @@ pub(crate) struct WindowlessPeer {
     multiline: bool,
     /// authored line box in twips as latched at create — snapshot introspection
     line_twips: i32,
+    /// authored face/size latched at create — TOM re-pushes must NOT read
+    /// host.cf (msftedit's OnTxCharFormatChange writeback could poison it)
+    face_name: String,
+    size_pt: f32,
     /// THE TextServices activation state — NOT one boolean (F04):
     /// InPlace = formatted against the px client space (measure/draw);
     /// Ui = additionally UI-active — focus owner only (msftedit allows a
@@ -100,42 +104,51 @@ impl WindowlessPeer {
             *sh.host.cf
         };
         let _ = self.send(EM_SETCHARFORMAT, SCF_ALL as usize, &cf as *const _ as isize);
-        self.apply_font_tom();
+        // color push stays non-fatal — a TOM hiccup must not block fg
+        let _ = self.apply_font_tom();
     }
 
-    /// Push the configured face+size through TOM — the only channel
-    /// msftedit honors for font metrics under TXTBIT_D2DDWRITE
-    /// (EM_SETCHARFORMAT's szFaceName/yHeight are ignored there — the
-    /// range font is the live authority). Re-applied after every text
-    /// load because TxSetText resets the story to the default font.
-    pub(crate) fn apply_font_tom(&self) {
-        let (face_w, size_pt) = {
-            let sh = self.shared();
-            (sh.host.cf.szFaceName, sh.host.cf.yHeight as f32 / 20.0)
-        };
+    /// Push the authored face+size and line pitch through TOM — the
+    /// only channel msftedit honors for metrics under
+    /// TXTBIT_D2DDWRITE (EM_SETCHARFORMAT szFaceName/yHeight and
+    /// EM_SETPARAFORMAT line-spacing are inert there). Re-applied
+    /// after every text load because TxSetText resets the story to
+    /// the default format. Errors propagate: a failed push means the
+    /// story still carries the default font/pitch, which callers must
+    /// not report as committed. Face/size come from the authored
+    /// values latched at create, not host.cf, so a service-side
+    /// OnTxCharFormatChange writeback cannot poison re-pushes.
+    pub(crate) fn apply_font_tom(&self) -> UiResult<()> {
         unsafe {
             let mut doc_raw: *mut c_void = std::ptr::null_mut();
             let vt = Interface::vtable(self.tx());
-            if (vt.base__.base__.QueryInterface)(
+            (vt.base__.base__.QueryInterface)(
                 self.tx().as_raw(),
                 &ITextDocument::IID as *const GUID,
                 &mut doc_raw,
             )
-            .is_err()
-            {
-                return;
-            }
+            .ok()
+            .map_err(|e| UiError::Platform(format!("QI(ITextDocument): {e}")))?;
             let doc = ITextDocument::from_raw(doc_raw);
-            let Ok(range) = doc.Range(0, 0) else { return };
-            let Ok(_) = range.MoveEnd(6, 1) else { return };
-            let Ok(font) = range.GetFont() else { return };
-            let name: Vec<u16> = face_w
-                .iter()
-                .take_while(|c| **c != 0)
-                .copied()
-                .collect();
-            let _ = font.SetName(&windows::core::BSTR::from_wide(&name));
-            let _ = font.SetSize(size_pt);
+            let range = doc
+                .Range(0, 0)
+                .map_err(|e| UiError::Platform(format!("Range: {e}")))?;
+            range
+                .MoveEnd(6, 1)
+                .map_err(|e| UiError::Platform(format!("MoveEnd(tomStory): {e}")))?;
+            let font = range
+                .GetFont()
+                .map_err(|e| UiError::Platform(format!("GetFont: {e}")))?;
+            let name: Vec<u16> = self.face_name.encode_utf16().collect();
+            font.SetName(&windows::core::BSTR::from_wide(&name))
+                .map_err(|e| UiError::Platform(format!("SetName: {e}")))?;
+            font.SetSize(self.size_pt)
+                .map_err(|e| UiError::Platform(format!("SetSize: {e}")))?;
+            // Line pitch is NOT set here: EM_SETPARAFORMAT (with or
+            // without a whole-story selection) and TOM ITextPara are
+            // inert under D2DDWRITE. Pitch lives in the create-time
+            // host.cf.yHeight calibration — TOM only carries face+size.
+            Ok(())
         }
     }
 
@@ -173,16 +186,19 @@ impl WindowlessPeer {
                     // CFE_AUTOCOLOR: draw-time theme recoloring without
                     // rewriting character formats on every view
                     dwEffects: CFE_EFFECTS(CFE_AUTOCOLOR.0 | if cfg.bold { CFE_BOLD.0 } else { 0 }),
-                    // Font size stays authored-exact (`size_twips` =
-                    // contract font px): under TXTBIT_D2DDWRITE the
-                    // line pitch historically derived from yHeight,
-                    // which conflated glyph size with line spacing and
-                    // rendered ~9% oversized text at lh20. The exact
-                    // pitch is now requested through the initial
-                    // PARAFORMAT2 line-spacing fields below (measured
-                    // live on this host; see the pf comment) — yHeight
-                    // never carries the pitch again.
-                    yHeight: cfg.size_twips,
+                    // yHeight is the LAYOUT pitch authority under
+                    // TXTBIT_D2DDWRITE — glyphs come from the TOM range
+                    // font (apply_font_tom), but msftedit still derives
+                    // line height from this charformat field. The
+                    // calibrated formula line_twips*23/30 lands the
+                    // authored pitch (300tw=lh20 → 230tw ≈ 20px on this
+                    // host, verified by multiline_exact_line_spacing);
+                    // paraformat/TOM-para spacing channels are inert.
+                    yHeight: if cfg.line_twips > 0 {
+                        cfg.line_twips * 23 / 30
+                    } else {
+                        cfg.size_twips
+                    },
                     yOffset: 0,
                     crTextColor: colorref(cfg.fg),
                     bCharSet: DEFAULT_CHARSET,
@@ -281,6 +297,8 @@ impl WindowlessPeer {
                 host,
                 id,
                 line_twips: cfg.line_twips,
+                face_name: cfg.face.clone(),
+                size_pt: cfg.size_twips as f32 / 20.0,
                 node: NodeId {
                     slot: u32::MAX,
                     generation: u64::MAX,
