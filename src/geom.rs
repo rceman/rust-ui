@@ -385,8 +385,8 @@ impl LayoutSpec {
             || !d_ok(&self.min_height)
             || !d_ok(&self.max_width)
             || !d_ok(&self.max_height)
-            || !self.margin_x.valid()
-            || !self.margin_y.valid()
+            || !self.margin_x.0.is_finite()
+            || !self.margin_y.0.is_finite()
         {
             return Some(crate::UiDiagnostic::InvalidLayout);
         }
