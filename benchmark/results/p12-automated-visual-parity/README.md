@@ -2,7 +2,7 @@
 
 **Branch:** `feat/p12-automated-visual-parity`
 **Baseline:** `873c9996a908d5307c364925bfec6b4c1c40eb54` (main, P11 structural refactor — P12 start)
-**Candidate:** `dea5242cd15f8b5762fba977f8b40132d2738759`
+**Candidate:** `9a58eeb` (signed-margin finiteness + probe/audit/boot-fix chain)
 **Reference (frozen):** `reference/shadcn-gallery-v0.1` — immutable `contract.json` + `screenshots/{light,dark}/*.png`
 
 ## Verification matrix (R3)
@@ -33,16 +33,29 @@ paint_epoch advances during animation, FLAT at idle (M2 idle-zero proven)
 
 ## Geometry matrix (real Geist + TOM font, both themes)
 
-102 `compare-element` runs (`--mode size-only --tolerance 0.25`); see `comparisons/*.json` + `captures/{page}-{theme}.{json,png}`.
+Corrected capture sweep v6 — `RUI_GALLERY_PAGE` now crosses WSL→Windows via
+`WSLENV` (an earlier run mislabeled all pages as Components content);
+boot-time regressions that killed Forms/Typography launches are fixed
+(`53e7d3e` read-only TOM font, `9a58eeb` signed-margin finiteness). 87
+native captures across all 7 pages × light+dark + collapsed-nav.
 
-**44/102 geo-PASS at dwh=(0,0) EXACT** — all inputs, textareas, native-text, select-open. Below-fold specimens verified separately at 0.00 deltas (card, alert, separator, checkbox, switch, field, settings-nav-item).
+351 `compare-element` runs; **215/351 size-PASS at tolerance 0.25**
+(`dh=0` on every compared element — all height deltas are width-only).
+
+**Verified EXACT (`dw=0 dh=0`)** — `typography.code-block` 728 (the
+`margin_x(-4)` breakout + 4-space indent), all `input.*`/`textarea.*`
+variants @360px (disabled/filled/focus-visible/invalid/placeholder, both
+themes), `settings-nav-item.*` 208×32, `radio-group.*` 360×40,
+`settings-nav.default` collapsed rail 48px. `TARGET_NOT_FOUND` elements
+resolve to `DEFERRED` (out-of-scope) specimens — Slider/Toggle/
+Toggle-Group/Breadcrumb/Pagination.
 
 ### Remaining deviations (text-metric / mono-face class)
 
 | Element | Delta | Class |
 |---|---|---|
 | `tabs.default`/`tabs.line` | −9.98 w | text-metric (~3px/tab advance) after S5 row-padding fix |
-| `typography.code-block` | −8.0 w | block width vs text-column breakout |
+| ~~`typography.code-block`~~ | 0.0 w | **FIXED** — `margin_x(-4)` breakout + indent, exact at 728 |
 | `typography.small` | −5.07 w | text-metric |
 | `typography.inline-code` | −40.6 w | mono-face advance (ref `font-mono` stack ≠ bundled Geist Mono); recipe size corrected 13→14 |
 | `button.destructive` | −2.5 w | text-metric |
