@@ -118,7 +118,7 @@ fn native_probe_richedit_paints_text() {
             WINDOW_EX_STYLE(0),
             cls,
             w!("probe"),
-            WS_OVERLAPPEDWINDOW | WS_VISIBLE,
+            WS_OVERLAPPEDWINDOW,
             0,
             0,
             800,
