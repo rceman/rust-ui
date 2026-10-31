@@ -1,12 +1,28 @@
 # rust-ui product vision
 
-**Status: PROPOSAL FOR PLANNER / FOUNDER APPROVAL.** The founder's intent recorded below is authoritative product input. The proposed compatibility profile, budgets, sequencing and changes to earlier architectural exclusions are not approved by publishing this document. Existing implementation contracts remain in force until explicitly amended.
+**Status: STRATEGIC DIRECTION APPROVED IN PRINCIPLE BY PLANNER; FOUNDER PUBLICATION / MERGE AUTHORIZATION PENDING.** Technical profiles, numerical budgets, workload definitions and implementation sequencing remain provisional. This approval does not authorize compiler implementation or change the active P12 scope.
 
 **Prompt:** `rust-ui-astra-PRODUCT-VISION-20261031-225600`
 
 **Repository base:** `873c9996a908d5307c364925bfec6b4c1c40eb54` — verified remote `main` on 2026-10-31.
 
 **Related proposal:** [Web-native feasibility and roadmap](WEB_NATIVE_FEASIBILITY_AND_ROADMAP.md).
+
+## Strategic decision record
+
+**Decision source:** `rust-ui-astra-VISION-APPROVAL-20261031-235000`. Planner reviewed both documents at `e95fcd92ae3897cc4ba40949678e6c4f8885d436` and approved the strategic direction in principle.
+
+| Disposition | Decision for Lead / Worker onboarding |
+|---|---|
+| Approved direction | A cross-platform native desktop application framework and practical Electron/Tauri alternative; HTML/CSS-compatible authoring compiles into the existing typed Rust execution model. Direct Rust authoring remains first-class. Windows, macOS and Linux are the native backend targets. |
+| Permanent native-runtime boundaries | One retained UI tree and shared semantic contracts; native input, text and accessibility ownership; no mandatory browser engine, WebView, DOM runtime or JavaScript VM in shipped applications. Desktop-only and desktop-responsive scope remains unchanged. |
+| Permitted future capabilities | Flexbox, Grid, responsive layout, CSS variables, selectors, animations and transitions are not permanently rejected concepts. Their concrete native contracts and implementation require separate authorization and proof. |
+| Temporary v0.1 exclusions | No frontend/parser integration, restricted layout/style vocabulary and deferred broader CSS behavior describe milestone limits, not the product ceiling. CSS parsing/cascade does not become a mandatory core dependency. |
+| Provisional technical choices | 100,000,000-byte attributable application target; 40 MB empty shell; workload/platform allocations; versioned compatibility profile; initial migration experiment with Pomatez preferred for analysis; Windows-first sequencing followed by bounded macOS validation and Linux work. None is a measured guarantee. |
+| Active implementation | **P12 remains the active implementation milestone.** Continue its current scope and independent reviews. Do not dispatch compiler/backend implementation from this decision. Shadcn Gallery remains an initial conformance/reference milestone, not the ultimate feature ceiling. |
+| Remaining authority | Founder must authorize publication/merge of these strategic authority documents. Detailed technical decisions and future milestone tasks still need explicit approval. No merge is authorized here. |
+
+The feasibility analysis below and in the companion document remains intact. This record distinguishes the approved destination from proposed means of reaching it; it does not replace existing runtime contracts or rewrite historical v0.1 decisions.
 
 ## Product ambition
 
@@ -70,7 +86,7 @@ Phone/tablet product behavior, iOS/Android, mobile navigation conventions and mo
 
 The founder's target is **at or below 100 MB of total attributable application memory for representative desktop applications**, including application data for those workloads, UI runtime, layout, styles, text, rendering, events, transitions and animation infrastructure. This proposal interprets MB as 1,000,000 bytes; measurements must also publish bytes and, if used, MiB explicitly.
 
-This is a demanding product target, not a current verified achievement. Framework overhead must leave useful room for the application. The companion proposal defines an empty-shell target, bounded application workloads, native accounting and separate platform allocations without raising the total ceiling for a more expensive backend.
+This is a demanding **provisional measurement target**, not a current verified achievement or approved workload guarantee. Framework overhead must leave useful room for the application. The companion proposal defines an empty-shell target, bounded application workloads, native accounting and separate platform allocations without raising the total ceiling for a more expensive backend.
 
 Measure the complete application process family. Charge graphics and shared resources appropriately; do not hide them by reporting only a small Rust heap or one process's working set. Avoid double-counting aliases. Unknown attribution must be reported as unknown, not zero. Development tools have a separate disclosed cost and are absent from normal deployment.
 
@@ -99,16 +115,16 @@ The framework must support useful applications without mandatory devtools listen
 
 ## Relationship to current work
 
-P12 continues independently. This proposal does not interrupt active Workers, approve unreviewed P12 changes, expand its scope, or authorize a compiler implementation. Native rendering correctness is a dependency of the proposed product.
+**P12 remains the active implementation milestone and continues independently.** Strategic approval does not interrupt active Workers, approve unreviewed P12 changes, expand its scope, or authorize a compiler implementation. Native rendering correctness is a dependency of the approved product direction.
 
-The current optional-frontend reservation in [STYLE_CUSTOMIZATION_MODEL.md](STYLE_CUSTOMIZATION_MODEL.md#future-optional-authoring-frontends-reserved) is compatible with this direction. Earlier v0.1 exclusions are not automatically permanent product limits. Blanket bans on useful relative sizing or Flexbox/Grid semantics need a deliberate future amendment, while the no-browser-runtime and one-tree boundaries remain intact.
+The current optional-frontend reservation in [STYLE_CUSTOMIZATION_MODEL.md](STYLE_CUSTOMIZATION_MODEL.md#future-optional-authoring-frontends-reserved) is compatible with this direction. Earlier v0.1 exclusions must not be interpreted as permanent product bans on the future capabilities recorded above. Conflicting older policy wording needs a narrowly authorized future amendment; the no-mandatory-browser-runtime and one-tree boundaries remain permanent. Current implementation contracts remain in force until explicitly extended.
 
 The frozen `reference/shadcn-gallery-v0.1/` remains immutable. Compiler experiments use separate fixtures and do not rewrite visual authority to make native comparison pass.
 
 ## Approval and durable authority
 
-Requested approval is for the product destination and the bounded strategy in the companion proposal. It is not approval to implement all milestones concurrently or to merge this branch automatically.
+Planner approval in principle applies to the strategic destination recorded above. It does not approve every technical choice in the companion proposal, authorize implementation of its roadmap, or authorize merging this branch.
 
-After explicit Founder/Planner approval, these documents should become durable planning authority through a recorded approval/merge. A subsequent narrowly scoped documentation change should reconcile conflicting current-policy wording, identify the approved compatibility profile and preserve historical v0.1 decisions as history. Until then, do not infer that existing architecture policies have already changed.
+Founder publication/merge authorization remains required before these documents are adopted as published strategic authority. After that authorization, a narrowly scoped documentation change should reconcile conflicting current-policy wording, record separately approved technical choices and preserve historical v0.1 decisions as history. No existing policy is modified by this reconciliation.
 
 Planner owns roadmap and milestone acceptance. Lead coordinates bounded implementation; Workers implement it. Astra owns systems/contracts/performance review and Opus owns visual/interaction quality under [REVIEW_AUTHORITY.md](REVIEW_AUTHORITY.md). Existing Universal Gates 1–20 remain authoritative; this proposal adds no new numbered gates.

@@ -1,12 +1,14 @@
 # Web-native feasibility and roadmap
 
-**Status: PROPOSAL FOR PLANNER / FOUNDER APPROVAL — no implementation authorization or compatibility certification.**
+**Status: STRATEGIC DIRECTION APPROVED IN PRINCIPLE BY PLANNER; TECHNICAL CHOICES REMAIN PROVISIONAL.** Founder publication/merge authorization is pending. This analysis provides no implementation authorization, measured memory guarantee or compatibility certification. The concise approval record is in [PRODUCT_VISION.md](PRODUCT_VISION.md#strategic-decision-record).
 
 **Prompt:** `rust-ui-astra-PRODUCT-VISION-20261031-225600`.
 
 **Base:** verified remote `main`, `873c9996a908d5307c364925bfec6b4c1c40eb54`, on 2026-10-31. The documentation branch intentionally starts from main, not active P12. Remote P12 was `cb6d888207321a2b724e68c302175661245ee00e` when inspected. The [systems audit](https://github.com/rceman/rust-ui/blob/a8a0cf0fcb5e66e508dd9a2c2234efac56529c1a/docs/reviews/ASTRA_SYSTEM_WORKFLOW_AUDIT_20261031.md) covers that P12 snapshot; subsequent Worker changes are outside this proposal's acceptance claims.
 
 Read with [PRODUCT_VISION.md](PRODUCT_VISION.md). This review used repository contracts, selected actual source, current primary standards/tool documentation and historical evidence. It ran no native application, benchmark, screenshot sweep or Rust test suite. Quantitative budgets below are proposed targets or arithmetic examples, never new measurements.
+
+**Approval reconciliation:** `rust-ui-astra-VISION-APPROVAL-20261031-235000`, following Planner review of `e95fcd92ae3897cc4ba40949678e6c4f8885d436`. The feasibility research and limitations are preserved without a new research pass. **P12 remains the active implementation milestone.**
 
 ## Strategic conclusion
 
@@ -28,7 +30,7 @@ The required repository documents were inspected: [product scope](PRODUCT_SCOPE.
 | Preserve | Optional frontend depends on core, not vice versa | Build dependencies remain outside deployment; compiled dynamic support is opt-in and separately measured. |
 | Temporary exclusion | No parser, selectors, variables or frontend integration in v0.1 | End the exclusion only in a separately authorized compiler milestone. |
 | Temporary exclusion | Narrow effects, units and authored motion | Add individually tested native capabilities; no wholesale browser-effects promise. Some implementation capabilities have already grown beyond old prose. |
-| Requires amendment | Style document calls browser-relative layout and general Flex/Grid requirements genuinely rejected | Retain rejection of a browser runtime, but permit specified layout semantics as typed native algorithms. Document supported differences. |
+| Strategic direction approved; policy amendment pending | Style document calls browser-relative layout and general Flex/Grid requirements genuinely rejected | These are not permanent product bans under the approved direction. Keep the native/no-mandatory-browser boundary; extend typed algorithms only through an authorized milestone and reconcile older wording separately. |
 | Requires extension | No implicit core inheritance; exclusive native state branches; limited Length vocabulary | Frontend resolves inheritance/combined predicates; relative constraints need typed shared layout inputs. Existing Rust behavior remains stable. |
 | Requires explicit policy | Rust inline host patches outrank frontend CSS; OS accessibility enforcement is last | This is a native host policy, not literal browser cascade. HTML inline style remains inside the frontend cascade. |
 | Genuine incompatibility | Arbitrary live DOM scripting and browser APIs with no equivalent runtime | Migration must rewrite/adapt these uses. Do not promise transparent execution. |
@@ -284,24 +286,25 @@ Use the existing audit's focused inner loop, paired capture reuse and frozen acc
 
 No new CI, backend, parser, runtime, tests or dependency is added by this branch. Documentation verification checks identity, links, scope and repository file-budget policy only. Universal Gates 1–20 still apply to future implementation milestones; no additional numbered gate system is proposed.
 
-## Decisions requiring Founder / Planner approval
+## Remaining Founder / Planner decisions
 
-1. Adopt the long-term framework/migration ambition as durable product authority while retaining desktop-only scope and native/no-browser execution.
-2. Authorize a versioned supported web-authoring profile, strict diagnostics and explicit native adaptations rather than universal browser/JS compatibility claims.
-3. Amend permanent Flex/Grid/relative-layout exclusions to permit reviewed typed native algorithms, while keeping CSS parsing/cascade outside core and preserving direct Rust behavior.
-4. Approve the 100 MB accounting definition, representative workload envelopes, <=40 MB shell target and provisional per-platform allocations; these remain unmeasured targets until native proof.
-5. Approve a first migration repository/application and success tasks; select logic-language/binding scope without promising general TS-to-Rust translation.
-6. Approve milestone order and an early bounded macOS contract probe after the Windows/stateful prerequisites; confirm Linux environment priorities separately.
-7. Preserve frozen reference/review ownership and authorize only the next bounded stage. No merge or implementation is authorized by this review itself.
+The strategic destination and permission for future native capabilities are approved in principle; they do not need to be rediscovered in later reviews. The following remain pending:
 
-**Recommended immediate action:** approve or amend this strategy; let P12 finish; task Lead with native stabilization/accounting and a narrowly scoped compiler feasibility experiment afterward. No current Worker needs to stop or change its scope.
+1. Founder authorization to publish/merge these documents as durable strategic authority, followed by a narrowly scoped reconciliation of conflicting older exclusion wording.
+2. The concrete versioned compatibility profile, supported semantics, diagnostics/adaptations and logic-language/binding scope. Universal browser or TS-to-Rust equivalence is not promised.
+3. The proposed 100,000,000-byte accounting definition, workload envelopes, 40 MB shell target and per-platform allocations as acceptance targets. No measurement or achievement is claimed.
+4. The first migration repository/revision and success tasks; Pomatez remains preferred for analysis, not an authorized port.
+5. Detailed milestone sequencing and native validation environments. Windows-first, bounded macOS validation and subsequent Linux work remain the proposed order.
+6. Explicit authorization of future bounded implementation tasks after their prerequisites. Frozen reference and independent review ownership remain unchanged.
+
+**Immediate action:** route the strategic publication decision to Founder while P12 continues. Subsequent native stabilization, measurement and compiler experiments require their own authorized tasks; this record dispatches none.
 
 ## Research provenance
 
 Primary source links above were consulted on 2026-10-31. Living standards, drafts and tool documentation are not immutable compiler specifications. The first implemented profile must record the precise specification editions/sections, test corpus revisions and dependency versions it implements. The links establish the technical distinctions used in this analysis, not a claim that all listed features are implemented or that another toolkit's performance transfers to rust-ui.
 
-**Review status:** `VISION_REVIEW_READY`
+**Decision status:** `STRATEGIC_DIRECTION_APPROVED_IN_PRINCIPLE` — technical targets provisional; Founder publication/merge authorization pending.
 
-**Next owner:** rust-ui Planner / Founder
+**Next owner:** rust-ui Planner
 
 **Merge authority:** NONE
